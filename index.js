@@ -523,21 +523,30 @@ client.on('interactionCreate', async interaction => {
 
     // /setup-panel
     if (cmd === 'setup-panel') {
-      const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ticket_open').setLabel('🎫 Open Ticket').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('report_submit_btn').setLabel('🚨 Report User').setStyle(ButtonStyle.Danger),
+      // Row 1 — Ticket Categories (upgrade 21)
+      const ticketRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ticket_purchase').setLabel('🛒 Purchase').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('ticket_support').setLabel('🔧 Support').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('ticket_bug').setLabel('🐛 Bug Report').setStyle(ButtonStyle.Danger),
       );
-      const row2 = new ActionRowBuilder().addComponents(
+      // Row 2 — Other panel buttons
+      const utilRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('report_submit_btn').setLabel('🚨 Report User').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('view_song_queue').setLabel('🎶 Song Queue').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('get_member_role').setLabel('✅ Get Member Role').setStyle(ButtonStyle.Primary),
       );
+
       const embed = new EmbedBuilder()
         .setTitle('🖥️ ZENITSU LIVE — CONTROL PANEL')
         .setDescription(
-          '**🎫 Open Ticket** — Open a private support channel with staff\n' +
-          '**🚨 Report User** — Report a member to moderation\n' +
-          '**🎶 Song Queue** — View active waifu song requests\n' +
-          '**✅ Get Member Role** — Unlock the full community'
+          '**─── 🎫 OPEN A TICKET ───**\n' +
+          '🛒 **Purchase** — Buy a product / place an order\n' +
+          '🔧 **Support** — Get help with an existing product\n' +
+          '🐛 **Bug Report** — Report a bug or issue\n\n' +
+          '**─── OTHER ───**\n' +
+          '🚨 **Report User** — Report a rule-breaking member\n' +
+          '🎶 **Song Queue** — View active waifu song requests\n' +
+          '✅ **Get Member Role** — Unlock the full community'
         )
         .setColor(0xEDC231)
         .setThumbnail(interaction.guild.iconURL())
@@ -545,7 +554,7 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       const panelCh = interaction.guild.channels.cache.get(config.channelPanel) || interaction.channel;
-      await panelCh.send({ embeds: [embed], components: [row1, row2] });
+      await panelCh.send({ embeds: [embed], components: [ticketRow, utilRow] });
       await interaction.reply({ content: `✅ Panel posted in <#${panelCh.id}>`, ephemeral: true });
     }
 
@@ -741,40 +750,74 @@ client.on('interactionCreate', async interaction => {
       await interaction.editReply({ content: '✅ You have been given the **MEMBER** role! Welcome to **ZENITSU LIVE**!' });
     }
 
-    // Open Ticket
-    else if (customId === 'ticket_open') {
+    // ── [21] TICKET CATEGORIES ─────────────────────────────────────────────────
+    else if (['ticket_purchase', 'ticket_support', 'ticket_bug'].includes(customId)) {
       await interaction.deferReply({ ephemeral: true });
+
       const existing = db.activeTickets[interaction.user.id];
       if (existing && interaction.guild.channels.cache.get(existing))
         return interaction.editReply({ content: `You already have an open ticket: <#${existing}>` });
 
+      const typeMap = {
+        ticket_purchase: {
+          prefix: 'purchase', emoji: '🛒', color: 0x2ECC71,
+          title: '🛒 Purchase Ticket',
+          desc:  `Hello ${interaction.user}! Please provide:\n\n**1.** Which product do you want?\n**2.** Your Free Fire UID\n**3.** Preferred payment method\n\n> Staff will respond with price and payment details.`,
+          ping:  `${interaction.user} | <@&${ID.SUPPORT_ROLE}> | <@&${ID.ADMIN_ROLE}>`,
+        },
+        ticket_support: {
+          prefix: 'support', emoji: '🔧', color: 0x3498DB,
+          title: '🔧 Support Ticket',
+          desc:  `Hello ${interaction.user}! Please describe:\n\n**1.** Which product has the issue?\n**2.** What is the problem? (detail)\n**3.** When did it start?\n**4.** Your Free Fire UID\n\n> Support team will help you shortly.`,
+          ping:  `${interaction.user} | <@&${ID.SUPPORT_ROLE}>`,
+        },
+        ticket_bug: {
+          prefix: 'bug', emoji: '🐛', color: 0xE74C3C,
+          title: '🐛 Bug Report',
+          desc:  `Hello ${interaction.user}! Please describe the bug:\n\n**1.** Which product/feature?\n**2.** What is happening? (step by step)\n**3.** Does it happen every time?\n**4.** Screenshot or video if possible\n\n> Our team will investigate and fix this.`,
+          ping:  `${interaction.user} | <@&${ID.ADMIN_ROLE}>`,
+        },
+      };
+
+      const t = typeMap[customId];
+
       const ticketCh = await interaction.guild.channels.create({
-        name: `ticket-${interaction.user.username}`,
+        name: `${t.prefix}-${interaction.user.username}`,
         type: ChannelType.GuildText,
         parent: config.categoryTickets,
+        topic: `${t.emoji} ${t.prefix.toUpperCase()} ticket for ${interaction.user.tag}`,
         permissionOverwrites: [
           { id: interaction.guild.id,  deny:  [PermissionFlagsBits.ViewChannel] },
-          { id: interaction.user.id,   allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.EmbedLinks] },
+          { id: interaction.user.id,   allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles] },
           { id: ID.ADMIN_ROLE,         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages] },
           { id: ID.MOD_ROLE,           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages] },
           { id: ID.SUPPORT_ROLE,       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
         ],
-        reason: 'Support ticket'
+        reason: `${t.emoji} Ticket by ${interaction.user.tag}`
       }).catch(() => null);
 
       if (!ticketCh) return interaction.editReply({ content: 'Could not create ticket. Check bot permissions.' });
 
       db.activeTickets[interaction.user.id] = ticketCh.id; saveDb();
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🎫 Ticket — ${interaction.user.username}`)
-        .setDescription(`Hello ${interaction.user}! Describe your issue and staff will help you shortly.`)
-        .setColor(0x2ECC71).setTimestamp();
+      const ticketEmbed = new EmbedBuilder()
+        .setTitle(t.title)
+        .setDescription(t.desc)
+        .setColor(t.color)
+        .setFooter({ text: `Ticket: ${ticketCh.name}` })
+        .setTimestamp();
       const closeRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger)
       );
-      await ticketCh.send({ content: `${interaction.user} | <@&${ID.SUPPORT_ROLE}>`, embeds: [embed], components: [closeRow] });
-      await interaction.editReply({ content: `Ticket created: <#${ticketCh.id}>` });
+      await ticketCh.send({ content: t.ping, embeds: [ticketEmbed], components: [closeRow] });
+
+      const logEmbed = new EmbedBuilder()
+        .setTitle(`${t.emoji} Ticket Opened — ${t.prefix.toUpperCase()}`)
+        .setDescription(`**User:** ${interaction.user} (${interaction.user.tag})\n**Channel:** ${ticketCh}\n**Type:** ${t.title}`)
+        .setColor(t.color).setTimestamp();
+      await logToChannel(interaction.guild, ID.SERVER_LOGS, logEmbed);
+
+      await interaction.editReply({ content: `${t.emoji} Ticket created: <#${ticketCh.id}>` });
     }
 
     // Close Ticket
@@ -783,6 +826,11 @@ client.on('interactionCreate', async interaction => {
       for (const [uid, chanId] of Object.entries(db.activeTickets)) {
         if (chanId === interaction.channel.id) { delete db.activeTickets[uid]; saveDb(); break; }
       }
+      const closeLog = new EmbedBuilder()
+        .setTitle('🔒 Ticket Closed')
+        .setDescription(`**Channel:** ${interaction.channel.name}\n**Closed by:** ${interaction.user}`)
+        .setColor(0x95A5A6).setTimestamp();
+      await logToChannel(interaction.guild, ID.SERVER_LOGS, closeLog);
       setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
     }
 
