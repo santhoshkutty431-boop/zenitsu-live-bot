@@ -781,10 +781,17 @@ client.on('interactionCreate', async interaction => {
 
       const t = typeMap[customId];
 
+      // Find the SUPPORT category dynamically or fallback to the correct ID
+      let parentCategory = interaction.guild.channels.cache.get(config.categoryTickets);
+      if (!parentCategory || parentCategory.type !== ChannelType.GuildCategory) {
+        parentCategory = interaction.guild.channels.cache.find(c => c.name.includes('SUPPORT') && c.type === ChannelType.GuildCategory)
+          || interaction.guild.channels.cache.get('1444538003824447621');
+      }
+
       const ticketCh = await interaction.guild.channels.create({
         name: `${t.prefix}-${interaction.user.username}`,
         type: ChannelType.GuildText,
-        parent: config.categoryTickets,
+        parent: parentCategory ? parentCategory.id : null,
         topic: `${t.emoji} ${t.prefix.toUpperCase()} ticket for ${interaction.user.tag}`,
         permissionOverwrites: [
           { id: interaction.guild.id,  deny:  [PermissionFlagsBits.ViewChannel] },
@@ -794,7 +801,10 @@ client.on('interactionCreate', async interaction => {
           { id: ID.SUPPORT_ROLE,       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
         ],
         reason: `${t.emoji} Ticket by ${interaction.user.tag}`
-      }).catch(() => null);
+      }).catch((e) => {
+        console.error('Failed to create ticket channel:', e.message);
+        return null;
+      });
 
       if (!ticketCh) return interaction.editReply({ content: 'Could not create ticket. Check bot permissions.' });
 
