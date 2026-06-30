@@ -1,0 +1,11 @@
+{
+  "songQueue": [],
+  "activeTickets": {},
+  "bypasses": {
+    "6428632983": {
+      "status": "Bypassed",
+      "registeredAt": "2026-06-30T17:06:41.693Z"
+    }
+  },
+  "protectmeActive": true
+}

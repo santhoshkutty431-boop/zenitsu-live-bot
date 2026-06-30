@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.env.example
+audit-data.json
+audit-server.js
+apply-changes.js
+create-staff-roles.js
+fix-server.js
+open-public-channels.js
+setup-server.js
+setup-upgrades.js
+read-server.js
+test-connection.js
+deploy.bat
+run.bat
+*.log
