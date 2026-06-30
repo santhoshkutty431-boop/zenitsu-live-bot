@@ -17,9 +17,7 @@ const fs   = require('fs');
 const path = require('path');
 const http = require('http');
 
-// ─── CLOUD RUN HEALTH CHECK SERVER ───────────────────────────────────────────
-// Cloud Run requires the container to listen on PORT (default 8080)
-// This tiny HTTP server keeps the container alive and passes health checks.
+// ─── HEALTH CHECK SERVER (required by Render / Cloud Run) ────────────────────
 const PORT = process.env.PORT || 8080;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -27,6 +25,21 @@ http.createServer((req, res) => {
 }).listen(PORT, () => {
   console.log(`🌐 Health check server listening on port ${PORT}`);
 });
+
+// ─── SELF-PING (keeps Render free tier alive — pings every 14 mins) ──────────
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+if (RENDER_URL) {
+  console.log(`🔄 Self-ping enabled → ${RENDER_URL}`);
+  setInterval(() => {
+    http.get(RENDER_URL, (res) => {
+      console.log(`[${new Date().toISOString()}] Self-ping OK (${res.statusCode})`);
+    }).on('error', (err) => {
+      console.log(`[${new Date().toISOString()}] Self-ping failed: ${err.message}`);
+    });
+  }, 14 * 60 * 1000); // every 14 minutes
+} else {
+  console.log('ℹ️  Self-ping skipped (not running on Render)');
+}
 const config = require('./config');
 
 // ─── CLIENT SETUP ─────────────────────────────────────────────────────────────
