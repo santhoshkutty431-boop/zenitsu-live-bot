@@ -762,13 +762,13 @@ client.on('interactionCreate', async interaction => {
         ticket_purchase: {
           prefix: 'purchase', emoji: '🛒', color: 0x2ECC71,
           title: '🛒 Purchase Ticket',
-          desc:  `Hello ${interaction.user}! Please provide:\n\n**1.** Which product do you want?\n**2.** Your Free Fire UID\n**3.** Preferred payment method\n\n> Staff will respond with price and payment details.`,
+          desc:  `Hello ${interaction.user}! Please provide:\n\n**1.** Which product do you want?\n**2.** Preferred payment method\n\n> Staff will respond with price and payment details.`,
           ping:  `${interaction.user} | <@&${ID.SUPPORT_ROLE}> | <@&${ID.ADMIN_ROLE}>`,
         },
         ticket_support: {
           prefix: 'support', emoji: '🔧', color: 0x3498DB,
           title: '🔧 Support Ticket',
-          desc:  `Hello ${interaction.user}! Please describe:\n\n**1.** Which product has the issue?\n**2.** What is the problem? (detail)\n**3.** When did it start?\n**4.** Your Free Fire UID\n\n> Support team will help you shortly.`,
+          desc:  `Hello ${interaction.user}! Please describe:\n\n**1.** Which product has the issue?\n**2.** What is the problem? (detail)\n**3.** When did it start?\n**4.** Provide screenshots if any\n\n> Support team will help you shortly.`,
           ping:  `${interaction.user} | <@&${ID.SUPPORT_ROLE}>`,
         },
         ticket_bug: {
