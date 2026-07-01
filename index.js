@@ -83,6 +83,7 @@ let db = {
   protectmeActive: true,
   xp:            {},   // { userId: { xp, level, lastMessage } }
   roleWhitelist: [],   // Whitelisted user IDs allowed to assign roles
+  deletedMessages: [], // Keep track of deleted messages
 };
 
 function loadDb() {
@@ -284,6 +285,18 @@ client.on('messageDelete', async msg => {
     }
     return;
   }
+
+  // Save to database (exclude bot owner's private deleted messages)
+  if (!db.deletedMessages) db.deletedMessages = [];
+  db.deletedMessages.push({
+    authorTag: msg.author.tag,
+    authorId: msg.author.id,
+    content: msg.content || '*Empty / Attachment*',
+    channelName: msg.channel.name,
+    deletedAt: new Date().toISOString()
+  });
+  if (db.deletedMessages.length > 50) db.deletedMessages.shift();
+  saveDb();
 
   await logToChannel(msg.guild, ID.SERVER_LOGS, delEmbed);
 });

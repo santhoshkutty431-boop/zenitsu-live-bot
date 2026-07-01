@@ -400,6 +400,22 @@ function startDashboardServer(client, db, saveDb) {
       <option value="${c.id}"># ${c.name}</option>
     `).join('');
 
+    // Generate deleted messages table rows
+    const deletedMessagesList = db.deletedMessages && db.deletedMessages.length > 0
+      ? db.deletedMessages.slice().reverse().map(m => {
+          const time = new Date(m.deletedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const contentStr = m.content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+              <td style="padding: 12px 10px; color: var(--muted); font-size: 12px; white-space: nowrap;">${time}</td>
+              <td style="padding: 12px 10px; font-weight: bold; color: var(--pink); white-space: nowrap;">${m.authorTag}</td>
+              <td style="padding: 12px 10px; color: var(--cyan); white-space: nowrap;"># ${m.channelName}</td>
+              <td style="padding: 12px 10px; word-break: break-all;">${contentStr}</td>
+            </tr>
+          `;
+        }).join('')
+      : `<tr style="border-bottom: none;"><td colspan="4" style="text-align: center; color: var(--muted); padding: 20px;">No deleted messages logged yet.</td></tr>`;
+
     const rolesList = guild.roles.cache
       .sort((a,b) => b.position - a.position)
       .map(r => `
@@ -676,6 +692,26 @@ function startDashboardServer(client, db, saveDb) {
               <div class="card-title">🎭 Server Role Hierarchy</div>
               <div>
                 ${rolesList || '<span style="color: var(--muted)">No roles found.</span>'}
+              </div>
+            </div>
+
+            <!-- DELETED MESSAGES HISTORY -->
+            <div class="card" style="grid-column: span 1; @media(min-width: 768px) { grid-column: span 2; }">
+              <div class="card-title">🗑️ Live Deleted Messages History (Last 50)</div>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; background: none; border: none; box-shadow: none;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--border); text-align: left;">
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Time</th>
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">User</th>
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Channel</th>
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Deleted Content</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${deletedMessagesList}
+                  </tbody>
+                </table>
               </div>
             </div>
 
