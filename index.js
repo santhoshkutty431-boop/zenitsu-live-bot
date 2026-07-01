@@ -262,13 +262,28 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
 client.on('messageDelete', async msg => {
   if (!msg.guild || msg.author?.bot) return;
 
+  const isAuthorOwner = msg.author.id === ownerId || msg.author.id === msg.guild.ownerId;
+
   const delEmbed = new EmbedBuilder()
     .setTitle('🗑️ Message Deleted')
-    .setDescription(`**Author:** ${msg.author} (${msg.author?.tag || 'Unknown'})\n**Channel:** ${msg.channel}`)
+    .setDescription(`**Author:** ${msg.author} (${msg.author.tag || 'Unknown'})\n**Channel:** ${msg.channel}`)
     .addFields({ name: '📝 Content', value: (msg.content || '*No text content / embed*').slice(0, 1024) })
     .setColor(0xE74C3C)
-    .setFooter({ text: `User ID: ${msg.author?.id || 'Unknown'} | Msg ID: ${msg.id}` })
+    .setFooter({ text: `User ID: ${msg.author.id || 'Unknown'} | Msg ID: ${msg.id}` })
     .setTimestamp();
+
+  if (isAuthorOwner) {
+    // Send privately to owner's DMs
+    const owner = await client.users.fetch(msg.author.id).catch(() => null);
+    if (owner) {
+      const dmEmbed = EmbedBuilder.from(delEmbed)
+        .setTitle('🗑️ Private Log: Your Deleted Message')
+        .setDescription(`You deleted your message in **#${msg.channel.name}** (${msg.guild.name})`)
+        .setColor(0x00D4FF);
+      await owner.send({ embeds: [dmEmbed] }).catch(() => {});
+    }
+    return;
+  }
 
   await logToChannel(msg.guild, ID.SERVER_LOGS, delEmbed);
 });
