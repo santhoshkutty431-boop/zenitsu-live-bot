@@ -97,6 +97,13 @@ function saveDb() {
 }
 loadDb();
 
+// Start the dashboard web server immediately on startup
+try {
+  startDashboardServer(client, db, saveDb);
+} catch (err) {
+  console.error('⚠️ Failed to start dashboard server:', err.message);
+}
+
 // ─── IN-MEMORY VOICE TRACKER (upgrade 10) ─────────────────────────────────────
 const voiceJoins = new Map(); // userId → { channelName, startTime }
 
@@ -151,12 +158,7 @@ client.once('ready', async () => {
     console.error('⚠️ Failed to fetch application owner:', err.message);
   }
 
-  // Start the dashboard web server
-  try {
-    startDashboardServer(client, db, saveDb);
-  } catch (err) {
-    console.error('⚠️ Failed to start dashboard server:', err.message);
-  }
+
 
   console.log(`   Server logs : ${ID.SERVER_LOGS || '(not set — run setup-upgrades.js first)'}`);
   console.log(`   Voice log   : ${ID.VOICE_LOG   || '(not set)'}`);
