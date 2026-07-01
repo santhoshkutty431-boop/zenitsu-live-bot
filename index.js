@@ -894,7 +894,11 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ─── START ─────────────────────────────────────────────────────────────────────
-client.login(config.token).catch(err => {
-  console.error('Login failed:', err.message);
-  process.exit(1);
-});
+function startBot() {
+  client.login(config.token).catch(err => {
+    console.error('Login failed:', err.message);
+    console.log('🔄 Retrying login in 15 seconds...');
+    setTimeout(startBot, 15000);
+  });
+}
+startBot();
