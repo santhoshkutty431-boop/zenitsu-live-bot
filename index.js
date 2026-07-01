@@ -17,16 +17,10 @@ const fs   = require('fs');
 const path = require('path');
 const http = require('http');
 
-// ─── HEALTH CHECK SERVER (required by Render / Cloud Run) ────────────────────
-const PORT = process.env.PORT || 8080;
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('ZENITSU LIVE Bot — Online ✅');
-}).listen(PORT, () => {
-  console.log(`🌐 Health check server listening on port ${PORT}`);
-});
+// ─── DASHBOARD SERVER SETUP ──────────────────────────────────────────────────
+const { startDashboardServer } = require('./dashboard');
 
-// ─── SELF-PING (keeps Render free tier alive — pings every 14 mins) ──────────
+// Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 if (RENDER_URL) {
   console.log(`🔄 Self-ping enabled → ${RENDER_URL}`);
@@ -155,6 +149,13 @@ client.once('ready', async () => {
     console.log(`👑 Supreme Bot Owner resolved: ${ownerId}`);
   } catch (err) {
     console.error('⚠️ Failed to fetch application owner:', err.message);
+  }
+
+  // Start the dashboard web server
+  try {
+    startDashboardServer(client, db, saveDb);
+  } catch (err) {
+    console.error('⚠️ Failed to start dashboard server:', err.message);
   }
 
   console.log(`   Server logs : ${ID.SERVER_LOGS || '(not set — run setup-upgrades.js first)'}`);
