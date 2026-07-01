@@ -163,6 +163,24 @@ const commands = [
       subcommand.setName('list')
         .setDescription('List all whitelisted users')),
 
+  new SlashCommandBuilder()
+    .setName('warn')
+    .setDescription('Warn a member and log the warning')
+    .addUserOption(option => option.setName('user').setDescription('The member to warn').setRequired(true))
+    .addStringOption(option => option.setName('reason').setDescription('Reason for the warning').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('kick')
+    .setDescription('Kick a member from the server')
+    .addUserOption(option => option.setName('user').setDescription('The member to kick').setRequired(true))
+    .addStringOption(option => option.setName('reason').setDescription('Reason for the kick').setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('ban')
+    .setDescription('Ban a member from the server')
+    .addUserOption(option => option.setName('user').setDescription('The user to ban').setRequired(true))
+    .addStringOption(option => option.setName('reason').setDescription('Reason for the ban').setRequired(false)),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');

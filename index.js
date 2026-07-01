@@ -614,7 +614,7 @@ client.on('interactionCreate', async interaction => {
     const cmd = interaction.commandName;
 
     // Code-side permission check for staff-only commands
-    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role', 'say', 'embed', 'whitelist'];
+    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role', 'say', 'embed', 'whitelist', 'warn', 'kick', 'ban'];
     if (staffCmds.includes(cmd) && !staffCheck(interaction.member)) {
       return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
     }
@@ -885,6 +885,82 @@ client.on('interactionCreate', async interaction => {
           .setTimestamp();
         await interaction.reply({ embeds: [embed], ephemeral: true });
       }
+    }
+
+    // /warn
+    else if (cmd === 'warn') {
+      const target = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason');
+
+      if (!db.warnings) db.warnings = {};
+      if (!db.warnings[target.id]) db.warnings[target.id] = [];
+      
+      const warnEntry = {
+        warnerTag: interaction.user.tag,
+        warnerId: interaction.user.id,
+        reason: reason,
+        timestamp: new Date().toISOString()
+      };
+      
+      db.warnings[target.id].push(warnEntry);
+      saveDb();
+
+      // DM target
+      await target.send(`⚠️ **Warning:** You have been warned in **${interaction.guild.name}**\n**Reason:** ${reason}`).catch(() => {});
+
+      const logEmbed = new EmbedBuilder()
+        .setTitle('⚠️ Member Warned')
+        .setDescription(`**User:** ${target} (${target.tag})\n**Reason:** ${reason}\n**By:** ${interaction.user}`)
+        .addFields({ name: 'Total Warnings', value: `${db.warnings[target.id].length}` })
+        .setColor(0xF1C40F)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
+      await interaction.reply({ embeds: [logEmbed] });
+    }
+
+    // /kick
+    else if (cmd === 'kick') {
+      const target = interaction.options.getMember('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      if (!target) return interaction.reply({ content: '❌ Member not found in this server.', ephemeral: true });
+      if (!target.kickable) return interaction.reply({ content: '❌ I cannot kick this member. Check role hierarchy.', ephemeral: true });
+
+      // DM target first
+      await target.send(`🚪 **Kicked:** You have been kicked from **${interaction.guild.name}**\n**Reason:** ${reason}`).catch(() => {});
+      
+      await target.kick(reason).catch(() => {});
+
+      const logEmbed = new EmbedBuilder()
+        .setTitle('🚪 Member Kicked')
+        .setDescription(`**User:** ${target.user} (${target.user.tag})\n**Reason:** ${reason}\n**By:** ${interaction.user}`)
+        .setColor(0xE67E22)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
+      await interaction.reply({ embeds: [logEmbed] });
+    }
+
+    // /ban
+    else if (cmd === 'ban') {
+      const target = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      const member = interaction.options.getMember('user');
+
+      if (member && !member.bannable) {
+        return interaction.reply({ content: '❌ I cannot ban this member. Check role hierarchy.', ephemeral: true });
+      }
+
+      // DM target first
+      await target.send(`🔨 **Banned:** You have been permanently banned from **${interaction.guild.name}**\n**Reason:** ${reason}`).catch(() => {});
+
+      await interaction.guild.members.ban(target.id, { reason }).catch(() => {});
+
+      const logEmbed = new EmbedBuilder()
+        .setTitle('🔨 Member Banned')
+        .setDescription(`**User:** ${target} (${target.tag})\n**Reason:** ${reason}\n**By:** ${interaction.user}`)
+        .setColor(0xE74C3C)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
+      await interaction.reply({ embeds: [logEmbed] });
     }
   }
 
