@@ -148,6 +148,21 @@ const commands = [
         .setDescription('Show server icon as thumbnail?')
         .setRequired(false)),
 
+  new SlashCommandBuilder()
+    .setName('whitelist')
+    .setDescription('Manage the role-giving whitelist')
+    .addSubcommand(subcommand =>
+      subcommand.setName('add')
+        .setDescription('Add a user to the whitelist')
+        .addUserOption(option => option.setName('user').setDescription('The user to whitelist').setRequired(true)))
+    .addSubcommand(subcommand =>
+      subcommand.setName('remove')
+        .setDescription('Remove a user from the whitelist')
+        .addUserOption(option => option.setName('user').setDescription('The user to remove').setRequired(true)))
+    .addSubcommand(subcommand =>
+      subcommand.setName('list')
+        .setDescription('List all whitelisted users')),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');

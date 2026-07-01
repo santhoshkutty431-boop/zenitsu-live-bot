@@ -88,6 +88,7 @@ let db = {
   bypasses:      {},
   protectmeActive: true,
   xp:            {},   // { userId: { xp, level, lastMessage } }
+  roleWhitelist: [],   // Whitelisted user IDs allowed to assign roles
 };
 
 function loadDb() {
@@ -372,6 +373,55 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   const addedRoles   = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
   const removedRoles = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
 
+  // Anti-Abuse Role Guard: If roles were added, verify executor is whitelisted
+  if (addedRoles.size > 0) {
+    try {
+      // Wait 1.5 seconds for Discord to write the Audit Log entry
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const fetchedLogs = await newMember.guild.fetchAuditLogs({
+        limit: 1,
+        type: AuditLogEvent.MemberRoleUpdate,
+      }).catch(() => null);
+
+      if (fetchedLogs) {
+        const logEntry = fetchedLogs.entries.first();
+        if (logEntry && logEntry.target?.id === newMember.id) {
+          const executorId = logEntry.executor?.id;
+          
+          if (executorId) {
+            const isExecOwner = executorId === ownerId;
+            const isExecGuildOwner = executorId === newMember.guild.ownerId;
+            const isExecBot = executorId === client.user.id;
+            const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
+
+            if (!isExecOwner && !isExecGuildOwner && !isExecBot && !isExecWhitelisted) {
+              // Revert role addition
+              for (const [roleId, role] of addedRoles) {
+                await newMember.roles.remove(role, 'Anti-Abuse Guard: Unauthorized role assignment').catch(() => {});
+              }
+
+              // Send alert to reports channel
+              const alertEmbed = new EmbedBuilder()
+                .setTitle('🚨 Security Alert: Unauthorized Role Assignment')
+                .setDescription(`**Target User:** ${newMember} (${newMember.user.tag})\n**Action Taken:** Automatically removed the role(s) added.\n**Attempted By:** <@${executorId}> (${logEntry.executor?.tag || executorId})`)
+                .addFields({ name: 'Roles Attempted', value: addedRoles.map(r => r.toString()).join(', ') })
+                .setColor(0xFF0000)
+                .setTimestamp();
+              await logToReports(newMember.guild, alertEmbed);
+              await logToChannel(newMember.guild, ID.MOD_LOG, alertEmbed);
+              
+              // Prevent logging the unauthorized roles update as a normal update
+              return;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Anti-Abuse role guard error:', err.message);
+    }
+  }
+
   if (addedRoles.size > 0 || removedRoles.size > 0) {
     const embed = new EmbedBuilder()
       .setTitle('🎭 Roles Updated')
@@ -547,7 +597,7 @@ client.on('interactionCreate', async interaction => {
     const cmd = interaction.commandName;
 
     // Code-side permission check for staff-only commands
-    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role', 'say', 'embed'];
+    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role', 'say', 'embed', 'whitelist'];
     if (staffCmds.includes(cmd) && !staffCheck(interaction.member)) {
       return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
     }
@@ -779,6 +829,45 @@ client.on('interactionCreate', async interaction => {
 
       await ch.send({ embeds: [embed] }).catch(() => {});
       await interaction.reply({ content: `✅ Embed sent to ${ch}!`, ephemeral: true });
+    }
+
+    // /whitelist
+    else if (cmd === 'whitelist') {
+      const sub = interaction.options.getSubcommand();
+      if (!db.roleWhitelist) db.roleWhitelist = [];
+
+      if (sub === 'add') {
+        const user = interaction.options.getUser('user');
+        if (db.roleWhitelist.includes(user.id)) {
+          return interaction.reply({ content: `⚠️ ${user} is already whitelisted.`, ephemeral: true });
+        }
+        db.roleWhitelist.push(user.id);
+        saveDb();
+        await interaction.reply({ content: `✅ Successfully whitelisted ${user} for role-giving permissions.`, ephemeral: true });
+      }
+
+      else if (sub === 'remove') {
+        const user = interaction.options.getUser('user');
+        if (!db.roleWhitelist.includes(user.id)) {
+          return interaction.reply({ content: `⚠️ ${user} is not whitelisted.`, ephemeral: true });
+        }
+        db.roleWhitelist = db.roleWhitelist.filter(id => id !== user.id);
+        saveDb();
+        await interaction.reply({ content: `✅ Removed ${user} from the role-giving whitelist.`, ephemeral: true });
+      }
+
+      else if (sub === 'list') {
+        if (!db.roleWhitelist.length) {
+          return interaction.reply({ content: '📝 The role-giving whitelist is currently empty. (Bot Owner & Guild Owner always bypass).', ephemeral: true });
+        }
+        const listStr = db.roleWhitelist.map(id => `• <@${id}> (ID: \`${id}\`)`).join('\n');
+        const embed = new EmbedBuilder()
+          .setTitle('🛡️ Role-Giving Whitelist')
+          .setDescription(`Only whitelisted users can assign roles to members on the server:\n\n${listStr}`)
+          .setColor(0x00D4FF)
+          .setTimestamp();
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+      }
     }
   }
 
