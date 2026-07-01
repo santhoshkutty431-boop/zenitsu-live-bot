@@ -82,9 +82,11 @@ let db = {
   activeTickets: {},
   bypasses:      {},
   protectmeActive: true,
+  spamTimeoutMinutes: 1,  // Auto-mod timeout duration in minutes (configurable from dashboard)
   xp:            {},   // { userId: { xp, level, lastMessage } }
   roleWhitelist: [],   // Whitelisted user IDs allowed to assign roles
   deletedMessages: [], // Keep track of deleted messages
+  warnings: {},        // { userId: [{ warnerTag, reason, timestamp }] }
 };
 
 function loadDb() {
@@ -525,7 +527,8 @@ client.on('messageCreate', async message => {
 
     if (violation) {
       await message.delete().catch(() => {});
-      await message.member.timeout(60_000, `AutoMod: ${violation}`).catch(() => {});
+      const timeoutMs = ((db.spamTimeoutMinutes || 1) * 60 * 1000);
+      await message.member.timeout(timeoutMs, `AutoMod: ${violation}`).catch(() => {});
 
       const warn = await message.channel.send({
         embeds: [new EmbedBuilder()

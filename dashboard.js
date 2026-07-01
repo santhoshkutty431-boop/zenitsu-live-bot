@@ -416,6 +416,42 @@ function startDashboardServer(client, db, saveDb) {
         }).join('')
       : `<tr style="border-bottom: none;"><td colspan="4" style="text-align: center; color: var(--muted); padding: 20px;">No deleted messages logged yet.</td></tr>`;
 
+    // Generate member rows (fetch members)
+    await guild.members.fetch().catch(() => {});
+    const memberRows = guild.members.cache
+      .filter(m => !m.user.bot)
+      .sort((a, b) => b.joinedTimestamp - a.joinedTimestamp)
+      .map(m => {
+        const topRole = m.roles.highest.name !== '@everyone' ? m.roles.highest.name : 'No Role';
+        const joinedAt = m.joinedAt ? m.joinedAt.toLocaleDateString() : 'Unknown';
+        const avatar = m.user.displayAvatarURL({ size: 32 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
+        return `
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+            <td style="padding: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <img src="${avatar}" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);" />
+                <div>
+                  <div style="font-weight: bold; font-size: 14px;">${m.user.username}</div>
+                  <div style="font-size: 11px; color: var(--muted);">${m.user.id}</div>
+                </div>
+              </div>
+            </td>
+            <td style="padding: 10px; font-size: 12px; color: var(--cyan);">${topRole}</td>
+            <td style="padding: 10px; font-size: 12px; color: var(--muted);">${joinedAt}</td>
+            <td style="padding: 10px;">
+              <div style="display: flex; gap: 6px;">
+                <form method="POST" action="/manage/${guild.id}/kick/${m.id}" onsubmit="return confirm('Kick ${m.user.username}?')">
+                  <button type="submit" class="action-btn btn-kick">Kick</button>
+                </form>
+                <form method="POST" action="/manage/${guild.id}/ban/${m.id}" onsubmit="return confirm('Permanently ban ${m.user.username}?')">
+                  <button type="submit" class="action-btn btn-ban">Ban</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
     const rolesList = guild.roles.cache
       .sort((a,b) => b.position - a.position)
       .map(r => `
@@ -610,6 +646,39 @@ function startDashboardServer(client, db, saveDb) {
             background: var(--cyan);
             color: #000000;
           }
+          .action-btn {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+          }
+          .action-btn:hover { opacity: 0.85; }
+          .action-btn:active { transform: scale(0.97); }
+          .btn-kick {
+            background: rgba(230,126,34,0.2);
+            border: 1px solid #E67E22;
+            color: #E67E22;
+          }
+          .btn-ban {
+            background: rgba(231,76,60,0.2);
+            border: 1px solid #E74C3C;
+            color: #E74C3C;
+          }
+          .btn-clear {
+            padding: 5px 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .btn-clear:hover { background: rgba(255,74,74,0.15); color: #ff4a4a; border-color: #ff4a4a; }
         </style>
       </head>
       <body>
@@ -685,6 +754,19 @@ function startDashboardServer(client, db, saveDb) {
                   ${db.roleWhitelist && db.roleWhitelist.length ? db.roleWhitelist.map(id => `<@${id}>`).join(', ') : 'No custom whitelists (Owners only)'}
                 </div>
               </div>
+
+              <div class="config-row">
+                <div>
+                  <div class="config-label">Spam Auto-Timeout Duration</div>
+                  <div class="config-desc">How long to timeout users caught by AutoMod</div>
+                </div>
+                <form method="POST" action="/manage/${guild.id}/set-spam-timeout" style="display: flex; gap: 6px; align-items: center;">
+                  <select name="minutes" style="padding: 5px 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 5px; color: #fff; font-size: 13px;">
+                    ${[1, 5, 10, 30, 60].map(m => `<option value="${m}" ${(db.spamTimeoutMinutes||1) === m ? 'selected' : ''}>${m} min${m > 1 ? 's' : ''}</option>`).join('')}
+                  </select>
+                  <button type="submit" class="toggle-btn active" style="font-size: 11px;">Set</button>
+                </form>
+              </div>
             </div>
 
             <!-- ROLES VISUALIZER -->
@@ -697,7 +779,12 @@ function startDashboardServer(client, db, saveDb) {
 
             <!-- DELETED MESSAGES HISTORY -->
             <div class="card" style="grid-column: span 1; @media(min-width: 768px) { grid-column: span 2; }">
-              <div class="card-title">🗑️ Live Deleted Messages History (Last 50)</div>
+              <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>🗑️ Live Deleted Messages History (Last 50)</span>
+                <form method="POST" action="/manage/${guild.id}/clear-deleted-logs">
+                  <button type="submit" class="btn-clear">Clear Log</button>
+                </form>
+              </div>
               <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; background: none; border: none; box-shadow: none;">
                   <thead>
@@ -710,6 +797,26 @@ function startDashboardServer(client, db, saveDb) {
                   </thead>
                   <tbody>
                     ${deletedMessagesList}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- MEMBER MANAGEMENT -->
+            <div class="card" style="grid-column: span 1; @media(min-width: 768px) { grid-column: span 2; }">
+              <div class="card-title">👥 Member Management (${guild.memberCount} Members)</div>
+              <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; background: none; border: none; box-shadow: none;">
+                  <thead style="position: sticky; top: 0; background: var(--bg);">
+                    <tr style="border-bottom: 1px solid var(--border); text-align: left;">
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Member</th>
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Top Role</th>
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Joined</th>
+                      <th style="padding: 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${memberRows || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No members found.</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -754,6 +861,53 @@ function startDashboardServer(client, db, saveDb) {
     db.protectmeActive = !db.protectmeActive;
     saveDb();
     res.redirect(`/manage/${guildId}?updated=1`);
+  });
+
+  // Handle Clear Deleted Logs
+  app.post('/manage/:guildId/clear-deleted-logs', checkAuth, (req, res) => {
+    const { guildId } = req.params;
+    db.deletedMessages = [];
+    saveDb();
+    res.redirect(`/manage/${guildId}?updated=1`);
+  });
+
+  // Handle Set Spam Timeout Duration
+  app.post('/manage/:guildId/set-spam-timeout', checkAuth, (req, res) => {
+    const { guildId } = req.params;
+    const minutes = parseInt(req.body.minutes, 10);
+    if (!isNaN(minutes) && minutes > 0) {
+      db.spamTimeoutMinutes = minutes;
+      saveDb();
+    }
+    res.redirect(`/manage/${guildId}?updated=1`);
+  });
+
+  // Handle Kick Member
+  app.post('/manage/:guildId/kick/:userId', checkAuth, async (req, res) => {
+    const { guildId, userId } = req.params;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).send('Server not found.');
+    try {
+      const member = await guild.members.fetch(userId).catch(() => null);
+      if (!member) return res.redirect(`/manage/${guildId}?error=Member+not+found`);
+      await member.kick('Kicked via Dashboard');
+      res.redirect(`/manage/${guildId}?updated=1`);
+    } catch (err) {
+      res.redirect(`/manage/${guildId}?error=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  // Handle Ban Member
+  app.post('/manage/:guildId/ban/:userId', checkAuth, async (req, res) => {
+    const { guildId, userId } = req.params;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).send('Server not found.');
+    try {
+      await guild.members.ban(userId, { reason: 'Banned via Dashboard' });
+      res.redirect(`/manage/${guildId}?updated=1`);
+    } catch (err) {
+      res.redirect(`/manage/${guildId}?error=${encodeURIComponent(err.message)}`);
+    }
   });
 
   // ── START THE WEB APP ────────────────────────────────────────────────────────
