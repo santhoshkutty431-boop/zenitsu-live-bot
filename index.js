@@ -1,6 +1,7 @@
 const { 
   Client, 
   GatewayIntentBits, 
+  Partials,
   EmbedBuilder, 
   ActionRowBuilder, 
   ButtonBuilder, 
@@ -45,6 +46,11 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,      // [10] Voice logging
     GatewayIntentBits.GuildModeration,       // [11] Ban/unban events
     GatewayIntentBits.MessageContent,
+  ],
+  partials: [
+    Partials.Message,   // Needed to receive delete events for uncached/old messages
+    Partials.Channel,   // Needed for DM and partial channel events
+    Partials.User,      // Needed for partial user data
   ]
 });
 
@@ -264,23 +270,32 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
 });
 
 client.on('messageDelete', async msg => {
-  if (!msg.guild || msg.author?.bot) return;
+  if (!msg.guild) return;
+
+  // Handle partial messages (uncached/old messages the bot didn't see when sent)
+  const authorTag  = msg.author?.tag    || '⚠️ Unknown (message not cached)';
+  const authorId   = msg.author?.id     || 'Unknown';
+  const isBot      = msg.author?.bot    || false;
+  const content    = msg.content        || '*No text content — attachment, embed, or uncached message*';
+  const channelName = msg.channel?.name || 'Unknown Channel';
+
+  if (isBot) return; // Skip bot-deleted messages
 
   const delEmbed = new EmbedBuilder()
     .setTitle('🗑️ Message Deleted')
-    .setDescription(`**Author:** ${msg.author} (${msg.author.tag || 'Unknown'})\n**Channel:** ${msg.channel}`)
-    .addFields({ name: '📝 Content', value: (msg.content || '*No text content / embed*').slice(0, 1024) })
+    .setDescription(`**Author:** ${msg.author ? `${msg.author} (${authorTag})` : authorTag}\n**Channel:** ${msg.channel}`)
+    .addFields({ name: '📝 Content', value: content.slice(0, 1024) })
     .setColor(0xE74C3C)
-    .setFooter({ text: `User ID: ${msg.author.id || 'Unknown'} | Msg ID: ${msg.id}` })
+    .setFooter({ text: `User ID: ${authorId} | Msg ID: ${msg.id}` })
     .setTimestamp();
 
   // Save to database
   if (!db.deletedMessages) db.deletedMessages = [];
   db.deletedMessages.push({
-    authorTag: msg.author.tag,
-    authorId: msg.author.id,
-    content: msg.content || '*Empty / Attachment*',
-    channelName: msg.channel.name,
+    authorTag,
+    authorId,
+    content,
+    channelName,
     deletedAt: new Date().toISOString()
   });
   if (db.deletedMessages.length > 50) db.deletedMessages.shift();
