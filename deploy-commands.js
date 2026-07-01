@@ -1,11 +1,10 @@
-const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 const config = require('./config');
 
 const commands = [
   new SlashCommandBuilder()
     .setName('setup-panel')
-    .setDescription('Deploys the basic panel interface to the configured channel')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDescription('Deploys the basic panel interface to the configured channel'),
 
   new SlashCommandBuilder()
     .setName('request-song')
@@ -25,8 +24,7 @@ const commands = [
     .addBooleanOption(option =>
       option.setName('active')
         .setDescription('Enable or disable anti-spam/link protection')
-        .setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+        .setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('check-bypass')
@@ -48,7 +46,6 @@ const commands = [
         .setDescription('Reason for the report')
         .setRequired(true)),
 
-  // New real management commands:
   new SlashCommandBuilder()
     .setName('mute')
     .setDescription('Mute a member (Timeout and assign Muted role)')
@@ -63,8 +60,7 @@ const commands = [
     .addStringOption(option =>
       option.setName('reason')
         .setDescription('Reason for the mute')
-        .setRequired(false))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('unmute')
@@ -72,8 +68,7 @@ const commands = [
     .addUserOption(option =>
       option.setName('user')
         .setDescription('The member to unmute')
-        .setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+        .setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('lock')
@@ -81,8 +76,7 @@ const commands = [
     .addChannelOption(option =>
       option.setName('channel')
         .setDescription('The channel to lock (defaults to current)')
-        .setRequired(false))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('unlock')
@@ -90,8 +84,7 @@ const commands = [
     .addChannelOption(option =>
       option.setName('channel')
         .setDescription('The channel to unlock (defaults to current)')
-        .setRequired(false))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('role')
@@ -105,10 +98,8 @@ const commands = [
       subcommand.setName('remove')
         .setDescription('Remove a role from a member')
         .addUserOption(option => option.setName('user').setDescription('The member').setRequired(true))
-        .addRoleOption(option => option.setName('role').setDescription('The role to remove').setRequired(true)))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+        .addRoleOption(option => option.setName('role').setDescription('The role to remove').setRequired(true))),
 
-  // [13] XP / Leveling commands
   new SlashCommandBuilder()
     .setName('rank')
     .setDescription('Check your XP rank or another member\'s rank')
@@ -129,17 +120,27 @@ const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_t
   try {
     console.log(`Started refreshing ${commands.length} application (/) commands.`);
 
-    if (!config.token || config.token === 'YOUR_BOT_TOKEN_HERE' || !config.clientId || !config.guildId) {
-      console.warn("WARNING: Token, Client ID, or Guild ID is missing/default in .env. Skipping deployment.");
+    if (!config.token || config.token === 'YOUR_BOT_TOKEN_HERE' || !config.clientId) {
+      console.warn("WARNING: Token or Client ID is missing/default in .env. Skipping deployment.");
       return;
     }
 
+    // Clean up guild commands first if GUILD_ID is provided
+    if (config.guildId) {
+      console.log(`Clearing old guild-specific commands for guild: ${config.guildId}`);
+      await rest.put(
+        Routes.applicationGuildCommands(config.clientId, config.guildId),
+        { body: [] },
+      ).catch(err => console.log('Note: No guild commands to clean up or failed:', err.message));
+    }
+
+    // Deploy global commands
     const data = await rest.put(
-      Routes.applicationGuildCommands(config.clientId, config.guildId),
+      Routes.applicationCommands(config.clientId),
       { body: commands },
     );
 
-    console.log(`Successfully reloaded ${data.length} application (/) commands.`);
+    console.log(`Successfully reloaded ${data.length} global application (/) commands.`);
   } catch (error) {
     console.error(error);
   }

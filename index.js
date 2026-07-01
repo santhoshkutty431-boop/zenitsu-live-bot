@@ -118,6 +118,11 @@ function calcLevel(xp) { return Math.floor(Math.sqrt(xp / 100)); }
 function xpForLevel(lvl) { return lvl * lvl * 100; }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
+let ownerId = null;
+function isOwner(userId) {
+  return userId === ownerId;
+}
+
 async function logToChannel(guild, channelId, embed) {
   if (!channelId) return;
   const ch = guild.channels.cache.get(channelId);
@@ -132,13 +137,25 @@ async function getOrCreateRole(guild, roleName, color = 0x000000) {
   return role;
 }
 function staffCheck(member) {
+  if (!member) return false;
+  if (isOwner(member.id)) return true;
   return member.permissions.has(PermissionFlagsBits.Administrator) ||
     [ID.ADMIN_ROLE, ID.MOD_ROLE, ID.SUPPORT_ROLE, ID.OWNER_ROLE].some(id => member.roles.cache.has(id));
 }
 
 // ─── READY ────────────────────────────────────────────────────────────────────
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
+  
+  // Resolve supreme bot owner dynamically
+  try {
+    const app = await client.application.fetch();
+    ownerId = app.owner.ownerId || app.owner.id;
+    console.log(`👑 Supreme Bot Owner resolved: ${ownerId}`);
+  } catch (err) {
+    console.error('⚠️ Failed to fetch application owner:', err.message);
+  }
+
   console.log(`   Server logs : ${ID.SERVER_LOGS || '(not set — run setup-upgrades.js first)'}`);
   console.log(`   Voice log   : ${ID.VOICE_LOG   || '(not set)'}`);
   console.log(`   Mod log     : ${ID.MOD_LOG      || '(not set)'}`);
@@ -516,10 +533,24 @@ client.on('messageCreate', async message => {
 // INTERACTION HANDLER (buttons, commands, modals)
 // ═══════════════════════════════════════════════════════════════════════════════
 client.on('interactionCreate', async interaction => {
+  // Check private server restrictions
+  const isMainGuild = interaction.guildId === config.guildId;
+  if (interaction.guildId && !isMainGuild && !isOwner(interaction.user.id)) {
+    return interaction.reply({
+      content: '❌ **Private Bot:** This bot is configured for developer testing only on this server. Only the bot owner can use commands or features here.',
+      ephemeral: true
+    }).catch(() => {});
+  }
 
   // ── SLASH COMMANDS ─────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand()) {
     const cmd = interaction.commandName;
+
+    // Code-side permission check for staff-only commands
+    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role'];
+    if (staffCmds.includes(cmd) && !staffCheck(interaction.member)) {
+      return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
+    }
 
     // /setup-panel
     if (cmd === 'setup-panel') {
@@ -894,6 +925,10 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ─── START ─────────────────────────────────────────────────────────────────────
+client.on('guildCreate', guild => {
+  console.log(`📥 Joined a new server: ${guild.name} (ID: ${guild.id}) - Members: ${guild.memberCount}`);
+});
+
 function startBot() {
   client.login(config.token).catch(err => {
     console.error('Login failed:', err.message);
