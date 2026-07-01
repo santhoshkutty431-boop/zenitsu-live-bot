@@ -965,7 +965,61 @@ client.on('interactionCreate', async interaction => {
       await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
       await interaction.reply({ embeds: [logEmbed] });
     }
+
+    // /purge
+    else if (cmd === 'purge') {
+      const amount = interaction.options.getInteger('amount') || 50;
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const deleted = await interaction.channel.bulkDelete(amount, true); // true = skip messages >14 days
+        await interaction.editReply({ content: `✅ Deleted **${deleted.size}** messages. (Messages older than 14 days are skipped automatically.)` });
+      } catch (err) {
+        await interaction.editReply({ content: `❌ Failed to purge: ${err.message}` });
+      }
+    }
+
+    // /clear-channel
+    else if (cmd === 'clear-channel') {
+      const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const ch = interaction.guild.channels.cache.get(targetChannel.id);
+        if (!ch) return interaction.editReply({ content: '❌ Channel not found.' });
+
+        // Clone the channel with the same settings
+        const cloned = await ch.clone({
+          name: ch.name,
+          reason: `Channel cleared by ${interaction.user.tag} via /clear-channel`
+        });
+
+        // Move it to same position
+        await cloned.setPosition(ch.rawPosition).catch(() => {});
+
+        // Delete the old channel
+        await ch.delete(`Cleared by ${interaction.user.tag}`);
+
+        const logEmbed = new EmbedBuilder()
+          .setTitle('🧹 Channel Cleared')
+          .setDescription(`**Channel:** #${ch.name}\n**By:** ${interaction.user}\n\nAll messages have been wiped by cloning and deleting the original channel.`)
+          .setColor(0x00D4FF)
+          .setTimestamp();
+        await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
+
+        // Reply in the new channel
+        await cloned.send({ embeds: [new EmbedBuilder()
+          .setTitle('🧹 Channel Cleared')
+          .setDescription(`This channel was cleared by ${interaction.user}. All previous messages have been removed.`)
+          .setColor(0x00D4FF)
+          .setTimestamp()
+        ]});
+
+        await interaction.editReply({ content: `✅ **#${ch.name}** has been fully cleared! All messages deleted.` });
+      } catch (err) {
+        await interaction.editReply({ content: `❌ Failed to clear channel: ${err.message}` });
+      }
+    }
   }
+
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
   else if (interaction.isButton()) {

@@ -181,6 +181,24 @@ const commands = [
     .addUserOption(option => option.setName('user').setDescription('The user to ban').setRequired(true))
     .addStringOption(option => option.setName('reason').setDescription('Reason for the ban').setRequired(false)),
 
+  new SlashCommandBuilder()
+    .setName('purge')
+    .setDescription('Bulk delete recent messages in a channel (max 100, messages under 14 days)')
+    .addIntegerOption(option =>
+      option.setName('amount')
+        .setDescription('Number of messages to delete (1-100, default: 50)')
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(100)),
+
+  new SlashCommandBuilder()
+    .setName('clear-channel')
+    .setDescription('Clear ALL messages in a channel by cloning it (works on old messages too)')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('The channel to clear (defaults to current channel)')
+        .setRequired(false)),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');
