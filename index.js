@@ -547,7 +547,7 @@ client.on('interactionCreate', async interaction => {
     const cmd = interaction.commandName;
 
     // Code-side permission check for staff-only commands
-    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role'];
+    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role', 'say', 'embed'];
     if (staffCmds.includes(cmd) && !staffCheck(interaction.member)) {
       return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
     }
@@ -739,6 +739,46 @@ client.on('interactionCreate', async interaction => {
     // /check-bypass
     else if (cmd === 'check-bypass') {
       await interaction.reply({ content: 'Check the <#1460152325267128520> channel for bypass info.', ephemeral: true });
+    }
+
+    // /say
+    else if (cmd === 'say') {
+      const ch = interaction.options.getChannel('channel');
+      const message = interaction.options.getString('message');
+      if (!ch.isTextBased()) return interaction.reply({ content: '❌ Selected channel is not a text channel.', ephemeral: true });
+      await ch.send({ content: message }).catch(() => {});
+      await interaction.reply({ content: `✅ Message sent to ${ch}!`, ephemeral: true });
+    }
+
+    // /embed
+    else if (cmd === 'embed') {
+      const ch = interaction.options.getChannel('channel');
+      const title = interaction.options.getString('title');
+      const description = interaction.options.getString('description');
+      const colorInput = interaction.options.getString('color') || '#00D4FF';
+      const useThumbnail = interaction.options.getBoolean('thumbnail') || false;
+
+      if (!ch.isTextBased()) return interaction.reply({ content: '❌ Selected channel is not a text channel.', ephemeral: true });
+
+      // Clean up hex color
+      let resolvedColor = 0x00D4FF;
+      try {
+        const hex = colorInput.replace('#', '');
+        resolvedColor = parseInt(hex, 16);
+      } catch (e) {}
+
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(resolvedColor)
+        .setTimestamp();
+
+      if (useThumbnail) {
+        embed.setThumbnail(interaction.guild.iconURL({ dynamic: true }));
+      }
+
+      await ch.send({ embeds: [embed] }).catch(() => {});
+      await interaction.reply({ content: `✅ Embed sent to ${ch}!`, ephemeral: true });
     }
   }
 

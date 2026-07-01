@@ -112,6 +112,42 @@ const commands = [
     .setName('leaderboard')
     .setDescription('View the top 10 most active members by XP'),
 
+  new SlashCommandBuilder()
+    .setName('say')
+    .setDescription('Send a plain text message through the bot')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('The channel to send the message to')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('The message content')
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('embed')
+    .setDescription('Send a beautifully styled embed message through the bot')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('The channel to send the embed to')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('title')
+        .setDescription('Title of the embed')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('description')
+        .setDescription('Description/content of the embed')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('color')
+        .setDescription('Hex color code (e.g. #00D4FF or #FFB7C5)')
+        .setRequired(false))
+    .addBooleanOption(option =>
+      option.setName('thumbnail')
+        .setDescription('Show server icon as thumbnail?')
+        .setRequired(false)),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');
