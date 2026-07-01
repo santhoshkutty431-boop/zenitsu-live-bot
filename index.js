@@ -72,6 +72,7 @@ const ID = {
   SERVER_LOGS:   process.env.SERVER_LOGS_ID || '',
   VOICE_LOG:     process.env.VOICE_LOG_ID   || '',
   MOD_LOG:       process.env.MOD_LOG_ID     || '',
+  MESSAGE_LOG:   process.env.MESSAGE_LOG_ID || '',
 };
 
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
@@ -257,7 +258,7 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
     .setFooter({ text: `User ID: ${newMsg.author.id} | Msg ID: ${newMsg.id}` })
     .setTimestamp();
 
-  await logToChannel(newMsg.guild, ID.SERVER_LOGS, editEmbed);
+  await logToChannel(newMsg.guild, ID.MESSAGE_LOG || ID.SERVER_LOGS, editEmbed);
 });
 
 client.on('messageDelete', async msg => {
@@ -298,7 +299,7 @@ client.on('messageDelete', async msg => {
   if (db.deletedMessages.length > 50) db.deletedMessages.shift();
   saveDb();
 
-  await logToChannel(msg.guild, ID.SERVER_LOGS, delEmbed);
+  await logToChannel(msg.guild, ID.MESSAGE_LOG || ID.SERVER_LOGS, delEmbed);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
