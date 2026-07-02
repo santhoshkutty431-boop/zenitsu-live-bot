@@ -94,6 +94,10 @@ upload_files = [
     ".dockerignore",
     "database.json",
     "commands/embed-handler.js",
+    "modules/case-manager.js",
+    "modules/auto-punish.js",
+    "modules/security.js",
+    "modules/logger.js",
 ]
 
 print(f"\n[..] Uploading {len(upload_files)} files to Hugging Face Space...")
