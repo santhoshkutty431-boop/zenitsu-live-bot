@@ -82,7 +82,7 @@ try:
 except Exception as e:
     print(f"  [ERR] Failed to set PORT secret: {e}")
 
-# Files to upload
+# Files to upload (include subdirectory files with their repo paths)
 upload_files = [
     "index.js",
     "dashboard.js",
@@ -92,17 +92,18 @@ upload_files = [
     "package-lock.json",
     "Dockerfile",
     ".dockerignore",
-    "database.json"
+    "database.json",
+    "commands/embed-handler.js",
 ]
 
 print(f"\n[..] Uploading {len(upload_files)} files to Hugging Face Space...")
 for fname in upload_files:
-    full_path = os.path.join(PROJECT_DIR, fname)
+    full_path = os.path.join(PROJECT_DIR, fname.replace("/", os.sep))
     if os.path.exists(full_path):
         try:
             api.upload_file(
                 path_or_fileobj=full_path,
-                path_in_repo=fname,
+                path_in_repo=fname,   # preserves subdirectory structure on HF
                 repo_id=REPO_ID,
                 repo_type="space",
                 token=TOKEN
