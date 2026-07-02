@@ -27,9 +27,10 @@ api = HfApi(token=token)
 
 gemini_key = env_vars.get('GEMINI_API_KEY')
 groq_key   = env_vars.get('GROQ_API_KEY')
+openai_key = env_vars.get('OPENAI_API_KEY')
 
-if not gemini_key or not groq_key:
-    print('ERROR: GEMINI_API_KEY or GROQ_API_KEY missing from .env')
+if not gemini_key or not groq_key or not openai_key:
+    print('ERROR: GEMINI_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY missing from .env')
     sys.exit(1)
 
 api.add_space_secret(repo_id=repo_id, key='GEMINI_API_KEY', value=gemini_key)
@@ -37,5 +38,8 @@ print('[OK] GEMINI_API_KEY updated on Hugging Face')
 
 api.add_space_secret(repo_id=repo_id, key='GROQ_API_KEY', value=groq_key)
 print('[OK] GROQ_API_KEY updated on Hugging Face')
+
+api.add_space_secret(repo_id=repo_id, key='OPENAI_API_KEY', value=openai_key)
+print('[OK] OPENAI_API_KEY updated on Hugging Face')
 
 print('\nDone! HF Space will restart with new keys.')
