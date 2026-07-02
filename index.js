@@ -21,6 +21,9 @@ const http = require('http');
 // ─── DASHBOARD SERVER SETUP ──────────────────────────────────────────────────
 const { startDashboardServer } = require('./dashboard');
 
+// ─── COMMAND HANDLERS ────────────────────────────────────────────────────────
+const { handleEmbed } = require('./commands/embed-handler');
+
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 if (RENDER_URL) {
@@ -826,44 +829,37 @@ client.on('interactionCreate', async interaction => {
       await interaction.reply({ content: 'Check the <#1460152325267128520> channel for bypass info.', ephemeral: true });
     }
 
-    // /say
+    // /say  ── upgraded: permission check + mod log
     else if (cmd === 'say') {
-      const ch = interaction.options.getChannel('channel');
+      const ch      = interaction.options.getChannel('channel');
       const message = interaction.options.getString('message');
+
+      // Permission: Administrator or Manage Server
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator) &&
+          !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({ embeds: [new EmbedBuilder()
+          .setTitle('❌ Permission Denied')
+          .setDescription('You need **Administrator** or **Manage Server** to use `/say`.')
+          .setColor(0xE74C3C)], ephemeral: true });
+      }
+
       if (!ch.isTextBased()) return interaction.reply({ content: '❌ Selected channel is not a text channel.', ephemeral: true });
+
       await ch.send({ content: message }).catch(() => {});
+
+      // Log to mod log
+      const sayLog = new EmbedBuilder()
+        .setTitle('📣 /say Used')
+        .setDescription(`**Sent by:** ${interaction.user} (${interaction.user.tag})\n**Channel:** ${ch}\n**Message:** ${message.slice(0, 500)}`)
+        .setColor(0x3498DB).setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, sayLog);
+
       await interaction.reply({ content: `✅ Message sent to ${ch}!`, ephemeral: true });
     }
 
-    // /embed
+    // /embed  ── professional announcement system
     else if (cmd === 'embed') {
-      const ch = interaction.options.getChannel('channel');
-      const title = interaction.options.getString('title');
-      const description = interaction.options.getString('description');
-      const colorInput = interaction.options.getString('color') || '#00D4FF';
-      const useThumbnail = interaction.options.getBoolean('thumbnail') || false;
-
-      if (!ch.isTextBased()) return interaction.reply({ content: '❌ Selected channel is not a text channel.', ephemeral: true });
-
-      // Clean up hex color
-      let resolvedColor = 0x00D4FF;
-      try {
-        const hex = colorInput.replace('#', '');
-        resolvedColor = parseInt(hex, 16);
-      } catch (e) {}
-
-      const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(description)
-        .setColor(resolvedColor)
-        .setTimestamp();
-
-      if (useThumbnail) {
-        embed.setThumbnail(interaction.guild.iconURL({ dynamic: true }));
-      }
-
-      await ch.send({ embeds: [embed] }).catch(() => {});
-      await interaction.reply({ content: `✅ Embed sent to ${ch}!`, ephemeral: true });
+      await handleEmbed(interaction, db, saveDb, logToChannel, ID);
     }
 
     // /whitelist

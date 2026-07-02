@@ -126,27 +126,43 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('embed')
-    .setDescription('Send a beautifully styled embed message through the bot')
-    .addChannelOption(option =>
-      option.setName('channel')
-        .setDescription('The channel to send the embed to')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('title')
-        .setDescription('Title of the embed')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('description')
-        .setDescription('Description/content of the embed')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('color')
-        .setDescription('Hex color code (e.g. #00D4FF or #FFB7C5)')
-        .setRequired(false))
-    .addBooleanOption(option =>
-      option.setName('thumbnail')
-        .setDescription('Show server icon as thumbnail?')
-        .setRequired(false)),
+    .setDescription('📢 Send a professional embed announcement (supports fields, buttons, images, mentions)')
+    // ─ Required ─
+    .addChannelOption(o => o.setName('channel').setDescription('Channel to send the embed to').setRequired(true))
+    // ─ Core Content ─
+    .addStringOption(o => o.setName('title').setDescription('Embed title (max 256 chars)').setRequired(false))
+    .addStringOption(o => o.setName('description').setDescription('Main body text — supports **bold**, *italic*, > quotes, bullet lists (max 4096)').setRequired(false))
+    .addStringOption(o => o.setName('color').setDescription('Color: hex (#FF0000) or name: red, blue, gold, cyan, zenitsu, green, purple…').setRequired(false))
+    // ─ Media ─
+    .addStringOption(o => o.setName('thumbnail').setDescription('Thumbnail image URL (top-right corner)').setRequired(false))
+    .addStringOption(o => o.setName('image').setDescription('Large banner image URL (bottom of embed)').setRequired(false))
+    // ─ Author ─
+    .addStringOption(o => o.setName('author_name').setDescription('Author name shown above the title').setRequired(false))
+    .addStringOption(o => o.setName('author_icon').setDescription('Author icon URL (shown left of author name)').setRequired(false))
+    // ─ Footer ─
+    .addStringOption(o => o.setName('footer_text').setDescription('Footer text at the bottom of the embed').setRequired(false))
+    .addStringOption(o => o.setName('footer_icon').setDescription('Footer icon URL (shown left of footer text)').setRequired(false))
+    // ─ Extras ─
+    .addBooleanOption(o => o.setName('timestamp').setDescription('Add current timestamp to the embed?').setRequired(false))
+    .addStringOption(o => o.setName('mention').setDescription('Mention before embed: @everyone, @here, or a Role ID').setRequired(false))
+    // ─ Field 1 ─
+    .addStringOption(o => o.setName('field1_name').setDescription('Field 1: Name/header').setRequired(false))
+    .addStringOption(o => o.setName('field1_value').setDescription('Field 1: Content').setRequired(false))
+    .addBooleanOption(o => o.setName('field1_inline').setDescription('Field 1: Display inline?').setRequired(false))
+    // ─ Field 2 ─
+    .addStringOption(o => o.setName('field2_name').setDescription('Field 2: Name/header').setRequired(false))
+    .addStringOption(o => o.setName('field2_value').setDescription('Field 2: Content').setRequired(false))
+    .addBooleanOption(o => o.setName('field2_inline').setDescription('Field 2: Display inline?').setRequired(false))
+    // ─ Field 3 ─
+    .addStringOption(o => o.setName('field3_name').setDescription('Field 3: Name/header').setRequired(false))
+    .addStringOption(o => o.setName('field3_value').setDescription('Field 3: Content').setRequired(false))
+    .addBooleanOption(o => o.setName('field3_inline').setDescription('Field 3: Display inline?').setRequired(false))
+    // ─ Button 1 ─
+    .addStringOption(o => o.setName('button1_label').setDescription('Button 1: Label text').setRequired(false))
+    .addStringOption(o => o.setName('button1_url').setDescription('Button 1: URL link').setRequired(false))
+    // ─ Button 2 ─
+    .addStringOption(o => o.setName('button2_label').setDescription('Button 2: Label text').setRequired(false))
+    .addStringOption(o => o.setName('button2_url').setDescription('Button 2: URL link').setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('whitelist')
