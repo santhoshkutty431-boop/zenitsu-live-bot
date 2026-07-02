@@ -98,6 +98,7 @@ upload_files = [
     "modules/auto-punish.js",
     "modules/security.js",
     "modules/logger.js",
+    "modules/ai-handler.js",
 ]
 
 print(f"\n[..] Uploading {len(upload_files)} files to Hugging Face Space...")
