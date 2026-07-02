@@ -38,6 +38,8 @@ const { logMemberJoin, logMemberLeave,
         logChannelUpdate, logGuildMemberRoleUpdate }          = require('./modules/logger');
 const { queryAI, MODELS, clearHistory }                      = require('./modules/ai-handler');
 const { handleAiEmbed }                                      = require('./modules/ai-embed');
+const { handleAiTicketSupport, handleAiModeration,
+        handleAiReactionTranslate, handleAiDraw }            = require('./modules/ai-features');
 
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
@@ -64,11 +66,13 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,      // [10] Voice logging
     GatewayIntentBits.GuildModeration,       // [11] Ban/unban events
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions, // AI Flag Translator
   ],
   partials: [
     Partials.Message,   // Needed to receive delete events for uncached/old messages
     Partials.Channel,   // Needed for DM and partial channel events
     Partials.User,      // Needed for partial user data
+    Partials.Reaction,  // Needed to receive reactions on old/uncached messages
   ]
 });
 
@@ -118,6 +122,7 @@ let db = {
   aiChannelId:     null,   // Channel ID for AI auto-reply (set via /ai-channel)
   aiDefaultModel:  'gemini', // Default AI model
   serverWhitelist: [],     // Extra guild IDs allowed to use this bot
+  ticketLanguages: {},     // { [channelId]: 'english' | 'tunglish' | 'hinglish' }
 };
 
 function loadDb() {
@@ -411,6 +416,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   }
 });
 
+// ─── AI REACTION TRANSLATOR ─────────────────────────────────────────────────
+client.on('messageReactionAdd', async (reaction, user) => {
+  await handleAiReactionTranslate(reaction, user);
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // [UPGRADE 11] — MOD ACTION LOGS (bans, unbans, role changes, timeouts)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -569,6 +579,13 @@ client.on('guildAuditLogEntryCreate', async (entry, guild) => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
+  // 1. AI Context-based Moderation
+  const aiModViolated = await handleAiModeration(message, db, saveDb, logToChannel, ID);
+  if (aiModViolated) return;
+
+  // 2. AI Ticket FAQ Responder
+  await handleAiTicketSupport(message, db, saveDb);
+
   // ── Feedback channel formatting ──────────────────────────────────────────
   if (message.channel.id === ID.FEEDBACK) {
     await message.delete().catch(() => {});
@@ -680,7 +697,7 @@ client.on('messageCreate', async message => {
 
 const CMD_TIERS = {
   // Public — any verified member
-  PUBLIC:  ['help', 'request-song', 'queue', 'report-user', 'ai', 'ai-reset'],
+  PUBLIC:  ['help', 'request-song', 'queue', 'report-user', 'ai', 'ai-reset', 'draw'],
 
   // Member role required
   MEMBER:  ['rank', 'feedback'],
@@ -1548,7 +1565,13 @@ client.on('interactionCreate', async interaction => {
     else if (cmd === 'ai-embed') {
       await handleAiEmbed(interaction, db, saveDb, logToChannel, ID);
     }
+
+    // /draw
+    else if (cmd === 'draw') {
+      await handleAiDraw(interaction);
+    }
   }
+
 
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
@@ -1661,6 +1684,27 @@ client.on('interactionCreate', async interaction => {
       );
       await ticketCh.send({ content: t.ping, embeds: [ticketEmbed], components: [closeRow] });
 
+      // Language selection buttons
+      const langEmbed = new EmbedBuilder()
+        .setTitle('🌐 Select Your Language / भाषा चुनें')
+        .setDescription(
+          'Please select your preferred language for the AI Support Assistant:\n' +
+          'AI सहायता के लिए अपनी भाषा चुनें:\n\n' +
+          '• **English** — standard English response\n' +
+          '• **Tamil (Tunglish)** — Tamil written in English letters (e.g. *Vanakkam*)\n' +
+          '• **Hindi (Hinglish)** — Hindi written in English letters (e.g. *Namaste*)'
+        )
+        .setColor(0x00D4FF);
+
+      const langRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ticket_lang_english').setLabel('🇬🇧 English').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('ticket_lang_tunglish').setLabel('🌴 Tamil (Tunglish)').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('ticket_lang_hinglish').setLabel('🇮🇳 Hindi (Hinglish)').setStyle(ButtonStyle.Secondary)
+      );
+
+      await ticketCh.send({ embeds: [langEmbed], components: [langRow] });
+
+
       const logEmbed = new EmbedBuilder()
         .setTitle(`${t.emoji} Ticket Opened — ${t.prefix.toUpperCase()}`)
         .setDescription(`**User:** ${interaction.user} (${interaction.user.tag})\n**Channel:** ${ticketCh}\n**Type:** ${t.title}`)
@@ -1682,6 +1726,35 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x95A5A6).setTimestamp();
       await logToChannel(interaction.guild, ID.SERVER_LOGS, closeLog);
       setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+    }
+
+    // Ticket Language Selection
+    else if (customId.startsWith('ticket_lang_')) {
+      await interaction.deferUpdate();
+
+      const langMap = {
+        ticket_lang_english:  { key: 'english',  label: '🇬🇧 English', response: 'Preference saved! Tell me how I can help you today.' },
+        ticket_lang_tunglish: { key: 'tunglish', label: '🌴 Tamil (Tunglish)', response: 'Unga language Tamil (Tunglish) save aayiduchu! Ungaluku enna help venum nu sollunga.' },
+        ticket_lang_hinglish: { key: 'hinglish', label: '🇮🇳 Hindi (Hinglish)', response: 'Aapka language Hindi (Hinglish) save ho gaya hai! Bataiye main aapki kya madad kar sakta hoon?' }
+      };
+
+      const choice = langMap[customId];
+      if (!choice) return;
+
+      if (!db.ticketLanguages) db.ticketLanguages = {};
+      db.ticketLanguages[interaction.channel.id] = choice.key;
+      saveDb();
+
+      // Edit the buttons message to confirm selection
+      const updatedEmbed = new EmbedBuilder()
+        .setTitle('🌐 Preferred Language Selected / भाषा चुनी गई')
+        .setDescription(
+          `**Selected:** ${choice.label}\n\n` +
+          `💬 *${choice.response}*`
+        )
+        .setColor(0x2ECC71);
+
+      await interaction.editReply({ embeds: [updatedEmbed], components: [] });
     }
 
     // Report button
