@@ -123,7 +123,8 @@ let db = {
   aiChannelId:     null,   // Channel ID for AI auto-reply (set via /ai-channel)
   aiDefaultModel:  'gemini', // Default AI model
   serverWhitelist: [],     // Extra guild IDs allowed to use this bot
-  ticketLanguages: {},     // { [channelId]: 'english' | 'tunglish' | 'hinglish' }
+  ticketLanguages: {},     // { [channelId]: 'english' | 'tunglish' | 'hinglish' },
+  userLanguages: {}        // { [userId]: 'english' | 'tunglish' | 'hinglish' }
 };
 
 function loadDb() {
@@ -201,6 +202,40 @@ async function logAiAnalytics(user, prompt, result, guild) {
 
   await logToChannel(guild, channelId, embed);
 }
+
+function getLanguageSelectorEmbed(user) {
+  const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder: EB } = require('discord.js');
+  
+  const embed = new EB()
+    .setTitle('🌐 SELECT YOUR LANGUAGE / भाषा चुनिए')
+    .setDescription(
+      `Hello ${user}! Please select your preferred language/dialect to chat with **ZENITSU AI**.\n\n` +
+      `🔹 **English:** Standard English replies.\n\n` +
+      `🔹 **Hinglish:** Natural mix of Hindi & English (e.g., *kya kar rhe ho?*)\n\n` +
+      `🔹 **Tanglish/Tunglish:** Natural mix of Tamil & English (e.g., *enna pantra?*)\n\n` +
+      `*You can change this anytime later using the \`/ai-lang\` command!*`
+    )
+    .setColor(0x00D4FF)
+    .setTimestamp();
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`setlang_english_${user.id}`)
+      .setLabel('🇬🇧 English')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`setlang_hinglish_${user.id}`)
+      .setLabel('🇮🇳 Hinglish')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`setlang_tanglish_${user.id}`)
+      .setLabel('🐯 Tanglish')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  return { embeds: [embed], components: [row] };
+}
+
 
 async function getOrCreateRole(guild, roleName, color = 0x000000) {
   let role = guild.roles.cache.find(r => r.name === roleName);
@@ -707,11 +742,21 @@ client.on('messageCreate', async message => {
   if (db.aiChannelId && message.channel.id === db.aiChannelId) {
     if (message.content.startsWith('/') || message.content.length < 2) return;
 
+    // Check if user has selected a language
+    db.userLanguages = db.userLanguages || {};
+    const userLang = db.userLanguages[message.author.id];
+
+    if (!userLang) {
+      const payload = getLanguageSelectorEmbed(message.author);
+      await message.reply(payload).catch(() => {});
+      return;
+    }
+
     // Show typing indicator
     await message.channel.sendTyping().catch(() => {});
 
     const modelKey = db.aiDefaultModel || 'gemini';
-    const result   = await queryAI(message.author.id, message.content, modelKey);
+    const result   = await queryAI(message.author.id, message.content, modelKey, userLang);
 
     // Send private analytics log to staff channel
     await logAiAnalytics(message.author, message.content, result, message.guild);
@@ -1539,11 +1584,19 @@ client.on('interactionCreate', async interaction => {
 
     // /ai
     else if (cmd === 'ai') {
+      db.userLanguages = db.userLanguages || {};
+      const userLang = db.userLanguages[interaction.user.id];
+
+      if (!userLang) {
+        const payload = getLanguageSelectorEmbed(interaction.user);
+        return interaction.reply({ ...payload, ephemeral: true });
+      }
+
       await interaction.deferReply();
 
       const prompt   = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
-      const result   = await queryAI(interaction.user.id, prompt, modelKey);
+      const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang);
 
       // Send private analytics log to staff channel
       await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
@@ -1568,6 +1621,20 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       await interaction.editReply({ embeds: [aiEmbed] });
+    }
+
+    // /ai-lang
+    else if (cmd === 'ai-lang') {
+      const selectedLang = interaction.options.getString('language');
+      db.userLanguages = db.userLanguages || {};
+      db.userLanguages[interaction.user.id] = selectedLang;
+      saveDb();
+
+      const names = { english: 'English 🇬🇧', hinglish: 'Hinglish 🇮🇳', tanglish: 'Tanglish 🐯' };
+      await interaction.reply({
+        content: `✅ Your preferred AI language has been set to **${names[selectedLang]}**! ZENITSU AI will now reply in this dialect.`,
+        ephemeral: true
+      });
     }
 
     // /ai-reset
@@ -1683,6 +1750,29 @@ client.on('interactionCreate', async interaction => {
   // ── BUTTONS ────────────────────────────────────────────────────────────────
   else if (interaction.isButton()) {
     const { customId } = interaction;
+
+    if (customId.startsWith('setlang_')) {
+      const parts = customId.split('_');
+      const lang = parts[1];
+      const targetUserId = parts[2];
+
+      if (interaction.user.id !== targetUserId) {
+        return interaction.reply({ content: '❌ Only the user who sent the prompt can choose the language!', ephemeral: true });
+      }
+
+      db.userLanguages = db.userLanguages || {};
+      db.userLanguages[targetUserId] = lang;
+      saveDb();
+
+      const names = { english: 'English 🇬🇧', hinglish: 'Hinglish 🇮🇳', tanglish: 'Tanglish 🐯' };
+      
+      await interaction.update({
+        content: `✅ Preferred language has been set to **${names[lang]}**!\nZENITSU AI will now reply in this dialect. Please type your message/question again!`,
+        embeds: [],
+        components: []
+      });
+      return;
+    }
 
     // [7] JOIN GATE — Verify button
     if (customId === 'verify_member') {

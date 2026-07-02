@@ -213,7 +213,7 @@ async function callGroq(model, messages) {
 
 // ─── MAIN QUERY FUNCTION ─────────────────────────────────────────────────────
 
-async function queryAI(userId, prompt, modelKey = 'gemini') {
+async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null) {
   // Rate limit check
   const rl = checkRateLimit(userId);
   if (!rl.allowed) {
@@ -228,7 +228,21 @@ async function queryAI(userId, prompt, modelKey = 'gemini') {
   let responseText = null;
 
   const history = getHistory(userId);
-  const messages = [...history, { role: 'user', content: prompt }];
+  const messages = [...history];
+
+  // Inject strict dialect constraints based on user choice
+  if (userLang === 'hinglish') {
+    messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in Hinglish dialect (Hindi-English mix written in English alphabet).]' });
+    messages.push({ role: 'assistant', content: 'Samajh gaya bro! Main Hinglish me hi reply karunga. Poochhiye kya poochhna hai.' });
+  } else if (userLang === 'tanglish') {
+    messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in Tanglish/Tunglish dialect (Tamil-English mix written in English alphabet).]' });
+    messages.push({ role: 'assistant', content: 'Purinjithu bro! Naan Tanglish-la reply panren. Sollunga enna help venum.' });
+  } else if (userLang === 'english') {
+    messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in standard English.]' });
+    messages.push({ role: 'assistant', content: 'Understood! I will respond to you in English.' });
+  }
+
+  messages.push({ role: 'user', content: prompt });
 
   for (const currentKey of failoverQueue) {
     const model = MODELS[currentKey];

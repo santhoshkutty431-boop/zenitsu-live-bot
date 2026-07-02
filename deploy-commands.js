@@ -309,6 +309,19 @@ const commands = [
     .setDescription('Clear your AI conversation memory and start fresh'),
 
   new SlashCommandBuilder()
+    .setName('ai-lang')
+    .setDescription('Set or change your preferred AI chat language/dialect')
+    .addStringOption(o => o
+      .setName('language')
+      .setDescription('Select your preferred dialect')
+      .setRequired(true)
+      .addChoices(
+        { name: '🇬🇧 English', value: 'english' },
+        { name: '🇮🇳 Hinglish (Hindi + English)', value: 'hinglish' },
+        { name: '🐯 Tanglish (Tamil + English)', value: 'tanglish' },
+      )),
+
+  new SlashCommandBuilder()
     .setName('ai-channel')
     .setDescription('Set or clear the dedicated AI chat channel (Admin only)')
     .addChannelOption(o => o
@@ -354,6 +367,14 @@ const commands = [
       .setName('mention')
       .setDescription('Optionally mention @everyone, @here, or a role ID')
       .setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('draw')
+    .setDescription('Generate an AI image based on your prompt')
+    .addStringOption(o => o
+      .setName('prompt')
+      .setDescription('Description of the image you want to generate')
+      .setRequired(true)),
 
 ].map(command => command.toJSON());
 
