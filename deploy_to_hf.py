@@ -55,7 +55,8 @@ secrets_keys = [
     "CHANNEL_SONG_REQUEST",
     "SERVER_LOGS_ID",
     "VOICE_LOG_ID",
-    "MOD_LOG_ID"
+    "MOD_LOG_ID",
+    "MESSAGE_LOG_ID"
 ]
 
 print("\n[..] Setting Space Secrets...")
