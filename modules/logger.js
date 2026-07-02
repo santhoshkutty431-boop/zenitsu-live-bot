@@ -75,6 +75,13 @@ async function logMemberLeave(member, ID) {
 async function logMessageDelete(msg, ID) {
   if (!msg.guild) return;
 
+  // If the message is not cached, msg.author will be null/undefined.
+  // If both author and content are empty, it's a deleted embed/attachment or a bot cleanup.
+  // We skip logging these to avoid spamming the log channels.
+  if (!msg.author && !msg.content) {
+    return;
+  }
+
   const authorTag  = msg.author?.tag    || '⚠️ Unknown (uncached)';
   const authorId   = msg.author?.id     || 'Unknown';
   const isBot      = msg.author?.bot    || false;
