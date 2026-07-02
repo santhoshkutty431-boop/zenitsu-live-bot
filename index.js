@@ -597,9 +597,66 @@ client.on('guildMemberRemove', async member => {
   await logMemberLeave(member, ID);
 });
 
-// ─── LOGGER: ROLE UPDATES ───────────────────────────────────────────────────
+// ─── LOGGER & SECURITY: ROLE UPDATES ─────────────────────────────────────────
 client.on('roleUpdate', async (oldRole, newRole) => {
-  await logRoleUpdate(oldRole, newRole, ID);
+  try {
+    // 1. Log the basic changes
+    await logRoleUpdate(oldRole, newRole, ID);
+
+    // 2. Sensitive permissions check
+    const sensitivePerms = [
+      PermissionFlagsBits.Administrator,
+      PermissionFlagsBits.ManageRoles,
+      PermissionFlagsBits.ManageGuild,
+      PermissionFlagsBits.BanMembers,
+      PermissionFlagsBits.KickMembers,
+      PermissionFlagsBits.ManageWebhooks,
+      PermissionFlagsBits.ManageChannels
+    ];
+
+    // Check if any sensitive permission was newly added
+    const gainedSensitive = sensitivePerms.some(perm => 
+      !oldRole.permissions.has(perm) && newRole.permissions.has(perm)
+    );
+
+    if (gainedSensitive) {
+      // Poll audit logs to find who updated the role
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const fetchedLogs = await newRole.guild.fetchAuditLogs({
+        limit: 5,
+        type: AuditLogEvent.RoleUpdate
+      }).catch(() => null);
+
+      if (fetchedLogs) {
+        const logEntry = fetchedLogs.entries.find(entry => entry.target?.id === newRole.id);
+        if (logEntry) {
+          const executorId = logEntry.executor?.id;
+          const isExecOwner = executorId === ownerId;
+          const isExecGuildOwner = executorId === newRole.guild.ownerId;
+          const isExecBot = executorId === client.user.id;
+          const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
+
+          if (!isExecOwner && !isExecGuildOwner && !isExecBot && !isExecWhitelisted) {
+            // Unauthorized permission upgrade! Instantly revert the role's permissions.
+            await newRole.setPermissions(oldRole.permissions, 'Anti-Abuse: Unauthorized permission modification').catch(() => {});
+
+            // Post security alert
+            const alertEmbed = new EmbedBuilder()
+              .setTitle('🚨 Critical Security Alert: Unauthorized Permission Change')
+              .setDescription(`**Role:** ${newRole} (${newRole.name})\n**Action Taken:** Instantly reverted permissions back to original state.\n**Attempted By:** <@${executorId}> (${logEntry.executor?.tag || executorId})`)
+              .setColor(0xFF0000)
+              .setFooter({ text: 'Security Module • Permission Protection' })
+              .setTimestamp();
+
+            await logToReports(newRole.guild, alertEmbed);
+            await logToChannel(newRole.guild, ID.MOD_LOG, alertEmbed);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Role Update security guard error:', err.message);
+  }
 });
 
 // ─── LOGGER: CHANNEL UPDATES ────────────────────────────────────────────────
