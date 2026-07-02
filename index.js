@@ -454,44 +454,54 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   // Anti-Abuse Role Guard: If roles were added, verify executor is whitelisted
   if (addedRoles.size > 0) {
     try {
-      // Wait 1.5 seconds for Discord to write the Audit Log entry
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      let logEntry = null;
       
-      const fetchedLogs = await newMember.guild.fetchAuditLogs({
-        limit: 1,
-        type: AuditLogEvent.MemberRoleUpdate,
-      }).catch(() => null);
+      // Retry polling up to 4 times (every 500ms) to ensure audit log is populated by Discord
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const fetchedLogs = await newMember.guild.fetchAuditLogs({
+          limit: 5,
+          type: AuditLogEvent.MemberRoleUpdate,
+        }).catch(() => null);
 
-      if (fetchedLogs) {
-        const logEntry = fetchedLogs.entries.first();
-        if (logEntry && logEntry.target?.id === newMember.id) {
-          const executorId = logEntry.executor?.id;
-          
-          if (executorId) {
-            const isExecOwner = executorId === ownerId;
-            const isExecGuildOwner = executorId === newMember.guild.ownerId;
-            const isExecBot = executorId === client.user.id;
-            const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
+        if (fetchedLogs) {
+          // Find log entry matching target user id and updated within the last 10 seconds
+          logEntry = fetchedLogs.entries.find(entry => 
+            entry.target?.id === newMember.id && 
+            (Date.now() - entry.createdTimestamp) < 10000
+          );
+          if (logEntry) break;
+        }
+      }
 
-            if (!isExecOwner && !isExecGuildOwner && !isExecBot && !isExecWhitelisted) {
-              // Revert role addition
-              for (const [roleId, role] of addedRoles) {
-                await newMember.roles.remove(role, 'Anti-Abuse Guard: Unauthorized role assignment').catch(() => {});
-              }
+      if (logEntry) {
+        const executorId = logEntry.executor?.id;
+        
+        if (executorId) {
+          const isExecOwner = executorId === ownerId;
+          const isExecGuildOwner = executorId === newMember.guild.ownerId;
+          const isExecBot = executorId === client.user.id;
+          const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
 
-              // Send alert to reports channel
-              const alertEmbed = new EmbedBuilder()
-                .setTitle('🚨 Security Alert: Unauthorized Role Assignment')
-                .setDescription(`**Target User:** ${newMember} (${newMember.user.tag})\n**Action Taken:** Automatically removed the role(s) added.\n**Attempted By:** <@${executorId}> (${logEntry.executor?.tag || executorId})`)
-                .addFields({ name: 'Roles Attempted', value: addedRoles.map(r => r.toString()).join(', ') })
-                .setColor(0xFF0000)
-                .setTimestamp();
-              await logToReports(newMember.guild, alertEmbed);
-              await logToChannel(newMember.guild, ID.MOD_LOG, alertEmbed);
-              
-              // Prevent logging the unauthorized roles update as a normal update
-              return;
+          if (!isExecOwner && !isExecGuildOwner && !isExecBot && !isExecWhitelisted) {
+            // Revert role addition
+            for (const [roleId, role] of addedRoles) {
+              await newMember.roles.remove(role, 'Anti-Abuse Guard: Unauthorized role assignment').catch(() => {});
             }
+
+            // Send alert to reports channel
+            const alertEmbed = new EmbedBuilder()
+              .setTitle('🚨 Security Alert: Unauthorized Role Assignment')
+              .setDescription(`**Target User:** ${newMember} (${newMember.user.tag})\n**Action Taken:** Automatically removed the role(s) added.\n**Attempted By:** <@${executorId}> (${logEntry.executor?.tag || executorId})`)
+              .addFields({ name: 'Roles Attempted', value: addedRoles.map(r => r.toString()).join(', ') })
+              .setColor(0xFF0000)
+              .setTimestamp();
+            await logToReports(newMember.guild, alertEmbed);
+            await logToChannel(newMember.guild, ID.MOD_LOG, alertEmbed);
+            
+            // Prevent logging the unauthorized roles update as a normal update
+            return;
           }
         }
       }
@@ -708,12 +718,12 @@ const CMD_TIERS = {
              'slowmode', 'protectme', 'say'],
 
   // Admin permission required
-  ADMIN:   ['ban', 'tempban', 'unban', 'role', 'whitelist', 'setup-panel',
+  ADMIN:   ['ban', 'tempban', 'unban', 'role', 'setup-panel',
              'embed', 'ai-embed', 'clear-channel', 'security', 'ai-channel',
              'whitelist-server'],
 
   // Bot owner only
-  OWNER:   ['giverole'],
+  OWNER:   ['giverole', 'whitelist'],
 };
 
 function getCmdTier(cmd) {
