@@ -316,6 +316,45 @@ const commands = [
       .setDescription('The channel to use for AI auto-replies (leave empty to disable)')
       .setRequired(false)),
 
+  // ══════════════════════════════════════════════════════════════════════════
+  //  PRIVACY & SERVER WHITELIST
+  // ══════════════════════════════════════════════════════════════════════════
+
+  new SlashCommandBuilder()
+    .setName('whitelist-server')
+    .setDescription('Manage which servers are allowed to use this bot (Owner only)')
+    .addSubcommand(s => s
+      .setName('add')
+      .setDescription('Allow a server to use the bot')
+      .addStringOption(o => o.setName('server_id').setDescription('Server (Guild) ID to whitelist').setRequired(true)))
+    .addSubcommand(s => s
+      .setName('remove')
+      .setDescription('Remove a server from the whitelist')
+      .addStringOption(o => o.setName('server_id').setDescription('Server (Guild) ID to remove').setRequired(true)))
+    .addSubcommand(s => s
+      .setName('list')
+      .setDescription('Show all whitelisted servers')),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  AI EMBED ASSISTANT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  new SlashCommandBuilder()
+    .setName('ai-embed')
+    .setDescription('Generate a professional embed message using AI based on a description')
+    .addStringOption(o => o
+      .setName('description')
+      .setDescription('Describe what the embed should contain (e.g. welcome message, red color, rules list)')
+      .setRequired(true))
+    .addChannelOption(o => o
+      .setName('channel')
+      .setDescription('The channel to send the embed to (default: current)')
+      .setRequired(false))
+    .addStringOption(o => o
+      .setName('mention')
+      .setDescription('Optionally mention @everyone, @here, or a role ID')
+      .setRequired(false)),
+
 ].map(command => command.toJSON());
 
 

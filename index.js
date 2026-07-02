@@ -37,6 +37,7 @@ const { logMemberJoin, logMemberLeave,
         logVoiceUpdate, logRoleUpdate,
         logChannelUpdate, logGuildMemberRoleUpdate }          = require('./modules/logger');
 const { queryAI, MODELS, clearHistory }                      = require('./modules/ai-handler');
+const { handleAiEmbed }                                      = require('./modules/ai-embed');
 
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
@@ -116,6 +117,7 @@ let db = {
   securityConfig:  { ...DEFAULT_SECURITY_CONFIG }, // Per-server security settings
   aiChannelId:     null,   // Channel ID for AI auto-reply (set via /ai-channel)
   aiDefaultModel:  'gemini', // Default AI model
+  serverWhitelist: [],     // Extra guild IDs allowed to use this bot
 };
 
 function loadDb() {
@@ -665,26 +667,115 @@ client.on('messageCreate', async message => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // INTERACTION HANDLER (buttons, commands, modals)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── COMMAND PERMISSION TIERS ────────────────────────────────────────────────
+// PUBLIC    = any server member (with MEMBER role or verified)
+// MEMBER    = must have MEMBER role
+// STAFF     = mod / support / admin
+// ADMIN     = administrator permission
+// OWNER     = bot owner only
+
+const CMD_TIERS = {
+  // Public — any verified member
+  PUBLIC:  ['help', 'request-song', 'queue', 'report-user', 'ai', 'ai-reset'],
+
+  // Member role required
+  MEMBER:  ['rank', 'feedback'],
+
+  // Staff role required
+  STAFF:   ['warn', 'unwarn', 'kick', 'mute', 'unmute', 'timeout', 'untimeout',
+             'note', 'cases', 'case', 'purge', 'lock', 'unlock', 'nick',
+             'slowmode', 'protectme', 'say'],
+
+  // Admin permission required
+  ADMIN:   ['ban', 'tempban', 'unban', 'role', 'whitelist', 'setup-panel',
+             'embed', 'ai-embed', 'clear-channel', 'security', 'ai-channel',
+             'whitelist-server'],
+
+  // Bot owner only
+  OWNER:   ['giverole'],
+};
+
+function getCmdTier(cmd) {
+  for (const [tier, cmds] of Object.entries(CMD_TIERS)) {
+    if (cmds.includes(cmd)) return tier;
+  }
+  return 'STAFF'; // default: staff-only for unknown commands
+}
+
+function hasCommandAccess(member, cmd, userId) {
+  if (isOwner(userId)) return true; // bot owner bypasses everything
+
+  const tier = getCmdTier(cmd);
+
+  if (tier === 'PUBLIC') return true;
+
+  if (tier === 'MEMBER') {
+    return member?.roles?.cache?.has(ID.MEMBER_ROLE) || staffCheck(member);
+  }
+
+  if (tier === 'STAFF') return staffCheck(member);
+
+  if (tier === 'ADMIN') {
+    return member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+           member?.roles?.cache?.has(ID.OWNER_ROLE) ||
+           member?.roles?.cache?.has(ID.ADMIN_ROLE);
+  }
+
+  if (tier === 'OWNER') return isOwner(userId);
+
+  return false;
+}
+
 client.on('interactionCreate', async interaction => {
-  // Check private server restrictions
-  const isMainGuild = interaction.guildId === config.guildId;
-  if (interaction.guildId && !isMainGuild && !isOwner(interaction.user.id)) {
-    return interaction.reply({
-      content: '❌ **Private Bot:** This bot is configured for developer testing only on this server. Only the bot owner can use commands or features here.',
-      ephemeral: true
-    }).catch(() => {});
+  // ── SERVER WHITELIST CHECK ───────────────────────────────────────────────────
+  if (interaction.guildId) {
+    const isMainGuild      = interaction.guildId === config.guildId;
+    const isWhitelisted    = (db.serverWhitelist || []).includes(interaction.guildId);
+    const isBotOwner       = isOwner(interaction.user.id);
+
+    if (!isMainGuild && !isWhitelisted && !isBotOwner) {
+      return interaction.reply({
+        embeds: [new EmbedBuilder()
+          .setTitle('🔒 Private Bot')
+          .setDescription(
+            'This bot is **private** and only operates in authorized servers.\n\n' +
+            '> To request access for your server, contact the **bot owner**.'
+          )
+          .setColor(0xFF0000)
+          .setFooter({ text: 'ZENITSU BOT — Private Use Only' })
+          .setTimestamp()
+        ],
+        ephemeral: true,
+      }).catch(() => {});
+    }
   }
 
   // ── SLASH COMMANDS ─────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand()) {
     const cmd = interaction.commandName;
 
-    // Code-side permission check for staff-only commands
-    const staffCmds = ['setup-panel', 'protectme', 'mute', 'unmute', 'lock', 'unlock', 'role', 'say', 'embed', 'whitelist', 'warn', 'kick', 'ban'];
-    if (staffCmds.includes(cmd) && !staffCheck(interaction.member)) {
-      return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
+    // ── ROLE / TIER PERMISSION CHECK ─────────────────────────────────────────
+    if (!hasCommandAccess(interaction.member, cmd, interaction.user.id)) {
+      const tier = getCmdTier(cmd);
+      const tierLabels = {
+        MEMBER: '`Member` role',
+        STAFF:  '`Moderator` or `Support` role',
+        ADMIN:  '`Administrator` permission',
+        OWNER:  'Bot Owner',
+      };
+      return interaction.reply({
+        embeds: [new EmbedBuilder()
+          .setTitle('🚫 Access Denied')
+          .setDescription(`You need **${tierLabels[tier] || 'higher permissions'}** to use \`/${cmd}\`.`)
+          .setColor(0xFF4444)
+          .setTimestamp()
+        ],
+        ephemeral: true,
+      });
     }
 
     // /setup-panel
@@ -1417,6 +1508,45 @@ client.on('interactionCreate', async interaction => {
           .setColor(0x2ECC71).setTimestamp()],
         ephemeral: true,
       });
+    }
+
+    // /whitelist-server
+    else if (cmd === 'whitelist-server') {
+      if (!isOwner(interaction.user.id))
+        return interaction.reply({ content: '❌ Only the **bot owner** can manage the server whitelist.', ephemeral: true });
+
+      const sub = interaction.options.getSubcommand();
+      if (!db.serverWhitelist) db.serverWhitelist = [];
+
+      if (sub === 'add') {
+        const serverId = interaction.options.getString('server_id').trim();
+        if (db.serverWhitelist.includes(serverId))
+          return interaction.reply({ content: `⚠️ Server \`${serverId}\` is already whitelisted.`, ephemeral: true });
+        db.serverWhitelist.push(serverId);
+        saveDb();
+        const guild = client.guilds.cache.get(serverId);
+        const name  = guild ? `**${guild.name}**` : `\`${serverId}\``;
+        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('✅ Server Whitelisted').setDescription(`${name} can now use **ZENITSU BOT**.`).setColor(0x2ECC71).setTimestamp()], ephemeral: true });
+
+      } else if (sub === 'remove') {
+        const serverId = interaction.options.getString('server_id').trim();
+        const idx = db.serverWhitelist.indexOf(serverId);
+        if (idx === -1) return interaction.reply({ content: `⚠️ Server \`${serverId}\` is not in the whitelist.`, ephemeral: true });
+        db.serverWhitelist.splice(idx, 1);
+        saveDb();
+        await interaction.reply({ content: `🗑️ Removed \`${serverId}\` from whitelist.`, ephemeral: true });
+
+      } else if (sub === 'list') {
+        const list = db.serverWhitelist;
+        if (list.length === 0) return interaction.reply({ content: '📋 No extra servers whitelisted. Only your main server can use this bot.', ephemeral: true });
+        const lines = list.map((id, i) => { const g = client.guilds.cache.get(id); return `\`${i+1}.\` ${g ? `**${g.name}**` : 'Unknown'} — \`${id}\``; }).join('\n');
+        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔒 Whitelisted Servers').setDescription(lines).setColor(0x00D4FF).setFooter({ text: `${list.length} server(s)` }).setTimestamp()], ephemeral: true });
+      }
+    }
+
+    // /ai-embed
+    else if (cmd === 'ai-embed') {
+      await handleAiEmbed(interaction, db, saveDb, logToChannel, ID);
     }
   }
 
