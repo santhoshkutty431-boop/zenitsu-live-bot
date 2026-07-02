@@ -1550,18 +1550,17 @@ client.on('interactionCreate', async interaction => {
 
       // Post an intro message in the newly set AI channel
       const introEmbed = new EmbedBuilder()
-        .setTitle('🤖 ZENITSU AI is Active Here!')
+        .setTitle('🤖 ZENITSU AI ACTIVE')
         .setDescription(
-          '**Just type your question and I will answer!**\n\n' +
-          '> 🔷 Using **Gemini 2.0 Flash** by default\n' +
-          '> 💬 I remember your last 10 messages\n' +
-          '> ⚡ Use `/ai` command in any channel for a specific model\n' +
-          '> 🔄 Use `/ai-reset` to clear your memory\n\n' +
-          '*Ask me anything — gaming, coding, general knowledge, and more!*'
+          '**Type any question directly in this channel to get an instant response!**\n\n' +
+          '🔹 **Memory Recall:** I remember the last 10 messages of our conversation.\n\n' +
+          '🔹 **Global Chat:** Use the `/ai` command in any other channel to chat.\n\n' +
+          '🔹 **Reset Memory:** Use the `/ai-reset` command to clear your conversation history.\n\n' +
+          '*Feel free to ask me anything about gaming, coding, the server, or general knowledge!*'
         )
         .setColor(0x00D4FF)
         .setThumbnail(interaction.client.user.displayAvatarURL())
-        .setFooter({ text: 'ZENITSU AI • Powered by Google Gemini' })
+        .setFooter({ text: 'ZENITSU LIVE • Premium AI Assistant' })
         .setTimestamp();
 
       await ch.send({ embeds: [introEmbed] }).catch(() => {});
