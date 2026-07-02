@@ -175,7 +175,8 @@ async function logToReports(guild, embed) {
   await logToChannel(guild, ID.MOD_REPORTS, embed);
 }
 async function logAiAnalytics(user, prompt, result, guild) {
-  if (!guild || !ID.STAFF_CHAT) return;
+  const channelId = process.env.AI_ANALYTICS_CHANNEL_ID;
+  if (!guild || !channelId) return;
   const { EmbedBuilder: EB } = require('discord.js');
   
   const statusColor = result.error ? 0xE74C3C : ((result.failoverCount && result.failoverCount > 0) ? 0xF39C12 : 0x2ECC71);
@@ -198,8 +199,9 @@ async function logAiAnalytics(user, prompt, result, guild) {
     embed.addFields({ name: '📝 Model Execution Log', value: '```• ' + result.attempts.join('\n• ') + '```' });
   }
 
-  await logToChannel(guild, ID.STAFF_CHAT, embed);
+  await logToChannel(guild, channelId, embed);
 }
+
 async function getOrCreateRole(guild, roleName, color = 0x000000) {
   let role = guild.roles.cache.find(r => r.name === roleName);
   if (!role) role = await guild.roles.create({ name: roleName, color, reason: 'Bot auto-role' }).catch(() => null);

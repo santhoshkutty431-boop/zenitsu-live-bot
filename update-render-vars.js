@@ -41,7 +41,9 @@ const keysToSend = [
   'MESSAGE_LOG_ID',
   'GEMINI_API_KEY',
   'GROQ_API_KEY',
-  'HF_TOKEN'
+  'OPENAI_API_KEY',
+  'HF_TOKEN',
+  'AI_ANALYTICS_CHANNEL_ID'
 ];
 
 const envPayload = [];
