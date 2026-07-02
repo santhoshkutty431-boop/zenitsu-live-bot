@@ -444,6 +444,26 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
 
   if (!exceeded || !alertTitle) return;
 
+  // ── ACTIVE ANTI-NUKE DEFENSE ─────────────────────────────────────────────
+  const ownerId = guild.client.application?.owner?.id || guild.ownerId;
+  const isOwner = executor.id === ownerId || executor.id === guild.ownerId;
+  const isWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executor.id);
+
+  let activeDefenseStatus = '⚠️ **Manual Review Needed:** User is whitelisted or owner. No automatic action taken.';
+
+  if (!isOwner && !isWhitelisted) {
+    try {
+      const member = await guild.members.fetch(executor.id).catch(() => null);
+      if (member && member.moderatable) {
+        // Strip all roles to instantly freeze their permissions
+        await member.roles.set([], 'Zenitsu Anti-Nuke: Exceeded mass-action security limit').catch(() => {});
+        activeDefenseStatus = '🛡️ **Active Defense Triggered:** All roles have been automatically stripped from this user to lock down their access.';
+      }
+    } catch (err) {
+      console.error('Failed to execute Active Anti-Nuke defense:', err.message);
+    }
+  }
+
   // ── SEND ALERT ──────────────────────────────────────────────────────────
   console.warn(`[Security/AntiNuke] ${alertTitle} by ${executor.tag} in ${guild.name}`);
 
@@ -456,7 +476,7 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
       { name: '🆔 User ID',   value: executor.id,                             inline: true },
       { name: '📋 Action',    value: entry.action.toString(),                 inline: true },
       { name: '📝 Details',   value: alertDetails },
-      { name: '⚠️ Action Required', value: '**Manually review this account immediately.** The bot has logged this incident but has NOT automatically stripped permissions to avoid disrupting legitimate administration.' },
+      { name: '🛡️ Active Defense', value: activeDefenseStatus }
     )
     .setFooter({ text: `Anti-Nuke System | ${guild.name}` })
     .setTimestamp();
