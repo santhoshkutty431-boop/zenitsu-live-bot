@@ -174,6 +174,32 @@ async function logToChannel(guild, channelId, embed) {
 async function logToReports(guild, embed) {
   await logToChannel(guild, ID.MOD_REPORTS, embed);
 }
+async function logAiAnalytics(user, prompt, result, guild) {
+  if (!guild || !ID.STAFF_CHAT) return;
+  const { EmbedBuilder: EB } = require('discord.js');
+  
+  const statusColor = result.error ? 0xE74C3C : ((result.failoverCount && result.failoverCount > 0) ? 0xF39C12 : 0x2ECC71);
+  const statusEmoji = result.error ? '❌ Failed' : ((result.failoverCount && result.failoverCount > 0) ? '⚠️ Failover Successful' : '✅ Success');
+
+  const embed = new EB()
+    .setTitle('🤖 AI Query Analytics')
+    .setColor(statusColor)
+    .addFields(
+      { name: '👤 User', value: `${user} (ID: \`${user.id}\`)`, inline: true },
+      { name: '📊 Status', value: statusEmoji, inline: true },
+      { name: '💬 Prompt Length', value: `${prompt.length} characters`, inline: true },
+      { name: '🎯 Requested Model', value: result.originalRequested?.label || 'Unknown', inline: true },
+      { name: '⚙️ Responded Model', value: result.model?.label || 'None', inline: true },
+      { name: '🔄 Failover Hops', value: `${result.failoverCount || 0}`, inline: true }
+    )
+    .setTimestamp();
+
+  if (result.attempts && result.attempts.length > 0) {
+    embed.addFields({ name: '📝 Model Execution Log', value: '```• ' + result.attempts.join('\n• ') + '```' });
+  }
+
+  await logToChannel(guild, ID.STAFF_CHAT, embed);
+}
 async function getOrCreateRole(guild, roleName, color = 0x000000) {
   let role = guild.roles.cache.find(r => r.name === roleName);
   if (!role) role = await guild.roles.create({ name: roleName, color, reason: 'Bot auto-role' }).catch(() => null);
@@ -628,16 +654,23 @@ client.on('messageCreate', async message => {
     const modelKey = db.aiDefaultModel || 'gemini';
     const result   = await queryAI(message.author.id, message.content, modelKey);
 
+    // Send private analytics log to staff channel
+    await logAiAnalytics(message.author, message.content, result, message.guild);
+
     const { EmbedBuilder: EB } = require('discord.js');
 
     if (result.error) {
-      await message.reply({ content: result.message, allowedMentions: { repliedUser: false } }).catch(() => {});
+      // User-friendly error message that hides specific API details
+      await message.reply({ 
+        content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!', 
+        allowedMentions: { repliedUser: false } 
+      }).catch(() => {});
     } else {
       const aiEmbed = new EB()
         .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
         .setDescription(result.response)
         .setColor(0x00D4FF)
-        .setFooter({ text: `${MODELS[modelKey]?.label || modelKey} • /ai-reset to clear memory` })
+        .setFooter({ text: 'ZENITSU AI • /ai-reset to clear memory' })
         .setTimestamp();
       await message.reply({ embeds: [aiEmbed], allowedMentions: { repliedUser: false } }).catch(() => {});
     }
@@ -1453,11 +1486,15 @@ client.on('interactionCreate', async interaction => {
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
       const result   = await queryAI(interaction.user.id, prompt, modelKey);
 
+      // Send private analytics log to staff channel
+      await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
+
       if (result.error) {
-        return interaction.editReply({ content: result.message });
+        return interaction.editReply({ 
+          content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+        });
       }
 
-      const modelInfo = MODELS[modelKey];
       const aiEmbed = new EmbedBuilder()
         .setAuthor({
           name:    'ZENITSU AI',
@@ -1468,7 +1505,7 @@ client.on('interactionCreate', async interaction => {
           { name: '🤖 Answer',        value: result.response.slice(0, 1024) },
         )
         .setColor(0x00D4FF)
-        .setFooter({ text: `${modelInfo?.label || modelKey} • Reply is remembered • /ai-reset to clear` })
+        .setFooter({ text: 'ZENITSU AI • Reply is remembered • /ai-reset to clear' })
         .setTimestamp();
 
       await interaction.editReply({ embeds: [aiEmbed] });

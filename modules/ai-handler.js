@@ -212,41 +212,66 @@ async function queryAI(userId, prompt, modelKey = 'gemini') {
     return { error: true, message: `⏳ Slow down! You're sending too many requests. Please wait **${rl.wait}s**.` };
   }
 
-  const model = MODELS[modelKey];
-  if (!model) {
-    return { error: true, message: `❌ Unknown model \`${modelKey}\`. Valid: ${Object.keys(MODELS).join(', ')}` };
-  }
+  // Define failover order
+  const failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
 
-  // Check API key is available
-  if (!process.env[model.envKey]) {
-    return { error: true, message: `❌ **${model.label}** is not configured. The \`${model.envKey}\` environment variable is missing.` };
-  }
+  let attemptErrorLogs = [];
+  let successfulModel = null;
+  let responseText = null;
 
-  // Build history + new message
   const history = getHistory(userId);
   const messages = [...history, { role: 'user', content: prompt }];
 
-  try {
-    let response;
-    if      (model.provider === 'google') response = await callGemini(model, messages);
-    else if (model.provider === 'openai') response = await callOpenAI(model, messages);
-    else if (model.provider === 'groq')   response = await callGroq(model, messages);
-    else throw new Error('Unknown provider');
+  for (const currentKey of failoverQueue) {
+    const model = MODELS[currentKey];
+    if (!model) continue;
 
-    // Save to memory
-    addToHistory(userId, 'user',      prompt);
-    addToHistory(userId, 'assistant', response);
-
-    // Trim for Discord (4096 char embed limit)
-    if (response.length > 3800) {
-      response = response.slice(0, 3797) + '…';
+    // Check if API key exists
+    if (!process.env[model.envKey]) {
+      attemptErrorLogs.push(`${model.label}: API Key not set.`);
+      continue;
     }
 
-    return { error: false, response, model };
+    try {
+      let response;
+      if      (model.provider === 'google') response = await callGemini(model, messages);
+      else if (model.provider === 'openai') response = await callOpenAI(model, messages);
+      else if (model.provider === 'groq')   response = await callGroq(model, messages);
+      else throw new Error('Unknown provider');
 
-  } catch (err) {
-    return { error: true, message: `❌ **${model.label}** error: ${err.message}` };
+      responseText = response;
+      successfulModel = model;
+      break; // Successfully got response, stop failover loop
+    } catch (err) {
+      attemptErrorLogs.push(`${model.label} error: ${err.message}`);
+    }
   }
+
+  if (!successfulModel) {
+    return {
+      error: true,
+      message: `❌ AI Service is temporarily unavailable. All models failed:\n• ` + attemptErrorLogs.join('\n• '),
+      attempts: attemptErrorLogs
+    };
+  }
+
+  // Save to memory
+  addToHistory(userId, 'user',      prompt);
+  addToHistory(userId, 'assistant', responseText);
+
+  // Trim response for Discord limits (4096 char embed limit)
+  if (responseText.length > 3800) {
+    responseText = responseText.slice(0, 3797) + '…';
+  }
+
+  return {
+    error: false,
+    response: responseText,
+    model: successfulModel,
+    originalRequested: MODELS[modelKey] || { label: modelKey },
+    failoverCount: failoverQueue.indexOf(successfulModel.name === 'llama-3.3-70b-versatile' ? 'groq' : successfulModel.name === 'gpt-3.5-turbo' ? 'gpt35' : 'gemini'),
+    attempts: attemptErrorLogs
+  };
 }
 
 // ─── EXPORTS ─────────────────────────────────────────────────────────────────
