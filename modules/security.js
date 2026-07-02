@@ -125,6 +125,46 @@ async function handleMemberJoin(member, db, saveDb, logToChannel, ID) {
   const guildId = guild.id;
   const now   = Date.now();
 
+  // ── ANTI-BOT JOIN PROTECTION ──────────────────────────────────────────
+  if (member.user.bot) {
+    try {
+      // Fetch who added the bot
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const fetchedLogs = await guild.fetchAuditLogs({
+        limit: 5,
+        type: 28, // AuditLogEvent.BotAdd
+      }).catch(() => null);
+
+      if (fetchedLogs) {
+        const logEntry = fetchedLogs.entries.find(entry => entry.target?.id === member.id);
+        if (logEntry) {
+          const inviterId = logEntry.executor?.id;
+          const ownerId   = guild.client.application?.owner?.id || guild.ownerId;
+          const isOwner   = inviterId === ownerId || inviterId === guild.ownerId;
+          const isWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(inviterId);
+
+          if (!isOwner && !isWhitelisted) {
+            // Unauthorized bot added! Instantly ban the rogue bot.
+            await member.ban({ reason: `Anti-Abuse: Unauthorized Bot added by <@${inviterId}>` }).catch(() => {});
+
+            const alertEmbed = new EmbedBuilder()
+              .setTitle('🚨 Critical Security Alert: Rogue Bot Blocked')
+              .setDescription(`**Rogue Bot:** ${member.user.tag} (\`${member.id}\`)\n**Action Taken:** Instantly Banned from Server.\n**Invited By:** <@${inviterId}> (${logEntry.executor?.tag || inviterId})`)
+              .setColor(0xFF0000)
+              .setFooter({ text: 'Security Module • Anti-Nuke Enabled' })
+              .setTimestamp();
+
+            await logToChannel(guild, ID.MOD_LOG, alertEmbed);
+            await logToChannel(guild, db.securityConfig?.securityLogId || ID.MOD_REPORTS, alertEmbed);
+            return; // Stop processing further join checks
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Anti-Bot security check error:', err.message);
+    }
+  }
+
   // ── JOIN RATE TRACKING ──────────────────────────────────────────────────
   if (!joinTracker.has(guildId)) joinTracker.set(guildId, []);
   const joins = joinTracker.get(guildId);
