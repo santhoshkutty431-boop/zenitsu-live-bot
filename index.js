@@ -95,6 +95,7 @@ const ID = {
   TICKET_CENTER: '1444538212583473162',
   MOD_REPORTS:   '1444639792846344273',
   BASIC_PANEL:   '1460152526463832097',
+  STAFF_CHAT:    '1521940599031333045',
 
   // Log channels (written by setup-upgrades.js)
   SERVER_LOGS:   process.env.SERVER_LOGS_ID || '',
