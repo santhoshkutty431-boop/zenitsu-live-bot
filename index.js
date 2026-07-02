@@ -21,8 +21,21 @@ const http = require('http');
 // ─── DASHBOARD SERVER SETUP ──────────────────────────────────────────────────
 const { startDashboardServer } = require('./dashboard');
 
-// ─── COMMAND HANDLERS ────────────────────────────────────────────────────────
-const { handleEmbed } = require('./commands/embed-handler');
+// ─── COMMAND HANDLERS & MODULES ──────────────────────────────────────────────
+const { handleEmbed }                                         = require('./commands/embed-handler');
+const { createCase, getCase, getCasesForUser, updateCase,
+        addNote, closeCase, searchCases,
+        formatCaseEmbed, formatUserCasesEmbed,
+        CaseType, parseDuration, formatDuration }             = require('./modules/case-manager');
+const { startAutoPunishScheduler }                           = require('./modules/auto-punish');
+const { handleMemberJoin: secHandleJoin,
+        handleMessageSecurity,
+        handleAuditLogEntry,
+        DEFAULT_SECURITY_CONFIG }                             = require('./modules/security');
+const { logMemberJoin, logMemberLeave,
+        logMessageDelete, logMessageEdit,
+        logVoiceUpdate, logRoleUpdate,
+        logChannelUpdate, logGuildMemberRoleUpdate }          = require('./modules/logger');
 
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
@@ -87,15 +100,19 @@ const ID = {
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 const dbPath = path.join(__dirname, 'database.json');
 let db = {
-  songQueue:     [],
-  activeTickets: {},
-  bypasses:      {},
+  songQueue:       [],
+  activeTickets:   {},
+  bypasses:        {},
   protectmeActive: true,
-  spamTimeoutMinutes: 1,  // Auto-mod timeout duration in minutes (configurable from dashboard)
-  xp:            {},   // { userId: { xp, level, lastMessage } }
-  roleWhitelist: [],   // Whitelisted user IDs allowed to assign roles
-  deletedMessages: [], // Keep track of deleted messages
-  warnings: {},        // { userId: [{ warnerTag, reason, timestamp }] }
+  spamTimeoutMinutes: 1,
+  xp:              {},
+  roleWhitelist:   [],
+  deletedMessages: [],
+  warnings:        {},     // legacy — still used for backward compat
+  // ── Enterprise Moderation ──
+  cases:           [],     // All moderation cases
+  caseCounter:     0,      // Auto-incrementing case ID counter
+  securityConfig:  { ...DEFAULT_SECURITY_CONFIG }, // Per-server security settings
 };
 
 function loadDb() {
@@ -161,6 +178,9 @@ function staffCheck(member) {
 // ─── READY ────────────────────────────────────────────────────────────────────
 client.once('ready', async () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
+
+  // Start auto-punishment expiry scheduler
+  startAutoPunishScheduler(client, db, saveDb, logToChannel, ID);
   
   // Resolve supreme bot owner dynamically
   try {
@@ -184,6 +204,12 @@ client.once('ready', async () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 client.on('guildMemberAdd', async member => {
   console.log(`[JOIN] ${member.user.tag} joined`);
+
+  // Security: anti-raid + account age check
+  await secHandleJoin(member, db, saveDb, logToChannel, ID);
+
+  // Logger: join log
+  await logMemberJoin(member, ID);
 
   // [2] Welcome DM
   const dmEmbed = new EmbedBuilder()
@@ -512,6 +538,26 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
+// ─── LOGGER: MEMBER LEAVE ───────────────────────────────────────────────────
+client.on('guildMemberRemove', async member => {
+  await logMemberLeave(member, ID);
+});
+
+// ─── LOGGER: ROLE UPDATES ───────────────────────────────────────────────────
+client.on('roleUpdate', async (oldRole, newRole) => {
+  await logRoleUpdate(oldRole, newRole, ID);
+});
+
+// ─── LOGGER: CHANNEL UPDATES ────────────────────────────────────────────────
+client.on('channelUpdate', async (oldCh, newCh) => {
+  if (newCh.guild) await logChannelUpdate(oldCh, newCh, ID);
+});
+
+// ─── ANTI-NUKE: AUDIT LOG MONITORING ────────────────────────────────────────
+client.on('guildAuditLogEntryCreate', async (entry, guild) => {
+  await handleAuditLogEntry(entry, guild, db, logToChannel, ID);
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // [UPGRADE 13] — XP / LEVELING SYSTEM  +  AUTO-MOD  +  FEEDBACK FORMAT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -533,38 +579,10 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // ── Auto-Moderation ───────────────────────────────────────────────────────
+  // ── Auto-Moderation (Enterprise Security Module) ────────────────────────
   if (db.protectmeActive && !staffCheck(message.member)) {
-    const content = message.content;
-    const letters = content.replace(/[^a-zA-Z]/g, '');
-    const isCapsSpam = letters.length >= 15 && (letters.replace(/[^A-Z]/g, '').length / letters.length) > 0.8;
-    const hasInvite  = /(discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+/i.test(content);
-    const hasScam    = /(free-nitro|steam-gift|giftcard|earn-robux|bypass-link)/i.test(content);
-
-    let violation = hasInvite ? 'Advertising Server Invites' : hasScam ? 'Scam / Phishing Link' : isCapsSpam ? 'Excessive CAPS spam' : null;
-
-    if (violation) {
-      await message.delete().catch(() => {});
-      const timeoutMs = ((db.spamTimeoutMinutes || 1) * 60 * 1000);
-      await message.member.timeout(timeoutMs, `AutoMod: ${violation}`).catch(() => {});
-
-      const warn = await message.channel.send({
-        embeds: [new EmbedBuilder()
-          .setTitle('⚠️ Auto-Mod')
-          .setDescription(`${message.author}, your message was removed.\n**Reason:** ${violation}`)
-          .setColor(0xFF0000).setTimestamp()]
-      }).catch(() => null);
-      if (warn) setTimeout(() => warn.delete().catch(() => {}), 5000);
-
-      const logEmbed = new EmbedBuilder()
-        .setTitle('🚨 Auto-Mod Violation')
-        .setDescription(`**User:** ${message.author} (${message.author.tag})\n**Channel:** ${message.channel}\n**Violation:** ${violation}`)
-        .addFields({ name: 'Content', value: content.slice(0, 1000) || '*empty*' })
-        .setColor(0xFF0000).setTimestamp();
-      await logToReports(message.guild, logEmbed);
-      await logToChannel(message.guild, ID.MOD_LOG, logEmbed);
-      return;
-    }
+    const { violated } = await handleMessageSecurity(message, db, saveDb, logToChannel, ID);
+    if (violated) return;
   }
 
   // ── [13] XP System ────────────────────────────────────────────────────────
@@ -906,30 +924,38 @@ client.on('interactionCreate', async interaction => {
       const target = interaction.options.getUser('user');
       const reason = interaction.options.getString('reason');
 
-      if (!db.warnings) db.warnings = {};
+      if (!db.warnings)           db.warnings = {};
       if (!db.warnings[target.id]) db.warnings[target.id] = [];
-      
-      const warnEntry = {
+
+      // Legacy entry (backward compat)
+      db.warnings[target.id].push({
         warnerTag: interaction.user.tag,
-        warnerId: interaction.user.id,
-        reason: reason,
-        timestamp: new Date().toISOString()
-      };
-      
-      db.warnings[target.id].push(warnEntry);
+        warnerId:  interaction.user.id,
+        reason,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Enterprise case entry
+      const caseData = createCase(db, saveDb, {
+        type:    CaseType.WARN,
+        guildId: interaction.guild.id,
+        userId:  target.id,
+        userTag: target.tag,
+        modId:   interaction.user.id,
+        modTag:  interaction.user.tag,
+        reason,
+      });
       saveDb();
 
-      // DM target
-      await target.send(`⚠️ **Warning:** You have been warned in **${interaction.guild.name}**\n**Reason:** ${reason}`).catch(() => {});
-
-      const logEmbed = new EmbedBuilder()
-        .setTitle('⚠️ Member Warned')
-        .setDescription(`**User:** ${target} (${target.tag})\n**Reason:** ${reason}\n**By:** ${interaction.user}`)
-        .addFields({ name: 'Total Warnings', value: `${db.warnings[target.id].length}` })
-        .setColor(0xF1C40F)
-        .setTimestamp();
-      await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
-      await interaction.reply({ embeds: [logEmbed] });
+      await target.send(`⚠️ **Warning:** You have been warned in **${interaction.guild.name}**\n**Reason:** ${reason}\n**Case:** ${caseData.caseId}\n**Total warnings:** ${db.warnings[target.id].length}`).catch(() => {});
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ embeds: [
+        new EmbedBuilder()
+          .setTitle('⚠️ Member Warned')
+          .setDescription(`**User:** ${target} (${target.tag})\n**Reason:** ${reason}\n**Case:** \`${caseData.caseId}\``)
+          .addFields({ name: 'Total Warnings', value: `${db.warnings[target.id].length}` })
+          .setColor(0xF1C40F).setTimestamp()
+      ]});
     }
 
     // /kick
@@ -939,18 +965,25 @@ client.on('interactionCreate', async interaction => {
       if (!target) return interaction.reply({ content: '❌ Member not found in this server.', ephemeral: true });
       if (!target.kickable) return interaction.reply({ content: '❌ I cannot kick this member. Check role hierarchy.', ephemeral: true });
 
-      // DM target first
       await target.send(`🚪 **Kicked:** You have been kicked from **${interaction.guild.name}**\n**Reason:** ${reason}`).catch(() => {});
-      
       await target.kick(reason).catch(() => {});
 
-      const logEmbed = new EmbedBuilder()
-        .setTitle('🚪 Member Kicked')
-        .setDescription(`**User:** ${target.user} (${target.user.tag})\n**Reason:** ${reason}\n**By:** ${interaction.user}`)
-        .setColor(0xE67E22)
-        .setTimestamp();
-      await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
-      await interaction.reply({ embeds: [logEmbed] });
+      const caseData = createCase(db, saveDb, {
+        type:    CaseType.KICK,
+        guildId: interaction.guild.id,
+        userId:  target.id,
+        userTag: target.user.tag,
+        modId:   interaction.user.id,
+        modTag:  interaction.user.tag,
+        reason,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ embeds: [
+        new EmbedBuilder()
+          .setTitle('🚪 Member Kicked')
+          .setDescription(`**User:** ${target.user} (${target.user.tag})\n**Reason:** ${reason}\n**Case:** \`${caseData.caseId}\``)
+          .setColor(0xE67E22).setTimestamp()
+      ]});
     }
 
     // /ban
@@ -959,22 +992,28 @@ client.on('interactionCreate', async interaction => {
       const reason = interaction.options.getString('reason') || 'No reason provided';
       const member = interaction.options.getMember('user');
 
-      if (member && !member.bannable) {
+      if (member && !member.bannable)
         return interaction.reply({ content: '❌ I cannot ban this member. Check role hierarchy.', ephemeral: true });
-      }
 
-      // DM target first
       await target.send(`🔨 **Banned:** You have been permanently banned from **${interaction.guild.name}**\n**Reason:** ${reason}`).catch(() => {});
-
       await interaction.guild.members.ban(target.id, { reason }).catch(() => {});
 
-      const logEmbed = new EmbedBuilder()
-        .setTitle('🔨 Member Banned')
-        .setDescription(`**User:** ${target} (${target.tag})\n**Reason:** ${reason}\n**By:** ${interaction.user}`)
-        .setColor(0xE74C3C)
-        .setTimestamp();
-      await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
-      await interaction.reply({ embeds: [logEmbed] });
+      const caseData = createCase(db, saveDb, {
+        type:    CaseType.BAN,
+        guildId: interaction.guild.id,
+        userId:  target.id,
+        userTag: target.tag,
+        modId:   interaction.user.id,
+        modTag:  interaction.user.tag,
+        reason,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ embeds: [
+        new EmbedBuilder()
+          .setTitle('🔨 Member Banned')
+          .setDescription(`**User:** ${target} (${target.tag})\n**Reason:** ${reason}\n**Case:** \`${caseData.caseId}\``)
+          .setColor(0xE74C3C).setTimestamp()
+      ]});
     }
 
     // /purge
@@ -1027,6 +1066,230 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ content: `✅ **#${ch.name}** has been fully cleared! All messages deleted.` });
       } catch (err) {
         await interaction.editReply({ content: `❌ Failed to clear channel: ${err.message}` });
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ENTERPRISE MODERATION COMMANDS
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // /timeout
+    else if (cmd === 'timeout') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers))
+        return interaction.reply({ content: '❌ You need **Moderate Members** permission.', ephemeral: true });
+
+      const target   = interaction.options.getMember('user');
+      const durStr   = interaction.options.getString('duration');
+      const reason   = interaction.options.getString('reason') || 'No reason provided';
+      const durMs    = parseDuration(durStr);
+
+      if (!target) return interaction.reply({ content: '❌ Member not found.', ephemeral: true });
+      if (!durMs)  return interaction.reply({ content: '❌ Invalid duration. Use: `60s`, `5m`, `2h`, `1d`, `1w`', ephemeral: true });
+      if (durMs > 28 * 24 * 60 * 60 * 1000) return interaction.reply({ content: '❌ Discord maximum timeout is 28 days.', ephemeral: true });
+      if (!target.moderatable) return interaction.reply({ content: '❌ I cannot timeout this member (check role hierarchy).', ephemeral: true });
+
+      await target.timeout(durMs, reason);
+      const caseData = createCase(db, saveDb, {
+        type: CaseType.TIMEOUT, guildId: interaction.guild.id,
+        userId: target.id, userTag: target.user.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag,
+        reason, duration: durMs,
+      });
+      await target.send(`⏸️ You have been timed out in **${interaction.guild.name}** for **${formatDuration(durMs)}**.\n**Reason:** ${reason}\n**Case:** ${caseData.caseId}`).catch(() => {});
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ embeds: [new EmbedBuilder().setTitle('⏸️ Member Timed Out').setDescription(`${target.user.tag} timed out for **${formatDuration(durMs)}**.\n**Reason:** ${reason}\n**Case:** \`${caseData.caseId}\``).setColor(0xF39C12).setTimestamp()], ephemeral: true });
+    }
+
+    // /untimeout
+    else if (cmd === 'untimeout') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers))
+        return interaction.reply({ content: '❌ You need **Moderate Members** permission.', ephemeral: true });
+
+      const target = interaction.options.getMember('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      if (!target) return interaction.reply({ content: '❌ Member not found.', ephemeral: true });
+
+      await target.timeout(null, reason);
+      const caseData = createCase(db, saveDb, {
+        type: CaseType.UNTIMEOUT, guildId: interaction.guild.id,
+        userId: target.id, userTag: target.user.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag, reason,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ content: `✅ Timeout removed from **${target.user.tag}**. Case: \`${caseData.caseId}\``, ephemeral: true });
+    }
+
+    // /tempban
+    else if (cmd === 'tempban') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers))
+        return interaction.reply({ content: '❌ You need **Ban Members** permission.', ephemeral: true });
+
+      const target = interaction.options.getUser('user');
+      const durStr = interaction.options.getString('duration');
+      const reason = interaction.options.getString('reason');
+      const durMs  = parseDuration(durStr);
+      if (!durMs) return interaction.reply({ content: '❌ Invalid duration. Use: `1h`, `1d`, `7d`, `30d`', ephemeral: true });
+
+      const member = interaction.options.getMember('user');
+      if (member && !member.bannable) return interaction.reply({ content: '❌ I cannot ban this member.', ephemeral: true });
+
+      await target.send(`🔨 You have been **temporarily banned** from **${interaction.guild.name}** for **${formatDuration(durMs)}**.\n**Reason:** ${reason}`).catch(() => {});
+      await interaction.guild.members.ban(target.id, { reason: `Temp ban (${formatDuration(durMs)}): ${reason}` });
+      const caseData = createCase(db, saveDb, {
+        type: CaseType.TEMPBAN, guildId: interaction.guild.id,
+        userId: target.id, userTag: target.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag,
+        reason, duration: durMs,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ embeds: [new EmbedBuilder().setTitle('⏱️🔨 Temp Ban Applied').setDescription(`**${target.tag}** temp-banned for **${formatDuration(durMs)}**.\n**Reason:** ${reason}\n**Case:** \`${caseData.caseId}\`\n**Auto-unban:** <t:${Math.floor((Date.now() + durMs) / 1000)}:R>`).setColor(0xC0392B).setTimestamp()], ephemeral: true });
+    }
+
+    // /slowmode
+    else if (cmd === 'slowmode') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels))
+        return interaction.reply({ content: '❌ You need **Manage Channels** permission.', ephemeral: true });
+
+      const seconds = interaction.options.getInteger('seconds');
+      const ch      = interaction.options.getChannel('channel') || interaction.channel;
+      await ch.setRateLimitPerUser(seconds, `Set by ${interaction.user.tag}`);
+      const caseData = createCase(db, saveDb, {
+        type: CaseType.SLOWMODE, guildId: interaction.guild.id,
+        userId: interaction.user.id, userTag: interaction.user.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag,
+        reason: `Slowmode set to ${seconds}s in #${ch.name}`,
+      });
+      await interaction.reply({ content: `✅ Slowmode in ${ch} set to **${seconds}s** (Case: \`${caseData.caseId}\`).`, ephemeral: true });
+    }
+
+    // /nick
+    else if (cmd === 'nick') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageNicknames))
+        return interaction.reply({ content: '❌ You need **Manage Nicknames** permission.', ephemeral: true });
+
+      const target   = interaction.options.getMember('user');
+      const nickname = interaction.options.getString('nickname') || null;
+      if (!target) return interaction.reply({ content: '❌ Member not found.', ephemeral: true });
+
+      const oldNick = target.nickname || target.user.username;
+      await target.setNickname(nickname, `Changed by ${interaction.user.tag}`);
+      const caseData = createCase(db, saveDb, {
+        type: CaseType.NICK, guildId: interaction.guild.id,
+        userId: target.id, userTag: target.user.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag,
+        reason: `Nickname: "${oldNick}" → "${nickname || 'reset'}"`,
+      });
+      await interaction.reply({ content: `✅ Nickname changed for ${target}: \`${oldNick}\` → \`${nickname || 'reset'}\` (Case: \`${caseData.caseId}\`)`, ephemeral: true });
+    }
+
+    // /unwarn
+    else if (cmd === 'unwarn') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers))
+        return interaction.reply({ content: '❌ You need **Moderate Members** permission.', ephemeral: true });
+
+      const target = interaction.options.getUser('user');
+      const caseId = interaction.options.getString('case_id').toUpperCase();
+      const found  = getCase(db, caseId);
+
+      if (!found) return interaction.reply({ content: `❌ Case \`${caseId}\` not found.`, ephemeral: true });
+      if (found.userId !== target.id) return interaction.reply({ content: `❌ Case \`${caseId}\` does not belong to ${target.tag}.`, ephemeral: true });
+      if (found.type !== CaseType.WARN) return interaction.reply({ content: `❌ Case \`${caseId}\` is not a WARN case.`, ephemeral: true });
+
+      closeCase(db, saveDb, caseId);
+      const removeCaseData = createCase(db, saveDb, {
+        type: CaseType.UNWARN, guildId: interaction.guild.id,
+        userId: target.id, userTag: target.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag,
+        reason: `Removed warning ${caseId}`,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(removeCaseData));
+      await interaction.reply({ content: `✅ Warning \`${caseId}\` removed from **${target.tag}**. New case: \`${removeCaseData.caseId}\``, ephemeral: true });
+    }
+
+    // /note
+    else if (cmd === 'note') {
+      if (!staffCheck(interaction.member))
+        return interaction.reply({ content: '❌ You need staff permissions to add notes.', ephemeral: true });
+
+      const target  = interaction.options.getUser('user');
+      const noteText = interaction.options.getString('note');
+      const caseData = createCase(db, saveDb, {
+        type: CaseType.NOTE, guildId: interaction.guild.id,
+        userId: target.id, userTag: target.tag,
+        modId: interaction.user.id, modTag: interaction.user.tag,
+        reason: noteText,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ content: `✅ Note added for **${target.tag}**. Case: \`${caseData.caseId}\``, ephemeral: true });
+    }
+
+    // /cases
+    else if (cmd === 'cases') {
+      if (!staffCheck(interaction.member))
+        return interaction.reply({ content: '❌ You need staff permissions to view cases.', ephemeral: true });
+
+      const target  = interaction.options.getUser('user');
+      const typeFilter = interaction.options.getString('type')?.toUpperCase();
+      let   cases   = getCasesForUser(db, interaction.guild.id, target.id);
+      if (typeFilter) cases = cases.filter(c => c.type === typeFilter);
+
+      const embed = formatUserCasesEmbed(target.id, target.tag, cases);
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    // /case
+    else if (cmd === 'case') {
+      if (!staffCheck(interaction.member))
+        return interaction.reply({ content: '❌ You need staff permissions to view cases.', ephemeral: true });
+
+      const caseId = interaction.options.getString('id').toUpperCase();
+      const found  = getCase(db, caseId);
+      if (!found) return interaction.reply({ content: `❌ Case \`${caseId}\` not found.`, ephemeral: true });
+
+      await interaction.reply({ embeds: [formatCaseEmbed(found)], ephemeral: true });
+    }
+
+    // /security
+    else if (cmd === 'security') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
+        return interaction.reply({ content: '❌ Administrator permission required.', ephemeral: true });
+
+      const sub = interaction.options.getSubcommand();
+      if (!db.securityConfig) db.securityConfig = { ...DEFAULT_SECURITY_CONFIG };
+
+      if (sub === 'status') {
+        const cfg = db.securityConfig;
+        const embed = new EmbedBuilder()
+          .setTitle('🛡️ Security Module Status')
+          .setColor(0x00D4FF)
+          .addFields(
+            { name: '🔒 Anti-Raid',         value: cfg.antiRaidEnabled     ? '✅ Enabled' : '❌ Disabled', inline: true },
+            { name: '💣 Anti-Nuke',          value: cfg.antiNukeEnabled     ? '✅ Enabled' : '❌ Disabled', inline: true },
+            { name: '🔒 Auto-Quarantine',    value: cfg.quarantineEnabled   ? '✅ Enabled' : '❌ Disabled', inline: true },
+            { name: '⚡ Join Rate Limit',    value: `${cfg.joinRateLimit} joins / ${cfg.joinRateSeconds}s`, inline: true },
+            { name: '📅 Min Account Age',    value: `${cfg.minAccountAgeDays} days`,                        inline: true },
+            { name: '💬 Mention Limit',      value: `${cfg.mentionSpamLimit} mentions`,                     inline: true },
+            { name: '🌊 Flood Limit',        value: `${cfg.messageFloodCount} msgs / ${cfg.messageFloodWindow / 1000}s`, inline: true },
+            { name: '🔁 Repeat Limit',       value: `${cfg.repeatedMsgCount}× same message`,                inline: true },
+            { name: '⏱️ Spam Timeout',      value: `${cfg.spamTimeoutMinutes} minutes`,                    inline: true },
+          )
+          .setTimestamp();
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+
+      } else if (sub === 'toggle-antinuke') {
+        db.securityConfig.antiNukeEnabled = !db.securityConfig.antiNukeEnabled;
+        saveDb();
+        await interaction.reply({ content: `💣 Anti-Nuke is now **${db.securityConfig.antiNukeEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
+
+      } else if (sub === 'toggle-antiraid') {
+        db.securityConfig.antiRaidEnabled = !db.securityConfig.antiRaidEnabled;
+        saveDb();
+        await interaction.reply({ content: `🔒 Anti-Raid is now **${db.securityConfig.antiRaidEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
+
+      } else if (sub === 'toggle-quarantine') {
+        db.securityConfig.quarantineEnabled = !db.securityConfig.quarantineEnabled;
+        saveDb();
+        await interaction.reply({ content: `🔒 Auto-Quarantine is now **${db.securityConfig.quarantineEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
       }
     }
   }

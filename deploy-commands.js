@@ -215,7 +215,75 @@ const commands = [
         .setDescription('The channel to clear (defaults to current channel)')
         .setRequired(false)),
 
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ENTERPRISE MODERATION COMMANDS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  new SlashCommandBuilder()
+    .setName('timeout')
+    .setDescription('Temporarily timeout a member (they cannot send messages or join VC)')
+    .addUserOption(o => o.setName('user').setDescription('The member to timeout').setRequired(true))
+    .addStringOption(o => o.setName('duration').setDescription('Duration: 60s, 5m, 2h, 1d, 1w (max 28d)').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the timeout').setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('untimeout')
+    .setDescription('Remove a timeout from a member')
+    .addUserOption(o => o.setName('user').setDescription('The member to un-timeout').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for removing timeout').setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('tempban')
+    .setDescription('Ban a member temporarily — auto-unban after the duration expires')
+    .addUserOption(o => o.setName('user').setDescription('The user to temp-ban').setRequired(true))
+    .addStringOption(o => o.setName('duration').setDescription('Duration: 1h, 1d, 7d, 30d').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the temp ban').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('slowmode')
+    .setDescription('Set slowmode for a channel (0 to disable)')
+    .addIntegerOption(o => o.setName('seconds').setDescription('Slowmode in seconds (0–21600)').setRequired(true).setMinValue(0).setMaxValue(21600))
+    .addChannelOption(o => o.setName('channel').setDescription('Target channel (default: current)').setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('nick')
+    .setDescription('Change a member\'s nickname')
+    .addUserOption(o => o.setName('user').setDescription('The member to rename').setRequired(true))
+    .addStringOption(o => o.setName('nickname').setDescription('New nickname (leave empty to reset)').setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('unwarn')
+    .setDescription('Remove a specific warning from a user by case ID')
+    .addUserOption(o => o.setName('user').setDescription('The member whose warning to remove').setRequired(true))
+    .addStringOption(o => o.setName('case_id').setDescription('Case ID to remove (e.g. CASE-0003)').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('note')
+    .setDescription('Add a moderator note to a user\'s case history')
+    .addUserOption(o => o.setName('user').setDescription('The member to add a note for').setRequired(true))
+    .addStringOption(o => o.setName('note').setDescription('The note to add').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('cases')
+    .setDescription('View moderation history for a user')
+    .addUserOption(o => o.setName('user').setDescription('The user to look up').setRequired(true))
+    .addStringOption(o => o.setName('type').setDescription('Filter by type: BAN, KICK, WARN, TIMEOUT, MUTE…').setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('case')
+    .setDescription('View details for a specific moderation case')
+    .addStringOption(o => o.setName('id').setDescription('Case ID (e.g. CASE-0042)').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('security')
+    .setDescription('View or configure the security module settings')
+    .addSubcommand(s => s.setName('status').setDescription('Show current security module status'))
+    .addSubcommand(s => s.setName('toggle-antinuke').setDescription('Toggle anti-nuke protection on/off'))
+    .addSubcommand(s => s.setName('toggle-antiraid').setDescription('Toggle anti-raid protection on/off'))
+    .addSubcommand(s => s.setName('toggle-quarantine').setDescription('Toggle auto-quarantine for suspicious joins')),
+
 ].map(command => command.toJSON());
+
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');
 
