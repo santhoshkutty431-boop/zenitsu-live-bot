@@ -1,0 +1,254 @@
+/**
+ * ╔═══════════════════════════════════════════════════════════════╗
+ * ║              ZENITSU AI — MULTI-MODEL HANDLER                ║
+ * ║              modules/ai-handler.js                           ║
+ * ╚═══════════════════════════════════════════════════════════════╝
+ *
+ * Supports:
+ *   • Google Gemini  (gemini-2.0-flash)  — Free
+ *   • OpenAI GPT-4o                       — Paid
+ *   • OpenAI GPT-3.5 Turbo               — Cheap
+ *   • Groq  Llama-3.3-70b                — Free & Fast
+ *
+ * Features:
+ *   • Per-user conversation memory (last 10 messages)
+ *   • Rate limiting (5 requests / 60 seconds per user)
+ *   • Server persona: ZENITSU AI
+ *   • Auto-trim long responses for Discord limits
+ */
+
+'use strict';
+
+const https = require('https');
+
+// ─── SYSTEM PERSONA ──────────────────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are ZENITSU AI, the official AI assistant of the ZENITSU LIVE Discord server.
+You are helpful, friendly, and slightly anime-themed in your personality.
+You assist members with questions about gaming, the server, purchases, and general topics.
+Keep responses concise and clear. Use Discord markdown formatting when helpful (bold, code blocks etc.).
+Do not generate harmful, illegal, or NSFW content.
+Server context: ZENITSU LIVE is a gaming community specializing in game panels, bypasses, and gaming tools.`;
+
+// ─── CONVERSATION MEMORY ─────────────────────────────────────────────────────
+
+// Map<userId, Array<{role, content}>>
+const conversations = new Map();
+const MAX_HISTORY   = 10; // messages per user
+
+function getHistory(userId) {
+  if (!conversations.has(userId)) conversations.set(userId, []);
+  return conversations.get(userId);
+}
+
+function addToHistory(userId, role, content) {
+  const hist = getHistory(userId);
+  hist.push({ role, content });
+  if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
+}
+
+function clearHistory(userId) {
+  conversations.delete(userId);
+}
+
+// ─── RATE LIMITING ───────────────────────────────────────────────────────────
+
+const rateLimits  = new Map(); // Map<userId, { count, resetAt }>
+const RATE_LIMIT  = 5;         // max requests
+const RATE_WINDOW = 60_000;    // per 60 seconds
+
+function checkRateLimit(userId) {
+  const now = Date.now();
+  const entry = rateLimits.get(userId);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimits.set(userId, { count: 1, resetAt: now + RATE_WINDOW });
+    return { allowed: true };
+  }
+
+  if (entry.count >= RATE_LIMIT) {
+    const wait = Math.ceil((entry.resetAt - now) / 1000);
+    return { allowed: false, wait };
+  }
+
+  entry.count++;
+  return { allowed: true };
+}
+
+// ─── HTTP HELPER ─────────────────────────────────────────────────────────────
+
+function httpsPost(hostname, path, headers, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req  = https.request({
+      hostname, path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers },
+    }, res => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch (e) { reject(new Error('Invalid JSON: ' + raw.slice(0, 200))); }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+// ─── MODEL DEFINITIONS ───────────────────────────────────────────────────────
+
+const MODELS = {
+  gemini: {
+    label:    '🔷 Gemini 2.0 Flash',
+    name:     'gemini-2.0-flash',
+    provider: 'google',
+    free:     true,
+    envKey:   'GEMINI_API_KEY',
+  },
+  gpt4o: {
+    label:    '🟢 GPT-4o',
+    name:     'gpt-4o',
+    provider: 'openai',
+    free:     false,
+    envKey:   'OPENAI_API_KEY',
+  },
+  gpt35: {
+    label:    '🟡 GPT-3.5 Turbo',
+    name:     'gpt-3.5-turbo',
+    provider: 'openai',
+    free:     false,
+    envKey:   'OPENAI_API_KEY',
+  },
+  groq: {
+    label:    '⚡ Groq Llama-3.3-70b',
+    name:     'llama-3.3-70b-versatile',
+    provider: 'groq',
+    free:     true,
+    envKey:   'GROQ_API_KEY',
+  },
+};
+
+// ─── PROVIDER IMPLEMENTATIONS ────────────────────────────────────────────────
+
+async function callGemini(model, messages) {
+  const apiKey  = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set in environment variables.');
+
+  // Convert OpenAI-style messages to Gemini format
+  const contents = [];
+
+  // Add system prompt as first user message (Gemini doesn't have system role)
+  contents.push({ role: 'user', parts: [{ text: SYSTEM_PROMPT }] });
+  contents.push({ role: 'model', parts: [{ text: 'Understood! I am ZENITSU AI, ready to assist.' }] });
+
+  for (const msg of messages) {
+    contents.push({
+      role:  msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }],
+    });
+  }
+
+  const res = await httpsPost(
+    'generativelanguage.googleapis.com',
+    `/v1beta/models/${model.name}:generateContent?key=${apiKey}`,
+    {},
+    { contents, generationConfig: { maxOutputTokens: 1024, temperature: 0.7 } }
+  );
+
+  if (res.error)         throw new Error(res.error.message);
+  if (!res.candidates?.length) throw new Error('No response from Gemini.');
+
+  return res.candidates[0].content.parts[0].text;
+}
+
+async function callOpenAI(model, messages) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not set in environment variables.');
+
+  const res = await httpsPost(
+    'api.openai.com',
+    '/v1/chat/completions',
+    { 'Authorization': `Bearer ${apiKey}` },
+    {
+      model:       model.name,
+      messages:    [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+      max_tokens:  1024,
+      temperature: 0.7,
+    }
+  );
+
+  if (res.error) throw new Error(res.error.message);
+  return res.choices[0].message.content;
+}
+
+async function callGroq(model, messages) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY not set in environment variables.');
+
+  const res = await httpsPost(
+    'api.groq.com',
+    '/openai/v1/chat/completions',
+    { 'Authorization': `Bearer ${apiKey}` },
+    {
+      model:       model.name,
+      messages:    [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+      max_tokens:  1024,
+      temperature: 0.7,
+    }
+  );
+
+  if (res.error) throw new Error(res.error.message || JSON.stringify(res.error));
+  return res.choices[0].message.content;
+}
+
+// ─── MAIN QUERY FUNCTION ─────────────────────────────────────────────────────
+
+async function queryAI(userId, prompt, modelKey = 'gemini') {
+  // Rate limit check
+  const rl = checkRateLimit(userId);
+  if (!rl.allowed) {
+    return { error: true, message: `⏳ Slow down! You're sending too many requests. Please wait **${rl.wait}s**.` };
+  }
+
+  const model = MODELS[modelKey];
+  if (!model) {
+    return { error: true, message: `❌ Unknown model \`${modelKey}\`. Valid: ${Object.keys(MODELS).join(', ')}` };
+  }
+
+  // Check API key is available
+  if (!process.env[model.envKey]) {
+    return { error: true, message: `❌ **${model.label}** is not configured. The \`${model.envKey}\` environment variable is missing.` };
+  }
+
+  // Build history + new message
+  const history = getHistory(userId);
+  const messages = [...history, { role: 'user', content: prompt }];
+
+  try {
+    let response;
+    if      (model.provider === 'google') response = await callGemini(model, messages);
+    else if (model.provider === 'openai') response = await callOpenAI(model, messages);
+    else if (model.provider === 'groq')   response = await callGroq(model, messages);
+    else throw new Error('Unknown provider');
+
+    // Save to memory
+    addToHistory(userId, 'user',      prompt);
+    addToHistory(userId, 'assistant', response);
+
+    // Trim for Discord (4096 char embed limit)
+    if (response.length > 3800) {
+      response = response.slice(0, 3797) + '…';
+    }
+
+    return { error: false, response, model };
+
+  } catch (err) {
+    return { error: true, message: `❌ **${model.label}** error: ${err.message}` };
+  }
+}
+
+// ─── EXPORTS ─────────────────────────────────────────────────────────────────
+
+module.exports = { queryAI, MODELS, clearHistory, getHistory };

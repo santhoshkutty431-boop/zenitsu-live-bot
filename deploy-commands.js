@@ -282,6 +282,40 @@ const commands = [
     .addSubcommand(s => s.setName('toggle-antiraid').setDescription('Toggle anti-raid protection on/off'))
     .addSubcommand(s => s.setName('toggle-quarantine').setDescription('Toggle auto-quarantine for suspicious joins')),
 
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ZENITSU AI — MULTI-MODEL AI ASSISTANT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  new SlashCommandBuilder()
+    .setName('ai')
+    .setDescription('Ask ZENITSU AI a question using your choice of AI model')
+    .addStringOption(o => o
+      .setName('prompt')
+      .setDescription('Your question or message for the AI')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('model')
+      .setDescription('Which AI model to use (default: Gemini)')
+      .setRequired(false)
+      .addChoices(
+        { name: '🔷 Gemini 2.0 Flash (Free)',       value: 'gemini' },
+        { name: '🟢 GPT-4o (Best)',                  value: 'gpt4o'  },
+        { name: '🟡 GPT-3.5 Turbo (Fast & Cheap)',   value: 'gpt35'  },
+        { name: '⚡ Groq Llama-3.3-70b (Free+Fast)', value: 'groq'   },
+      )),
+
+  new SlashCommandBuilder()
+    .setName('ai-reset')
+    .setDescription('Clear your AI conversation memory and start fresh'),
+
+  new SlashCommandBuilder()
+    .setName('ai-channel')
+    .setDescription('Set or clear the dedicated AI chat channel (Admin only)')
+    .addChannelOption(o => o
+      .setName('channel')
+      .setDescription('The channel to use for AI auto-replies (leave empty to disable)')
+      .setRequired(false)),
+
 ].map(command => command.toJSON());
 
 

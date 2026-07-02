@@ -36,6 +36,7 @@ const { logMemberJoin, logMemberLeave,
         logMessageDelete, logMessageEdit,
         logVoiceUpdate, logRoleUpdate,
         logChannelUpdate, logGuildMemberRoleUpdate }          = require('./modules/logger');
+const { queryAI, MODELS, clearHistory }                      = require('./modules/ai-handler');
 
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
@@ -113,6 +114,8 @@ let db = {
   cases:           [],     // All moderation cases
   caseCounter:     0,      // Auto-incrementing case ID counter
   securityConfig:  { ...DEFAULT_SECURITY_CONFIG }, // Per-server security settings
+  aiChannelId:     null,   // Channel ID for AI auto-reply (set via /ai-channel)
+  aiDefaultModel:  'gemini', // Default AI model
 };
 
 function loadDb() {
@@ -583,6 +586,32 @@ client.on('messageCreate', async message => {
   if (db.protectmeActive && !staffCheck(message.member)) {
     const { violated } = await handleMessageSecurity(message, db, saveDb, logToChannel, ID);
     if (violated) return;
+  }
+
+  // ── ZENITSU AI — Auto-Reply in designated AI channel ─────────────────────
+  if (db.aiChannelId && message.channel.id === db.aiChannelId) {
+    if (message.content.startsWith('/') || message.content.length < 2) return;
+
+    // Show typing indicator
+    await message.channel.sendTyping().catch(() => {});
+
+    const modelKey = db.aiDefaultModel || 'gemini';
+    const result   = await queryAI(message.author.id, message.content, modelKey);
+
+    const { EmbedBuilder: EB } = require('discord.js');
+
+    if (result.error) {
+      await message.reply({ content: result.message, allowedMentions: { repliedUser: false } }).catch(() => {});
+    } else {
+      const aiEmbed = new EB()
+        .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
+        .setDescription(result.response)
+        .setColor(0x00D4FF)
+        .setFooter({ text: `${MODELS[modelKey]?.label || modelKey} • /ai-reset to clear memory` })
+        .setTimestamp();
+      await message.reply({ embeds: [aiEmbed], allowedMentions: { repliedUser: false } }).catch(() => {});
+    }
+    return;
   }
 
   // ── [13] XP System ────────────────────────────────────────────────────────
@@ -1291,6 +1320,103 @@ client.on('interactionCreate', async interaction => {
         saveDb();
         await interaction.reply({ content: `🔒 Auto-Quarantine is now **${db.securityConfig.quarantineEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ZENITSU AI COMMANDS
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // /ai
+    else if (cmd === 'ai') {
+      await interaction.deferReply();
+
+      const prompt   = interaction.options.getString('prompt');
+      const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
+      const result   = await queryAI(interaction.user.id, prompt, modelKey);
+
+      if (result.error) {
+        return interaction.editReply({ content: result.message });
+      }
+
+      const modelInfo = MODELS[modelKey];
+      const aiEmbed = new EmbedBuilder()
+        .setAuthor({
+          name:    'ZENITSU AI',
+          iconURL: interaction.client.user.displayAvatarURL(),
+        })
+        .addFields(
+          { name: '💬 Your Question', value: prompt.slice(0, 1024) },
+          { name: '🤖 Answer',        value: result.response.slice(0, 1024) },
+        )
+        .setColor(0x00D4FF)
+        .setFooter({ text: `${modelInfo?.label || modelKey} • Reply is remembered • /ai-reset to clear` })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [aiEmbed] });
+    }
+
+    // /ai-reset
+    else if (cmd === 'ai-reset') {
+      clearHistory(interaction.user.id);
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('🔄 Memory Cleared')
+            .setDescription('Your AI conversation history has been reset. The next message starts a fresh conversation.')
+            .setColor(0xF39C12)
+            .setTimestamp()
+        ],
+        ephemeral: true,
+      });
+    }
+
+    // /ai-channel
+    else if (cmd === 'ai-channel') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
+        return interaction.reply({ content: '❌ Administrator permission required.', ephemeral: true });
+
+      const ch = interaction.options.getChannel('channel');
+
+      if (!ch) {
+        db.aiChannelId = null;
+        saveDb();
+        return interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setTitle('🤖 AI Channel Disabled')
+            .setDescription('AI auto-reply channel has been removed. Use `/ai` command to chat with AI.')
+            .setColor(0xE74C3C).setTimestamp()],
+          ephemeral: true,
+        });
+      }
+
+      db.aiChannelId = ch.id;
+      saveDb();
+
+      // Post an intro message in the newly set AI channel
+      const introEmbed = new EmbedBuilder()
+        .setTitle('🤖 ZENITSU AI is Active Here!')
+        .setDescription(
+          '**Just type your question and I will answer!**\n\n' +
+          '> 🔷 Using **Gemini 2.0 Flash** by default\n' +
+          '> 💬 I remember your last 10 messages\n' +
+          '> ⚡ Use `/ai` command in any channel for a specific model\n' +
+          '> 🔄 Use `/ai-reset` to clear your memory\n\n' +
+          '*Ask me anything — gaming, coding, general knowledge, and more!*'
+        )
+        .setColor(0x00D4FF)
+        .setThumbnail(interaction.client.user.displayAvatarURL())
+        .setFooter({ text: 'ZENITSU AI • Powered by Google Gemini' })
+        .setTimestamp();
+
+      await ch.send({ embeds: [introEmbed] }).catch(() => {});
+
+      await interaction.reply({
+        embeds: [new EmbedBuilder()
+          .setTitle('✅ AI Channel Set')
+          .setDescription(`${ch} is now the dedicated AI chat channel.\nMembers can type directly to chat with **ZENITSU AI**.`)
+          .setColor(0x2ECC71).setTimestamp()],
+        ephemeral: true,
+      });
     }
   }
 
