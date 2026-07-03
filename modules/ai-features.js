@@ -134,7 +134,13 @@ async function handleAiTicketSupport(message, db, saveDb) {
   const query = `${TICKET_FAQ_PROMPT}\n\n[CRITICAL DIALECT & FORMATTING DIRECTIVES: ${langDirective}]\n\nUser Question: ${message.content}`;
   const modelKey = db.aiDefaultModel || 'gemini';
 
-  const result = await queryAI(message.author.id, query, modelKey);
+  const result = await queryAI(message.author.id, query, modelKey, userLang, {
+    applicationId: message.client.application?.id || 'default',
+    guildId: message.guild.id,
+    channelId: message.channel.id,
+    threadId: message.channel.isThread() ? message.channel.id : 'none',
+    shardId: message.client.shard?.ids?.[0]?.toString() || '0'
+  });
   if (result.error) return;
 
   const embed = new EmbedBuilder()
@@ -172,7 +178,13 @@ async function handleAiModeration(message, db, saveDb, logToChannel, ID) {
   const modelKey = db.aiDefaultModel || 'gemini';
 
   // Perform quick classification
-  const result = await queryAI(message.author.id, query, modelKey);
+  const result = await queryAI(message.author.id, query, modelKey, null, {
+    applicationId: message.client.application?.id || 'default',
+    guildId: message.guild?.id || 'dm',
+    channelId: message.channel.id,
+    threadId: message.channel.isThread() ? message.channel.id : 'none',
+    shardId: message.client.shard?.ids?.[0]?.toString() || '0'
+  });
   if (result.error) return false;
 
   const classification = result.response.toUpperCase().trim();
@@ -244,7 +256,13 @@ async function handleAiReactionTranslate(reaction, user) {
 Message: "${message.content}"`;
 
   const modelKey = 'gemini'; // default translation model
-  const result   = await queryAI(user.id, prompt, modelKey);
+  const result   = await queryAI(user.id, prompt, modelKey, null, {
+    applicationId: message.client.application?.id || 'default',
+    guildId: message.guild?.id || 'dm',
+    channelId: message.channel.id,
+    threadId: message.channel.isThread() ? message.channel.id : 'none',
+    shardId: message.client.shard?.ids?.[0]?.toString() || '0'
+  });
 
   if (result.error) {
     return user.send(`❌ Translation failed: ${result.message}`).catch(() => {});

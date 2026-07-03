@@ -47,25 +47,42 @@ STRICT LANGUAGE & DIALECT CONSISTENCY RULES:
 • Rule 3 (Tanglish): If the user asks in Tanglish (e.g. 'enna pantra', 'epdi iruka'), reply 100% in natural Tanglish. Example: 'Bas bro, active-ah ready-ah irukken, unga questions-ku help panna! Sollunga, enna help venum?'
 • Rule 4 (No Mixed Greetings): Do NOT combine unrelated greetings (e.g., do NOT say 'Namaste/Hallo' or 'Namaste/Konnichiwa'). Use a single, clean greeting matching the dialect.`;
 
-// ─── CONVERSATION MEMORY ─────────────────────────────────────────────────────
-
-// Map<userId, Array<{role, content}>>
-const conversations = new Map();
-const MAX_HISTORY   = 10; // messages per user
-
-function getHistory(userId) {
-  if (!conversations.has(userId)) conversations.set(userId, []);
-  return conversations.get(userId);
+// Isolated session key generator to support application, guild, channel, user separation.
+// Never use raw user ID alone to prevent context leaking.
+function resolveSessionKey(userId, context = {}) {
+  const appId = context.applicationId || 'global';
+  const guildId = context.guildId || 'dm';
+  const channelId = context.channelId || 'none';
+  const threadId = context.threadId || 'none';
+  const shardId = context.shardId || '0';
+  const workerId = context.workerId || '0';
+  const sessionUuid = context.sessionUuid || 'default';
+  
+  return `app:${appId}:guild:${guildId}:channel:${channelId}:thread:${threadId}:shard:${shardId}:worker:${workerId}:session:${sessionUuid}:user:${userId}`;
 }
 
-function addToHistory(userId, role, content) {
-  const hist = getHistory(userId);
+const conversations = new Map();
+const MAX_HISTORY   = 10; // messages per session context
+
+function getHistory(userId, context = {}) {
+  const key = resolveSessionKey(userId, context);
+  if (!conversations.has(key)) conversations.set(key, []);
+  console.log(`[AI SESSION LOG] Loading short-term conversation context for session key: ${key}`);
+  return conversations.get(key);
+}
+
+function addToHistory(userId, role, content, context = {}) {
+  const key = resolveSessionKey(userId, context);
+  const hist = getHistory(userId, context);
   hist.push({ role, content });
   if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
+  console.log(`[AI SESSION LOG] Saved message role "${role}" to session memory. Total history size: ${hist.length}`);
 }
 
-function clearHistory(userId) {
-  conversations.delete(userId);
+function clearHistory(userId, context = {}) {
+  const key = resolveSessionKey(userId, context);
+  conversations.delete(key);
+  console.log(`[AI SESSION LOG] Cleared isolated conversation memory for session key: ${key}`);
 }
 
 // ─── RATE LIMITING ───────────────────────────────────────────────────────────
@@ -222,87 +239,112 @@ async function callGroq(model, messages) {
 
 // ─── MAIN QUERY FUNCTION ─────────────────────────────────────────────────────
 
-async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null) {
+// Mutex locking system to serialize concurrent operations per session context.
+// Prevents race conditions, duplicate replies, and parallel memory corruption.
+const sessionLocks = new Map();
+async function acquireSessionLock(key) {
+  while (sessionLocks.get(key)) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  sessionLocks.set(key, true);
+}
+function releaseSessionLock(key) {
+  sessionLocks.delete(key);
+}
+
+async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, context = {}) {
+  const sessionKey = resolveSessionKey(userId, context);
+  
   // Rate limit check
   const rl = checkRateLimit(userId);
   if (!rl.allowed) {
     return { error: true, message: `⏳ Slow down! You're sending too many requests. Please wait **${rl.wait}s**.` };
   }
 
-  // Define failover order
-  const failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
+  // Acquire mutex lock for this specific isolated session context
+  await acquireSessionLock(sessionKey);
+  console.log(`[AI SESSION LOG] Locked isolated session for processing: ${sessionKey}`);
 
-  let attemptErrorLogs = [];
-  let successfulModel = null;
-  let responseText = null;
+  try {
+    // Define failover order
+    const failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
 
-  const history = getHistory(userId);
-  const messages = [...history];
+    let attemptErrorLogs = [];
+    let successfulModel = null;
+    let responseText = null;
 
-  // Inject strict dialect constraints based on user choice
-  if (userLang === 'hinglish') {
-    messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in Hinglish dialect (Hindi-English mix written in English alphabet).]' });
-    messages.push({ role: 'assistant', content: 'Samajh gaya bro! Main Hinglish me hi reply karunga. Poochhiye kya poochhna hai.' });
-  } else if (userLang === 'tanglish') {
-    messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in Tanglish/Tunglish dialect (Tamil-English mix written in English alphabet).]' });
-    messages.push({ role: 'assistant', content: 'Purinjithu bro! Naan Tanglish-la reply panren. Sollunga enna help venum.' });
-  } else if (userLang === 'english') {
-    messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in standard English.]' });
-    messages.push({ role: 'assistant', content: 'Understood! I will respond to you in English.' });
-  }
+    const history = getHistory(userId, context);
+    const messages = [...history];
 
-  messages.push({ role: 'user', content: prompt });
-
-  for (const currentKey of failoverQueue) {
-    const model = MODELS[currentKey];
-    if (!model) continue;
-
-    // Check if API key exists
-    if (!process.env[model.envKey]) {
-      attemptErrorLogs.push(`${model.label}: API Key not set.`);
-      continue;
+    // Inject strict dialect directives
+    if (userLang === 'hinglish') {
+      messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in Hinglish dialect (Hindi-English mix written in English alphabet).]' });
+      messages.push({ role: 'assistant', content: 'Samajh gaya bro! Main Hinglish me hi reply karunga. Poochhiye kya poochhna hai.' });
+    } else if (userLang === 'tanglish') {
+      messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in Tanglish/Tunglish dialect (Tamil-English mix written in English alphabet).]' });
+      messages.push({ role: 'assistant', content: 'Purinjithu bro! Naan Tanglish-la reply panren. Sollunga enna help venum.' });
+    } else if (userLang === 'english') {
+      messages.push({ role: 'user', content: '[System directive: You MUST respond entirely in standard English.]' });
+      messages.push({ role: 'assistant', content: 'Understood! I will respond to you in English.' });
     }
 
-    try {
-      let response;
-      if      (model.provider === 'google') response = await callGemini(model, messages);
-      else if (model.provider === 'openai') response = await callOpenAI(model, messages);
-      else if (model.provider === 'groq')   response = await callGroq(model, messages);
-      else throw new Error('Unknown provider');
+    messages.push({ role: 'user', content: prompt });
 
-      responseText = response;
-      successfulModel = model;
-      break; // Successfully got response, stop failover loop
-    } catch (err) {
-      attemptErrorLogs.push(`${model.label} error: ${err.message}`);
+    for (const currentKey of failoverQueue) {
+      const model = MODELS[currentKey];
+      if (!model) continue;
+
+      // Check if API key exists
+      if (!process.env[model.envKey]) {
+        attemptErrorLogs.push(`${model.label}: API Key not set.`);
+        continue;
+      }
+
+      try {
+        let response;
+        if      (model.provider === 'google') response = await callGemini(model, messages);
+        else if (model.provider === 'openai') response = await callOpenAI(model, messages);
+        else if (model.provider === 'groq')   response = await callGroq(model, messages);
+        else throw new Error('Unknown provider');
+
+        responseText = response;
+        successfulModel = model;
+        break; // Successfully got response, stop failover loop
+      } catch (err) {
+        attemptErrorLogs.push(`${model.label} error: ${err.message}`);
+      }
     }
-  }
 
-  if (!successfulModel) {
+    if (!successfulModel) {
+      return {
+        error: true,
+        message: `❌ AI Service is temporarily unavailable. All models failed:\n• ` + attemptErrorLogs.join('\n• '),
+        attempts: attemptErrorLogs
+      };
+    }
+
+    // Save to isolated memory
+    addToHistory(userId, 'user',      prompt, context);
+    addToHistory(userId, 'assistant', responseText, context);
+
+    // Trim response for Discord limits (4096 char embed limit)
+    if (responseText.length > 3800) {
+      responseText = responseText.slice(0, 3797) + '…';
+    }
+
     return {
-      error: true,
-      message: `❌ AI Service is temporarily unavailable. All models failed:\n• ` + attemptErrorLogs.join('\n• '),
+      error: false,
+      response: responseText,
+      model: successfulModel,
+      originalRequested: MODELS[modelKey] || { label: modelKey },
+      failoverCount: failoverQueue.indexOf(successfulModel.name === 'llama-3.3-70b-versatile' ? 'groq' : successfulModel.name === 'gpt-3.5-turbo' ? 'gpt35' : 'gemini'),
       attempts: attemptErrorLogs
     };
+  } finally {
+    // Always release lock
+    releaseSessionLock(sessionKey);
+    console.log(`[AI SESSION LOG] Released isolated session: ${sessionKey}`);
   }
-
-  // Save to memory
-  addToHistory(userId, 'user',      prompt);
-  addToHistory(userId, 'assistant', responseText);
-
-  // Trim response for Discord limits (4096 char embed limit)
-  if (responseText.length > 3800) {
-    responseText = responseText.slice(0, 3797) + '…';
-  }
-
-  return {
-    error: false,
-    response: responseText,
-    model: successfulModel,
-    originalRequested: MODELS[modelKey] || { label: modelKey },
-    failoverCount: failoverQueue.indexOf(successfulModel.name === 'llama-3.3-70b-versatile' ? 'groq' : successfulModel.name === 'gpt-3.5-turbo' ? 'gpt35' : 'gemini'),
-    attempts: attemptErrorLogs
-  };
 }
 
 // ─── EXPORTS ─────────────────────────────────────────────────────────────────

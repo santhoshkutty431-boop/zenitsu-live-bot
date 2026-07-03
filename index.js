@@ -887,8 +887,13 @@ client.on('messageCreate', async message => {
     // Show typing indicator
     await message.channel.sendTyping().catch(() => {});
 
-    const modelKey = db.aiDefaultModel || 'gemini';
-    const result   = await queryAI(message.author.id, message.content, modelKey, userLang);
+    const result   = await queryAI(message.author.id, message.content, modelKey, userLang, {
+      applicationId: message.client.application?.id || 'default',
+      guildId: message.guild.id,
+      channelId: message.channel.id,
+      threadId: message.channel.isThread() ? message.channel.id : 'none',
+      shardId: message.client.shard?.ids?.[0]?.toString() || '0'
+    });
 
     // Send private analytics log to staff channel
     await logAiAnalytics(message.author, message.content, result, message.guild);
@@ -1788,9 +1793,13 @@ client.on('interactionCreate', async interaction => {
 
       await interaction.deferReply();
 
-      const prompt   = interaction.options.getString('prompt');
-      const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
-      const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang);
+      const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
+        applicationId: interaction.client.application?.id || 'default',
+        guildId: interaction.guildId || 'dm',
+        channelId: interaction.channelId || 'none',
+        threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
+        shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
+      });
 
       // Send private analytics log to staff channel
       await logAiAnalytics(interaction.user, prompt, result, interaction.guild);

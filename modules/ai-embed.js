@@ -108,7 +108,13 @@ async function handleAiEmbed(interaction, db, saveDb, logToChannel, ID) {
   const query = AI_EMBED_PROMPT + prompt;
   const modelKey = db.aiDefaultModel || 'gemini';
 
-  const result = await queryAI(interaction.user.id, query, modelKey);
+  const result = await queryAI(interaction.user.id, query, modelKey, null, {
+    applicationId: interaction.client.application?.id || 'default',
+    guildId: interaction.guildId || 'dm',
+    channelId: interaction.channelId || 'none',
+    threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
+    shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
+  });
   if (result.error) {
     return interaction.editReply({ content: `❌ **AI Generation failed:** ${result.message}` });
   }
