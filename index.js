@@ -127,15 +127,129 @@ let db = {
   userLanguages: {}        // { [userId]: 'english' | 'tunglish' | 'hinglish' }
 };
 
+let dbInMemoryTimestamp = Date.now();
+let dbFileLastModified = 0;
+let writeQueue = Promise.resolve();
+
+function mergeDatabase(diskDb) {
+  console.log('[DB LOG] Merging disk database into memory cache...');
+  
+  const mergedRoleWhitelist = Array.from(new Set([
+    ...(db.roleWhitelist || []),
+    ...(diskDb.roleWhitelist || [])
+  ]));
+  
+  const mergedServerWhitelist = Array.from(new Set([
+    ...(db.serverWhitelist || []),
+    ...(diskDb.serverWhitelist || [])
+  ]));
+
+  const mergedCommandRoleWhitelist = {
+    admin: Array.from(new Set([
+      ...(db.commandRoleWhitelist?.admin || []),
+      ...(diskDb.commandRoleWhitelist?.admin || [])
+    ])),
+    staff: Array.from(new Set([
+      ...(db.commandRoleWhitelist?.staff || []),
+      ...(diskDb.commandRoleWhitelist?.staff || [])
+    ])),
+    member: Array.from(new Set([
+      ...(db.commandRoleWhitelist?.member || []),
+      ...(diskDb.commandRoleWhitelist?.member || [])
+    ]))
+  };
+
+  db = {
+    ...db,
+    ...diskDb,
+    roleWhitelist: mergedRoleWhitelist,
+    serverWhitelist: mergedServerWhitelist,
+    commandRoleWhitelist: mergedCommandRoleWhitelist
+  };
+
+  dbInMemoryTimestamp = Date.now();
+  console.log('[DB LOG] Merge complete. Whitelists synced. Current state:', {
+    users: db.roleWhitelist,
+    roles: db.commandRoleWhitelist,
+    servers: db.serverWhitelist
+  });
+}
+
 function loadDb() {
+  console.log('[DB LOG] Read operation started...');
   if (fs.existsSync(dbPath)) {
-    try { db = { ...db, ...JSON.parse(fs.readFileSync(dbPath, 'utf8')) }; }
-    catch (e) { console.error('DB load error:', e.message); }
+    try {
+      const stats = fs.statSync(dbPath);
+      const mtime = stats.mtimeMs;
+      
+      const fileContent = fs.readFileSync(dbPath, 'utf8');
+      const diskDb = JSON.parse(fileContent);
+
+      if (dbFileLastModified === 0) {
+        db = { ...db, ...diskDb };
+        dbFileLastModified = mtime;
+        dbInMemoryTimestamp = Date.now();
+        console.log('[DB LOG] Initial DB load successful. Read result:', {
+          users: db.roleWhitelist,
+          roles: db.commandRoleWhitelist,
+          servers: db.serverWhitelist
+        });
+      } else if (mtime > dbFileLastModified) {
+        console.log('[DB LOG] Disk is newer (Disk mtime:', mtime, '> Last read:', dbFileLastModified, '). Initiating merge...');
+        mergeDatabase(diskDb);
+        dbFileLastModified = mtime;
+      } else {
+        console.log('[DB LOG] Memory cache is up to date with disk.');
+      }
+    } catch (e) {
+      console.error('[DB LOG] DB load/read error:', e.message);
+    }
+  } else {
+    console.log('[DB LOG] DB file does not exist, using default memory state.');
   }
 }
+
 function saveDb() {
-  try { fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8'); }
-  catch (e) { console.error('DB save error:', e.message); }
+  writeQueue = writeQueue.then(() => new Promise((resolve) => {
+    console.log('[DB LOG] Before save: Preparing atomic transaction...');
+    
+    try {
+      if (fs.existsSync(dbPath)) {
+        const stats = fs.statSync(dbPath);
+        if (stats.mtimeMs > dbFileLastModified) {
+          console.log('[DB LOG] Disk changed since last read, reloading and merging first...');
+          const fileContent = fs.readFileSync(dbPath, 'utf8');
+          mergeDatabase(JSON.parse(fileContent));
+          dbFileLastModified = stats.mtimeMs;
+        }
+      }
+    } catch (err) {
+      console.error('[DB LOG] Disk pre-check failed:', err.message);
+    }
+
+    const tempPath = `${dbPath}.tmp`;
+    try {
+      fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf8');
+      fs.renameSync(tempPath, dbPath);
+      
+      const stats = fs.statSync(dbPath);
+      dbFileLastModified = stats.mtimeMs;
+      dbInMemoryTimestamp = Date.now();
+      
+      console.log('[DB LOG] Database result: Save successful. Cache/Memory updated. Whitelists:', {
+        users: db.roleWhitelist,
+        roles: db.commandRoleWhitelist,
+        servers: db.serverWhitelist
+      });
+      resolve();
+    } catch (e) {
+      console.error('[DB LOG] Database result: Save transaction failed! Rollback initiated. Error:', e.message);
+      if (fs.existsSync(tempPath)) {
+        try { fs.unlinkSync(tempPath); } catch (_) {}
+      }
+      resolve();
+    }
+  }));
 }
 loadDb();
 
@@ -285,6 +399,7 @@ client.once('ready', async () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 client.on('guildMemberAdd', async member => {
   console.log(`[JOIN] ${member.user.tag} joined`);
+  loadDb(); // Sync with disk before security checks
 
   // Security: anti-raid + account age check
   await secHandleJoin(member, db, saveDb, logToChannel, ID);
@@ -550,6 +665,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         const executorId = logEntry.executor?.id;
         
         if (executorId) {
+          loadDb(); // Sync with disk before security checks
           const isExecOwner = executorId === ownerId;
           const isExecGuildOwner = executorId === newMember.guild.ownerId;
           const executorMember = await newMember.guild.members.fetch(executorId).catch(() => null);
@@ -675,6 +791,7 @@ client.on('roleUpdate', async (oldRole, newRole) => {
         const logEntry = fetchedLogs.entries.find(entry => entry.target?.id === newRole.id);
         if (logEntry) {
           const executorId = logEntry.executor?.id;
+          loadDb(); // Sync with disk before security checks
           const isExecOwner = executorId === ownerId;
           const isExecGuildOwner = executorId === newRole.guild.ownerId;
           const executorMember = await newRole.guild.members.fetch(executorId).catch(() => null);
@@ -720,6 +837,9 @@ client.on('guildAuditLogEntryCreate', async (entry, guild) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
+
+  // Sync DB on incoming message to ensure up-to-date whitelists/settings
+  loadDb();
 
   // 1. AI Context-based Moderation
   const aiModViolated = await handleAiModeration(message, db, saveDb, logToChannel, ID);
@@ -884,6 +1004,7 @@ function getCmdTier(cmd) {
 }
 
 function hasCommandAccess(member, cmd, userId) {
+  loadDb(); // Sync with disk before checking permissions
   if (isOwner(userId)) return true; // bot owner bypasses everything
   if (member && member.id === member.guild?.ownerId) return true; // Server Owner bypasses all command checks on their server
 
@@ -921,6 +1042,8 @@ function hasCommandAccess(member, cmd, userId) {
 }
 
 client.on('interactionCreate', async interaction => {
+  loadDb(); // Sync with disk before interaction checks
+
   // ── SERVER WHITELIST CHECK ───────────────────────────────────────────────────
   if (interaction.guildId) {
     const isMainGuild      = interaction.guildId === config.guildId;
