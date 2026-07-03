@@ -870,7 +870,7 @@ const CMD_TIERS = {
   // Admin permission required
   ADMIN:   ['ban', 'tempban', 'unban', 'role', 'setup-panel',
              'embed', 'ai-embed', 'clear-channel', 'security', 'ai-channel',
-             'whitelist-server'],
+             'whitelist-server', 'whitelist-role'],
 
   // Bot owner only
   OWNER:   ['giverole', 'whitelist'],
@@ -1231,9 +1231,6 @@ client.on('interactionCreate', async interaction => {
 
     // /whitelist-role
     else if (cmd === 'whitelist-role') {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator) && !interaction.member?.roles?.cache?.has(ID.OWNER_ROLE)) {
-        return interaction.reply({ content: '❌ Administrator permission required.', ephemeral: true });
-      }
 
       const sub = interaction.options.getSubcommand();
       db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
@@ -1612,8 +1609,6 @@ client.on('interactionCreate', async interaction => {
 
     // /security
     else if (cmd === 'security') {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
-        return interaction.reply({ content: '❌ Administrator permission required.', ephemeral: true });
 
       const sub = interaction.options.getSubcommand();
       if (!db.securityConfig) db.securityConfig = { ...DEFAULT_SECURITY_CONFIG };
@@ -1730,8 +1725,6 @@ client.on('interactionCreate', async interaction => {
 
     // /ai-channel
     else if (cmd === 'ai-channel') {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
-        return interaction.reply({ content: '❌ Administrator permission required.', ephemeral: true });
 
       const ch = interaction.options.getChannel('channel');
 
