@@ -77,6 +77,14 @@ const client = new Client({
   ]
 });
 
+client.on('error', err => {
+  console.error('[CLIENT ERROR]', err);
+});
+
+process.on('unhandledRejection', err => {
+  console.error('[UNHANDLED REJECTION]', err);
+});
+
 // ─── KNOWN CHANNEL / ROLE IDS ─────────────────────────────────────────────────
 const ID = {
   // Roles
@@ -257,13 +265,13 @@ function mergeDatabase(diskDb) {
     ]))
   };
 
-  db = {
+  Object.assign(db, {
     ...db,
     ...diskDb,
     roleWhitelist: mergedRoleWhitelist,
     serverWhitelist: mergedServerWhitelist,
     commandRoleWhitelist: mergedCommandRoleWhitelist
-  };
+  });
 
   dbInMemoryTimestamp = Date.now();
   console.log('[DB LOG] Merge complete. Whitelists synced. Current state:', {
@@ -533,7 +541,10 @@ client.once('ready', async () => {
   console.log(`   Server logs : ${ID.SERVER_LOGS || '(not set — run setup-upgrades.js first)'}`);
   console.log(`   Voice log   : ${ID.VOICE_LOG   || '(not set)'}`);
   console.log(`   Mod log     : ${ID.MOD_LOG      || '(not set)'}`);
-  client.user.setActivity('ZENITSU LIVE | /help', { type: 3 });
+  client.user.setPresence({
+    status: 'online',
+    activities: [{ name: 'ZENITSU LIVE | /help', type: 3 }],
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -894,11 +905,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
-// ─── LOGGER: MEMBER LEAVE ───────────────────────────────────────────────────
-client.on('guildMemberRemove', async member => {
-  await logMemberLeave(member, ID);
-});
-
 // ─── LOGGER & SECURITY: ROLE UPDATES ─────────────────────────────────────────
 client.on('roleUpdate', async (oldRole, newRole) => {
   try {
@@ -1029,6 +1035,7 @@ client.on('messageCreate', async message => {
     // Show typing indicator
     await message.channel.sendTyping().catch(() => {});
 
+    const modelKey = db.aiDefaultModel || 'gemini';
     const result   = await queryAI(message.author.id, message.content, modelKey, userLang, {
       applicationId: message.client.application?.id || 'default',
       guildId: message.guild.id,
@@ -1124,10 +1131,10 @@ client.on('messageCreate', async message => {
 
 const CMD_TIERS = {
   // Public — any verified member
-  PUBLIC:  ['help', 'request-song', 'queue', 'report-user', 'ai', 'ai-reset', 'draw'],
+  PUBLIC:  ['help', 'request-song', 'queue', 'report-user', 'ai', 'ai-reset', 'ai-lang', 'draw', 'leaderboard', 'check-bypass'],
 
   // Member role required
-  MEMBER:  ['rank', 'feedback'],
+  MEMBER:  ['rank'],
 
   // Staff role required
   STAFF:   ['warn', 'unwarn', 'kick', 'mute', 'unmute', 'timeout', 'untimeout',
@@ -1140,7 +1147,7 @@ const CMD_TIERS = {
              'whitelist-server', 'whitelist-role'],
 
   // Bot owner only
-  OWNER:   ['giverole', 'whitelist'],
+  OWNER:   ['whitelist'],
 };
 
 function getCmdTier(cmd) {
@@ -1238,8 +1245,25 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
+    // /help
+    if (cmd === 'help') {
+      const embed = new EmbedBuilder()
+        .setTitle('ZENITSU LIVE Bot Help')
+        .setColor(0xEDC231)
+        .setDescription('Useful commands are grouped by access level.')
+        .addFields(
+          { name: 'Public', value: '`/help`, `/ai`, `/ai-lang`, `/ai-reset`, `/draw`, `/request-song`, `/queue`, `/leaderboard`, `/report-user`, `/check-bypass`' },
+          { name: 'Member', value: '`/rank`' },
+          { name: 'Staff', value: '`/warn`, `/unwarn`, `/kick`, `/mute`, `/unmute`, `/timeout`, `/untimeout`, `/cases`, `/case`, `/purge`, `/lock`, `/unlock`, `/say`' },
+          { name: 'Admin', value: '`/setup-panel`, `/embed`, `/ai-embed`, `/security`, `/ai-channel`, `/role`, `/ban`, `/tempban`, `/unban`, `/clear-channel`, `/whitelist-role`' }
+        )
+        .setFooter({ text: 'ZENITSU LIVE | Use commands responsibly' })
+        .setTimestamp();
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     // /setup-panel
-    if (cmd === 'setup-panel') {
+    else if (cmd === 'setup-panel') {
       // Row 1 — Ticket Categories (upgrade 21)
       const ticketRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('ticket_purchase').setLabel('🛒 Purchase').setStyle(ButtonStyle.Success),
@@ -1644,6 +1668,37 @@ client.on('interactionCreate', async interaction => {
       ]});
     }
 
+    // /unban
+    else if (cmd === 'unban') {
+      const userId = interaction.options.getString('user_id');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+
+      if (!/^\d{17,20}$/.test(userId)) {
+        return interaction.reply({ content: 'Invalid Discord user ID.', ephemeral: true });
+      }
+
+      let user;
+      try {
+        await interaction.guild.members.unban(userId, reason);
+        user = await interaction.client.users.fetch(userId).catch(() => null);
+      } catch (err) {
+        return interaction.reply({ content: `Could not unban that user: ${err.message}`, ephemeral: true });
+      }
+      const userTag = user?.tag || userId;
+
+      const caseData = createCase(db, saveDb, {
+        type:    CaseType.UNBAN,
+        guildId: interaction.guild.id,
+        userId,
+        userTag,
+        modId:   interaction.user.id,
+        modTag:  interaction.user.tag,
+        reason,
+      });
+      await logToChannel(interaction.guild, ID.MOD_LOG, formatCaseEmbed(caseData));
+      await interaction.reply({ content: `Unbanned **${userTag}**. Case: \`${caseData.caseId}\``, ephemeral: true });
+    }
+
     // /purge
     else if (cmd === 'purge') {
       const amount = interaction.options.getInteger('amount') || 50;
@@ -1935,6 +1990,8 @@ client.on('interactionCreate', async interaction => {
 
       await interaction.deferReply();
 
+      const prompt = interaction.options.getString('prompt');
+      const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
       const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
         applicationId: interaction.client.application?.id || 'default',
         guildId: interaction.guildId || 'dm',
@@ -2000,7 +2057,19 @@ client.on('interactionCreate', async interaction => {
     // /ai-channel
     else if (cmd === 'ai-channel') {
 
-      const ch = interaction.options.getChannel('channel');
+      const guild = interaction.guild || await interaction.client.guilds.fetch(interaction.guildId).catch(() => null);
+      if (!guild) {
+        return interaction.reply({
+          content: 'This command can only be used inside a server where the bot is present.',
+          ephemeral: true,
+        });
+      }
+
+      const selectedChannel = interaction.options.getChannel('channel');
+      const ch = selectedChannel
+        ? (guild.channels.cache.get(selectedChannel.id) ||
+           await guild.channels.fetch(selectedChannel.id).catch(() => null))
+        : null;
 
       if (!ch) {
         db.aiChannelId = null;
@@ -2010,6 +2079,13 @@ client.on('interactionCreate', async interaction => {
             .setTitle('🤖 AI Channel Disabled')
             .setDescription('AI auto-reply channel has been removed. Use `/ai` command to chat with AI.')
             .setColor(0xE74C3C).setTimestamp()],
+          ephemeral: true,
+        });
+      }
+
+      if (!ch || typeof ch.isTextBased !== 'function' || !ch.isTextBased() || typeof ch.send !== 'function') {
+        return interaction.reply({
+          content: 'Please select a normal text or announcement channel for AI auto-replies.',
           ephemeral: true,
         });
       }
@@ -2032,7 +2108,9 @@ client.on('interactionCreate', async interaction => {
         .setFooter({ text: 'ZENITSU LIVE • Premium AI Assistant' })
         .setTimestamp();
 
-      await ch.send({ embeds: [introEmbed] }).catch(() => {});
+      await ch.send({ embeds: [introEmbed] }).catch(err => {
+        console.error(`Failed to post AI channel intro in ${ch.id}:`, err.message);
+      });
 
       await interaction.reply({
         embeds: [new EmbedBuilder()

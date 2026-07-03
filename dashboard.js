@@ -7,16 +7,24 @@ function startDashboardServer(client, db, saveDb) {
   const app = express();
   const PORT = process.env.PORT || 8080;
 
-  // Use the last 8 characters of the bot token as the default passcode if not specified
-  const botToken = process.env.DISCORD_TOKEN || '';
-  const defaultPasscode = botToken.substring(botToken.length - 8) || 'admin123';
-  const PASSCODE = process.env.DASHBOARD_PASSCODE || defaultPasscode;
+  const PASSCODE = process.env.DASHBOARD_PASSCODE;
+  const COOKIE_SECRET = process.env.DASHBOARD_COOKIE_SECRET || process.env.DASHBOARD_PASSCODE;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const dashboardEnabled = Boolean(PASSCODE && COOKIE_SECRET);
 
-  console.log(`🔑 Dashboard Admin Passcode: "${PASSCODE}"`);
+  if (!PASSCODE) {
+    console.warn('⚠️ Dashboard disabled: DASHBOARD_PASSCODE is not set.');
+  }
+  if (!COOKIE_SECRET) {
+    console.warn('⚠️ Dashboard disabled: DASHBOARD_COOKIE_SECRET or DASHBOARD_PASSCODE is required.');
+  }
+  if (PASSCODE && PASSCODE.length < 12) {
+    console.warn('⚠️ DASHBOARD_PASSCODE should be at least 12 characters long.');
+  }
 
   app.use(express.urlencoded({ extended: true }));
   app.use(express.json());
-  app.use(cookieParser('zenitsu-secret-key'));
+  app.use(cookieParser(COOKIE_SECRET));
 
   // Middleware to check authentication
   function checkAuth(req, res, next) {
@@ -29,8 +37,18 @@ function startDashboardServer(client, db, saveDb) {
 
   // ── ROUTES ──────────────────────────────────────────────────────────────────
 
+  app.get('/health', (req, res) => {
+    res.status(200).json({
+      ok: true,
+      dashboard: dashboardEnabled ? 'enabled' : 'disabled'
+    });
+  });
+
   // Login page
   app.get('/login', (req, res) => {
+    if (!dashboardEnabled) {
+      return res.status(503).send('Dashboard disabled: DASHBOARD_PASSCODE is not configured.');
+    }
     if (req.signedCookies.authenticated === 'true') {
       return res.redirect('/');
     }
@@ -137,9 +155,18 @@ function startDashboardServer(client, db, saveDb) {
 
   // Handle Login Post
   app.post('/login', (req, res) => {
+    if (!dashboardEnabled) {
+      return res.status(503).send('Dashboard disabled.');
+    }
     const { passcode } = req.body;
     if (passcode === PASSCODE) {
-      res.cookie('authenticated', 'true', { signed: true, maxAge: 24 * 60 * 60 * 1000 }); // 24 hours
+      res.cookie('authenticated', 'true', {
+        signed: true,
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: isProduction,
+        maxAge: 24 * 60 * 60 * 1000,
+      });
       res.redirect('/');
     } else {
       res.redirect('/login?error=1');

@@ -2,8 +2,12 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const token = 'rnd_CSVlXhlzfQnFVhuWlyQYNYjx0sx1';
-const serviceId = 'srv-d920leegvqtc73935vgg';
+const token = process.env.RENDER_API_TOKEN;
+const serviceId = process.env.RENDER_SERVICE_ID || 'srv-d920leegvqtc73935vgg';
+if (!token) {
+  console.error('RENDER_API_TOKEN is required.');
+  process.exit(1);
+}
 
 // Simple parser for local .env file
 function loadEnv() {

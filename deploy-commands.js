@@ -1,7 +1,11 @@
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
 const config = require('./config');
 
 const commands = [
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Show Zenitsu bot commands and permission tiers'),
+
   new SlashCommandBuilder()
     .setName('setup-panel')
     .setDescription('Deploys the basic panel interface to the configured channel'),
@@ -198,6 +202,12 @@ const commands = [
     .addStringOption(option => option.setName('reason').setDescription('Reason for the ban').setRequired(false)),
 
   new SlashCommandBuilder()
+    .setName('unban')
+    .setDescription('Unban a user by ID')
+    .addStringOption(option => option.setName('user_id').setDescription('The Discord user ID to unban').setRequired(true))
+    .addStringOption(option => option.setName('reason').setDescription('Reason for the unban').setRequired(false)),
+
+  new SlashCommandBuilder()
     .setName('purge')
     .setDescription('Bulk delete recent messages in a channel (max 100, messages under 14 days)')
     .addIntegerOption(option =>
@@ -327,6 +337,7 @@ const commands = [
     .addChannelOption(o => o
       .setName('channel')
       .setDescription('The channel to use for AI auto-replies (leave empty to disable)')
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
       .setRequired(false)),
 
   // ══════════════════════════════════════════════════════════════════════════
