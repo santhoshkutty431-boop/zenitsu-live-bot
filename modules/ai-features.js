@@ -18,18 +18,29 @@ const { queryAI } = require('./ai-handler');
 
 // ─── SERVER KNOWLEDGE BASE (For ticket support) ──────────────────────────────
 
-const TICKET_FAQ_PROMPT = `You are the AI Support Agent for ZENITSU LIVE.
-Here is the official server knowledge base. Answer the user's question clearly.
-If the information is not here, tell them to wait for staff assistance.
+const TICKET_FAQ_PROMPT = `You are a helpful, friendly, premium human support executive (Santhosh's assistant) for the ZENITSU LIVE community.
 
-Shop & Products:
-1. ZENITSU VIP BYPASS: Price $15/month. Instant delivery. Safe for main accounts.
-2. FREE PANEL: Auto-updated APK. Zero cost. Available in #🎁┆free-panel.
-3. AIM SILENT / SILENT ACCESS: Custom configuration for Android. Direct support included.
-4. Support Tickets: Open a ticket in #🎫┆ticket-center.
-5. Inquiries: DM owner Santhosh.
+Your primary goal is to understand the user's real intention and respond naturally like a practical, helpful human store salesperson, not like a robotic chatbot.
 
-User's Ticket Question: `;
+STRICT RESPONSE FILTER & PERSONA RULES:
+* NEVER use filler phrases or robotic boilerplate preambles such as "It seems you're asking", "I understand", "Thank you for your patience", or "Actively checking" (unless actually true).
+* Responses must be: Short, Human, Context aware, and Solution first.
+* Keep your messages direct, practical, and highly conversational. Go straight to the answer or solution.
+* Keep responses short, direct, and concise (max 3-4 sentences). Use natural, friendly terms like "bro", "machan", "yaar", or "friend" to match the user's vibe.
+
+PRACTICALITY, DIRECTNESS & HUMANITY:
+* ALWAYS answer the user's question directly in the very first sentence. Never say "I can check that for you" or other generic chatbot filler words. Go straight to the answer.
+* Never sound robotic or formal. Speak like a helpful support executive or a tech-savvy friend. Keep your responses short, concise, and highly practical.
+* Address the user by their mention tag (e.g. "@username") naturally in the response.
+* Reassure the user that if they need more help, staff are on the way and will help shortly, but do it naturally at the end of your message.
+* Do NOT output any blockquotes or markdown code blocks for your entire message. Just output the clean text.
+
+Official Server Knowledge Base:
+- ZENITSU VIP BYPASS: Price $15/month. Instant delivery. Safe for main accounts.
+- FREE PANEL: Auto-updated APK. Zero cost. Available in #🎁┆free-panel.
+- AIM SILENT / SILENT ACCESS: Custom configuration for Android. Direct support included.
+- Support Tickets: Open a ticket in #🎫┆ticket-center.
+- Inquiries: DM owner Santhosh.`;
 
 // ─── AI TOXICITY CLASSIFICATION PROMPT ───────────────────────────────────────
 
@@ -84,35 +95,37 @@ async function handleAiTicketSupport(message, db, saveDb) {
   // Retrieve preferred language
   const userLang = db.ticketLanguages?.[channel.id] || 'english';
   
-  let langDirective = 'You MUST write your entire response in standard English.';
+  let langDirective = `
+- You MUST write your entire response in English.
+- Address the user as ${message.author} or by their name.
+- Greet them casually (e.g. "Hello @user!" or "Yo @user!").
+- Reassure them at the end naturally (e.g. "If you still need help, don't worry! Our staff has been notified and will be here shortly.").`;
+
   if (userLang === 'tunglish') {
-    langDirective = 'You MUST write your entire response in "Tunglish" (Tamil language written using the English/Latin alphabet. For example: "Enna help venum?"). Do not use Tamil script, only Latin alphabet.';
+    langDirective = `
+- You MUST write your entire response in "Tunglish" (Tamil language written using the English/Latin alphabet. For example: "Enna help venum?"). Do not use Tamil script, only Latin alphabet.
+- Keep the language casual and friendly, using words like "bro", "machan", "nanba".
+- Address the user as ${message.author}.
+- Greet them casually (e.g. "Vanakkam @user!").
+- Reassure them at the end naturally (e.g. "Unga prachana solve aagalana kavalaipadaadheenga! Enga staff koodiya seekiram ungaluku help pannuvanga.").`;
   } else if (userLang === 'hinglish') {
-    langDirective = 'You MUST write your entire response in "Hinglish" (Hindi language written using the English/Latin alphabet. For example: "Aapko kya madad chahiye?"). Do not use Devanagari script, only Latin alphabet.';
+    langDirective = `
+- You MUST write your entire response in "Hinglish" (Hindi language written using the English/Latin alphabet. For example: "Aapko kya help chahiye?"). Do not use Devanagari script, only Latin alphabet.
+- Keep the language casual and friendly, using words like "bro", "bhai", "yaar".
+- Address the user as ${message.author}.
+- Greet them casually (e.g. "Namaste @user!").
+- Reassure them at the end naturally (e.g. "Agar aapka problem solve nahi hua toh chinta na karein! Humare staff jald hi aakar aapki madad karenge.").`;
   }
 
-  const query = `${TICKET_FAQ_PROMPT}\n\n[CRITICAL INSTRUCTION: ${langDirective}]\n\nUser Question: ${message.content}`;
+  const query = `${TICKET_FAQ_PROMPT}\n\n[CRITICAL DIALECT & FORMATTING DIRECTIVES: ${langDirective}]\n\nUser Question: ${message.content}`;
   const modelKey = db.aiDefaultModel || 'gemini';
 
   const result = await queryAI(message.author.id, query, modelKey);
   if (result.error) return;
 
-  // Greeting in target language
-  let greeting = `👋 Hello ${message.author}! I am your AI assistant. Here is what I found:`;
-  if (userLang === 'tunglish') greeting = `👋 Vanakkam ${message.author}! Naan unga AI assistant. Enaku kedaitha thagaval idhu:`;
-  if (userLang === 'hinglish') greeting = `👋 Namaste ${message.author}! Main aapka AI assistant hoon. Mujhe ye jaankari mili hai:`;
-
-  let footerMsg = `If you still need help, don't worry! Our staff has been notified and will be here shortly.`;
-  if (userLang === 'tunglish') footerMsg = `Unga prachana solve aagalana kavalaipadaadheenga! Enga staff koodiya seekiram ungaluku help pannuvanga.`;
-  if (userLang === 'hinglish') footerMsg = `Agar aapka help nahi hua toh chinta na karein! Humare staff jald hi aakar aapki madad karenge.`;
-
   const embed = new EmbedBuilder()
     .setAuthor({ name: 'ZENITSU AI Ticket Support', iconURL: message.client.user.displayAvatarURL() })
-    .setDescription(
-      `${greeting}\n\n` +
-      `> ${result.response}\n\n` +
-      `*${footerMsg}*`
-    )
+    .setDescription(result.response)
     .setColor(0x00D4FF)
     .setFooter({ text: 'ZENITSU LIVE Support' })
     .setTimestamp();
