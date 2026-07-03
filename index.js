@@ -146,7 +146,7 @@ function downloadFromHf() {
     const options = {
       hostname: 'huggingface.co',
       port: 443,
-      path: `/spaces/${HF_REPO}/resolve/main/database.json`,
+      path: `/spaces/${HF_REPO}/resolve/main/database.json?v=${Date.now()}`,
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${HF_TOKEN}`
@@ -184,7 +184,8 @@ function uploadToHf(dataObj) {
         {
           action: 'add',
           path: 'database.json',
-          content: Buffer.from(fileContent).toString('base64')
+          content: Buffer.from(fileContent).toString('base64'),
+          encoding: 'base64'
         }
       ],
       summary: 'Update database.json from live bot instance',
