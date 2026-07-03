@@ -44,6 +44,13 @@ function startDashboardServer(client, db, saveDb) {
     });
   });
 
+  app.get('/', (req, res, next) => {
+    if (!dashboardEnabled) {
+      return res.status(200).send('Zenitsu Live Bot is running.');
+    }
+    next();
+  });
+
   // Login page
   app.get('/login', (req, res) => {
     if (!dashboardEnabled) {
