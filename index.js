@@ -744,12 +744,13 @@ client.on('messageCreate', async message => {
 
     // Check if user has selected a language
     db.userLanguages = db.userLanguages || {};
-    const userLang = db.userLanguages[message.author.id];
+    let userLang = db.userLanguages[message.author.id];
 
     if (!userLang) {
-      const payload = getLanguageSelectorEmbed(message.author);
-      await message.reply(payload).catch(() => {});
-      return;
+      // Default to english in public AI channel to avoid spamming language selector embeds
+      userLang = 'english';
+      db.userLanguages[message.author.id] = 'english';
+      saveDb();
     }
 
     // Show typing indicator

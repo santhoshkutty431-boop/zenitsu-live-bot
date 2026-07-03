@@ -82,6 +82,20 @@ async function handleAiTicketSupport(message, db, saveDb) {
   const channel = message.channel;
   if (!channel.name.startsWith('purchase-') && !channel.name.startsWith('support-') && !channel.name.startsWith('ticket-')) return;
 
+  // Only reply to messages sent by the ticket creator/owner
+  const ticketCreatorId = Object.keys(db.activeTickets || {}).find(
+    uid => db.activeTickets[uid] === channel.id
+  );
+  if (ticketCreatorId && message.author.id !== ticketCreatorId) return;
+
+  // Ignore staff/admin roles or permissions
+  if (message.member && (
+    message.member.permissions.has(PermissionFlagsBits.ManageMessages) ||
+    message.member.permissions.has(PermissionFlagsBits.Administrator)
+  )) {
+    return;
+  }
+
   // Track if this ticket has already been answered by AI
   if (!db.aiAnsweredTickets) db.aiAnsweredTickets = {};
   if (db.aiAnsweredTickets[channel.id]) return; // already replied
