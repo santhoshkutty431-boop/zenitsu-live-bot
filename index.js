@@ -245,6 +245,12 @@ async function getOrCreateRole(guild, roleName, color = 0x000000) {
 function staffCheck(member) {
   if (!member) return false;
   if (isOwner(member.id)) return true;
+
+  // Check whitelisted staff/admin roles
+  db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
+  if (db.commandRoleWhitelist.staff && db.commandRoleWhitelist.staff.some(id => member.roles.cache.has(id))) return true;
+  if (db.commandRoleWhitelist.admin && db.commandRoleWhitelist.admin.some(id => member.roles.cache.has(id))) return true;
+
   return member.permissions.has(PermissionFlagsBits.Administrator) ||
     [ID.ADMIN_ROLE, ID.MOD_ROLE, ID.SUPPORT_ROLE, ID.OWNER_ROLE].some(id => member.roles.cache.has(id));
 }
@@ -883,6 +889,16 @@ function hasCommandAccess(member, cmd, userId) {
 
   if (tier === 'PUBLIC') return true;
 
+  // Initialize DB lists if undefined
+  db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
+
+  // Check custom whitelisted roles first
+  if (member) {
+    if (tier === 'MEMBER' && db.commandRoleWhitelist.member && db.commandRoleWhitelist.member.some(roleId => member.roles.cache.has(roleId))) return true;
+    if (tier === 'STAFF' && db.commandRoleWhitelist.staff && db.commandRoleWhitelist.staff.some(roleId => member.roles.cache.has(roleId))) return true;
+    if (tier === 'ADMIN' && db.commandRoleWhitelist.admin && db.commandRoleWhitelist.admin.some(roleId => member.roles.cache.has(roleId))) return true;
+  }
+
   if (tier === 'MEMBER') {
     return member?.roles?.cache?.has(ID.MEMBER_ROLE) || staffCheck(member);
   }
@@ -1205,6 +1221,57 @@ client.on('interactionCreate', async interaction => {
         const embed = new EmbedBuilder()
           .setTitle('🛡️ Role-Giving Whitelist')
           .setDescription(`Only whitelisted users can assign roles to members on the server:\n\n${listStr}`)
+          .setColor(0x00D4FF)
+          .setTimestamp();
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+    }
+
+    // /whitelist-role
+    else if (cmd === 'whitelist-role') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator) && !interaction.member?.roles?.cache?.has(ID.OWNER_ROLE)) {
+        return interaction.reply({ content: '❌ Administrator permission required.', ephemeral: true });
+      }
+
+      const sub = interaction.options.getSubcommand();
+      db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
+
+      if (sub === 'add') {
+        const role = interaction.options.getRole('role');
+        const tier = interaction.options.getString('tier');
+
+        if (!db.commandRoleWhitelist[tier]) db.commandRoleWhitelist[tier] = [];
+        if (db.commandRoleWhitelist[tier].includes(role.id)) {
+          return interaction.reply({ content: `⚠️ The role ${role} is already whitelisted for **${tier.toUpperCase()}** commands.`, ephemeral: true });
+        }
+
+        db.commandRoleWhitelist[tier].push(role.id);
+        saveDb();
+        await interaction.reply({ content: `✅ Successfully whitelisted ${role} for **${tier.toUpperCase()}** commands.`, ephemeral: true });
+      }
+
+      else if (sub === 'remove') {
+        const role = interaction.options.getRole('role');
+        const tier = interaction.options.getString('tier');
+
+        if (!db.commandRoleWhitelist[tier] || !db.commandRoleWhitelist[tier].includes(role.id)) {
+          return interaction.reply({ content: `⚠️ The role ${role} is not whitelisted for **${tier.toUpperCase()}** commands.`, ephemeral: true });
+        }
+
+        db.commandRoleWhitelist[tier] = db.commandRoleWhitelist[tier].filter(id => id !== role.id);
+        saveDb();
+        await interaction.reply({ content: `✅ Removed ${role} from the **${tier.toUpperCase()}** command whitelist.`, ephemeral: true });
+      }
+
+      else if (sub === 'list') {
+        const embed = new EmbedBuilder()
+          .setTitle('🛡️ Bot Command Role Whitelist')
+          .setDescription('Custom roles authorized to run Zenitsu bot commands:')
+          .addFields(
+            { name: '🛠️ Admin Commands Whitelist', value: (db.commandRoleWhitelist.admin || []).map(id => `• <@&${id}>`).join('\n') || 'None' },
+            { name: '👮 Staff Commands Whitelist', value: (db.commandRoleWhitelist.staff || []).map(id => `• <@&${id}>`).join('\n') || 'None' },
+            { name: '👥 Normal Member Commands Whitelist', value: (db.commandRoleWhitelist.member || []).map(id => `• <@&${id}>`).join('\n') || 'None' }
+          )
           .setColor(0x00D4FF)
           .setTimestamp();
         await interaction.reply({ embeds: [embed], ephemeral: true });

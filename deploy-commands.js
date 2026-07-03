@@ -376,6 +376,33 @@ const commands = [
       .setDescription('Description of the image you want to generate')
       .setRequired(true)),
 
+  new SlashCommandBuilder()
+    .setName('whitelist-role')
+    .setDescription('Manage whitelisted roles for bot commands (Admin only)')
+    .addSubcommand(s => s
+      .setName('add')
+      .setDescription('Add a role to a command tier whitelist')
+      .addRoleOption(o => o.setName('role').setDescription('The role to whitelist').setRequired(true))
+      .addStringOption(o => o.setName('tier').setDescription('The command tier').setRequired(true)
+        .addChoices(
+          { name: '🛠️ Admin Commands', value: 'admin' },
+          { name: '👮 Staff Commands', value: 'staff' },
+          { name: '👥 Normal Member Commands', value: 'member' }
+        )))
+    .addSubcommand(s => s
+      .setName('remove')
+      .setDescription('Remove a role from a command tier whitelist')
+      .addRoleOption(o => o.setName('role').setDescription('The role to remove').setRequired(true))
+      .addStringOption(o => o.setName('tier').setDescription('The command tier').setRequired(true)
+        .addChoices(
+          { name: '🛠️ Admin Commands', value: 'admin' },
+          { name: '👮 Staff Commands', value: 'staff' },
+          { name: '👥 Normal Member Commands', value: 'member' }
+        )))
+    .addSubcommand(s => s
+      .setName('list')
+      .setDescription('Show all whitelisted roles for each command tier')),
+
 ].map(command => command.toJSON());
 
 
