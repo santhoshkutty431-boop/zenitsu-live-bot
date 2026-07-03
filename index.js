@@ -245,6 +245,7 @@ async function getOrCreateRole(guild, roleName, color = 0x000000) {
 function staffCheck(member) {
   if (!member) return false;
   if (isOwner(member.id)) return true;
+  if (member.id === member.guild?.ownerId) return true; // Server Owner is always staff
 
   // Check whitelisted staff/admin roles
   db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
@@ -884,6 +885,7 @@ function getCmdTier(cmd) {
 
 function hasCommandAccess(member, cmd, userId) {
   if (isOwner(userId)) return true; // bot owner bypasses everything
+  if (member && member.id === member.guild?.ownerId) return true; // Server Owner bypasses all command checks on their server
 
   const tier = getCmdTier(cmd);
 
