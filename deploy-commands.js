@@ -1,4 +1,11 @@
-const { REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
+const {
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  ChannelType,
+  ApplicationIntegrationType,
+  InteractionContextType,
+} = require('discord.js');
 const config = require('./config');
 
 const commands = [
@@ -414,7 +421,10 @@ const commands = [
       .setName('list')
       .setDescription('Show all whitelisted roles for each command tier')),
 
-].map(command => command.toJSON());
+].map(command => command
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setContexts(InteractionContextType.Guild)
+  .toJSON());
 
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');
