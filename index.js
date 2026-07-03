@@ -17,6 +17,7 @@ const {
 const fs   = require('fs');
 const path = require('path');
 const http = require('http');
+const https = require('https');
 
 // ─── DASHBOARD SERVER SETUP ──────────────────────────────────────────────────
 const { startDashboardServer } = require('./dashboard');
