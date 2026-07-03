@@ -545,10 +545,12 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         if (executorId) {
           const isExecOwner = executorId === ownerId;
           const isExecGuildOwner = executorId === newMember.guild.ownerId;
+          const executorMember = await newMember.guild.members.fetch(executorId).catch(() => null);
+          const isExecOwnerRole = executorMember && executorMember.roles.cache.has(ID.OWNER_ROLE);
           const isExecBot = executorId === client.user.id;
           const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
 
-          if (!isExecOwner && !isExecGuildOwner && !isExecBot && !isExecWhitelisted) {
+          if (!isExecOwner && !isExecGuildOwner && !isExecOwnerRole && !isExecBot && !isExecWhitelisted) {
             // Revert role addition
             for (const [roleId, role] of addedRoles) {
               await newMember.roles.remove(role, 'Anti-Abuse Guard: Unauthorized role assignment').catch(() => {});
@@ -668,10 +670,12 @@ client.on('roleUpdate', async (oldRole, newRole) => {
           const executorId = logEntry.executor?.id;
           const isExecOwner = executorId === ownerId;
           const isExecGuildOwner = executorId === newRole.guild.ownerId;
+          const executorMember = await newRole.guild.members.fetch(executorId).catch(() => null);
+          const isExecOwnerRole = executorMember && executorMember.roles.cache.has(ID.OWNER_ROLE);
           const isExecBot = executorId === client.user.id;
           const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
 
-          if (!isExecOwner && !isExecGuildOwner && !isExecBot && !isExecWhitelisted) {
+          if (!isExecOwner && !isExecGuildOwner && !isExecOwnerRole && !isExecBot && !isExecWhitelisted) {
             // Unauthorized permission upgrade! Instantly revert the role's permissions.
             await newRole.setPermissions(oldRole.permissions, 'Anti-Abuse: Unauthorized permission modification').catch(() => {});
 
@@ -891,7 +895,9 @@ function hasCommandAccess(member, cmd, userId) {
            member?.roles?.cache?.has(ID.ADMIN_ROLE);
   }
 
-  if (tier === 'OWNER') return isOwner(userId);
+  if (tier === 'OWNER') {
+    return isOwner(userId) || member?.roles?.cache?.has(ID.OWNER_ROLE);
+  }
 
   return false;
 }
@@ -1703,7 +1709,7 @@ client.on('interactionCreate', async interaction => {
 
     // /whitelist-server
     else if (cmd === 'whitelist-server') {
-      if (!isOwner(interaction.user.id))
+      if (!isOwner(interaction.user.id) && !interaction.member?.roles?.cache?.has(ID.OWNER_ROLE))
         return interaction.reply({ content: '❌ Only the **bot owner** can manage the server whitelist.', ephemeral: true });
 
       const sub = interaction.options.getSubcommand();
