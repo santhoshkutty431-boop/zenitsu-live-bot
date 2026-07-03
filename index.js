@@ -130,9 +130,105 @@ let db = {
 let dbInMemoryTimestamp = Date.now();
 let dbFileLastModified = 0;
 let writeQueue = Promise.resolve();
+let hfSyncQueue = Promise.resolve();
+
+const HF_TOKEN = process.env.HF_TOKEN;
+const HF_REPO = 'kutty-35/zenitsu-live-bot';
+
+// Download database.json from Hugging Face Space Cloud Storage
+function downloadFromHf() {
+  if (!HF_TOKEN) {
+    console.log('[DB CLOUD LOG] HF_TOKEN not set, skipping download.');
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'huggingface.co',
+      port: 443,
+      path: `/spaces/${HF_REPO}/resolve/main/database.json`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${HF_TOKEN}`
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          try { resolve(JSON.parse(body)); }
+          catch (e) { resolve(null); }
+        } else {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.end();
+  });
+}
+
+// Upload/Commit database.json to Hugging Face Space Cloud Storage
+function uploadToHf(dataObj) {
+  if (!HF_TOKEN) {
+    console.log('[DB CLOUD LOG] HF_TOKEN not set, skipping upload.');
+    return Promise.resolve(null);
+  }
+  return hfSyncQueue = hfSyncQueue.then(() => new Promise((resolve) => {
+    const fileContent = JSON.stringify(dataObj, null, 2);
+    const commitPayload = {
+      actions: [
+        {
+          action: 'add',
+          path: 'database.json',
+          content: Buffer.from(fileContent).toString('base64')
+        }
+      ],
+      summary: 'Update database.json from live bot instance',
+      parentCommit: undefined
+    };
+
+    const payloadString = JSON.stringify(commitPayload);
+
+    const options = {
+      hostname: 'huggingface.co',
+      port: 443,
+      path: `/spaces/${HF_REPO}/commit/main`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${HF_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payloadString)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 200 || res.statusCode === 201) {
+          console.log('[DB CLOUD LOG] Hugging Face sync commit success.');
+          resolve(true);
+        } else {
+          console.error(`[DB CLOUD LOG] Hugging Face commit failed: Status ${res.statusCode} - ${body}`);
+          resolve(false);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error('[DB CLOUD LOG] Hugging Face request error:', err.message);
+      resolve(false);
+    });
+    req.write(payloadString);
+    req.end();
+  }));
+}
 
 function mergeDatabase(diskDb) {
-  console.log('[DB LOG] Merging disk database into memory cache...');
+  console.log('[DB LOG] Merging database changes into memory cache...');
   
   const mergedRoleWhitelist = Array.from(new Set([
     ...(db.roleWhitelist || []),
@@ -241,6 +337,10 @@ function saveDb() {
         roles: db.commandRoleWhitelist,
         servers: db.serverWhitelist
       });
+
+      // Synchronize database to Hugging Face Cloud Storage in the background
+      uploadToHf(db);
+
       resolve();
     } catch (e) {
       console.error('[DB LOG] Database result: Save transaction failed! Rollback initiated. Error:', e.message);
@@ -251,6 +351,38 @@ function saveDb() {
     }
   }));
 }
+
+// Background synchronization task to pull updates from Hugging Face Space cloud storage
+setInterval(async () => {
+  try {
+    const cloudDb = await downloadFromHf();
+    if (cloudDb) {
+      const localRoleCount = (db.roleWhitelist || []).length;
+      const localServerCount = (db.serverWhitelist || []).length;
+      const cloudRoleCount = (cloudDb.roleWhitelist || []).length;
+      const cloudServerCount = (cloudDb.serverWhitelist || []).length;
+
+      const hasUpdates = cloudRoleCount !== localRoleCount || cloudServerCount !== localServerCount ||
+                         JSON.stringify(db.roleWhitelist) !== JSON.stringify(cloudDb.roleWhitelist) ||
+                         JSON.stringify(db.serverWhitelist) !== JSON.stringify(cloudDb.serverWhitelist) ||
+                         JSON.stringify(db.commandRoleWhitelist) !== JSON.stringify(cloudDb.commandRoleWhitelist);
+
+      if (hasUpdates) {
+        console.log('[DB CLOUD LOG] Detected updates in Hugging Face cloud storage, synchronizing...');
+        mergeDatabase(cloudDb);
+        try {
+          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+          const stats = fs.statSync(dbPath);
+          dbFileLastModified = stats.mtimeMs;
+        } catch (err) {
+          console.error('[DB CLOUD LOG] Failed to save merged database locally:', err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[DB CLOUD LOG] Periodic background sync failed:', err.message);
+  }
+}, 10_000);
 loadDb();
 
 // Start the dashboard web server immediately on startup
@@ -2263,7 +2395,23 @@ client.on('guildCreate', guild => {
   console.log(`📥 Joined a new server: ${guild.name} (ID: ${guild.id}) - Members: ${guild.memberCount}`);
 });
 
-function startBot() {
+async function startBot() {
+  console.log('[DB CLOUD LOG] Fetching latest database from Hugging Face Cloud Storage...');
+  try {
+    const cloudDb = await downloadFromHf();
+    if (cloudDb) {
+      console.log('[DB CLOUD LOG] Successfully retrieved cloud database on startup. Merging...');
+      mergeDatabase(cloudDb);
+      fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+      const stats = fs.statSync(dbPath);
+      dbFileLastModified = stats.mtimeMs;
+    } else {
+      console.log('[DB CLOUD LOG] No cloud database found or failed to fetch, starting with local cache.');
+    }
+  } catch (err) {
+    console.error('[DB CLOUD LOG] Startup cloud database sync failed:', err.message);
+  }
+
   client.login(config.token).catch(err => {
     console.error('Login failed:', err.message);
     console.log('🔄 Retrying login in 15 seconds...');
