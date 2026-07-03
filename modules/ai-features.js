@@ -13,7 +13,7 @@
 
 'use strict';
 
-const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { queryAI } = require('./ai-handler');
 
 // ─── SERVER KNOWLEDGE BASE (For ticket support) ──────────────────────────────
@@ -130,7 +130,14 @@ async function handleAiTicketSupport(message, db, saveDb) {
     .setFooter({ text: 'ZENITSU LIVE Support' })
     .setTimestamp();
 
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket_staff_need')
+      .setLabel('🙋 Need Staff')
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  await channel.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
 // ─── 2. AI CONTEXT MODERATION ────────────────────────────────────────────────

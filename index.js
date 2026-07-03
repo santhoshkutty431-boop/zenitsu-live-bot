@@ -1924,6 +1924,61 @@ client.on('interactionCreate', async interaction => {
       setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
     }
 
+    // Need Staff Button Interaction
+    else if (customId === 'ticket_staff_need') {
+      await interaction.deferUpdate();
+
+      // Disable AI replies for this ticket
+      if (!db.aiAnsweredTickets) db.aiAnsweredTickets = {};
+      db.aiAnsweredTickets[interaction.channel.id] = true;
+      saveDb();
+
+      // Notify staff in the channel
+      await interaction.channel.send({
+        content: `🔔 **Staff assistance requested!** Staff will respond shortly.\nIf you want to re-enable AI chat in the meantime, click the button below.`,
+        allowedMentions: { parse: ['everyone', 'roles'] }
+      }).catch(() => {});
+
+      // Switch to AI Enable button
+      const aiRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('ticket_ai_enable')
+          .setLabel('🤖 Chat with AI')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.editReply({
+        components: [aiRow]
+      }).catch(() => {});
+    }
+
+    // Enable AI Button Interaction
+    else if (customId === 'ticket_ai_enable') {
+      await interaction.deferUpdate();
+
+      // Re-enable AI replies
+      if (db.aiAnsweredTickets) {
+        delete db.aiAnsweredTickets[interaction.channel.id];
+        saveDb();
+      }
+
+      await interaction.channel.send({
+        content: `🤖 **AI chat has been re-enabled!** Ask your question, and the assistant will reply.`
+      }).catch(() => {});
+
+      // Switch back to Need Staff button
+      const staffRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('ticket_staff_need')
+          .setLabel('🙋 Need Staff')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      await interaction.editReply({
+        components: [staffRow]
+      }).catch(() => {});
+    }
+
     // Ticket Language Selection
     else if (customId.startsWith('ticket_lang_')) {
       await interaction.deferUpdate();
