@@ -307,23 +307,34 @@ function loadDb() {
 }
 
 function saveDb() {
-  writeQueue = writeQueue.then(() => new Promise((resolve) => {
-    console.log('[DB LOG] Before save: Preparing atomic transaction...');
+  writeQueue = writeQueue.then(async () => {
+    console.log('[DB LOG] Before save: Preparing cloud-synchronized atomic transaction...');
     
+    // 1. Fetch latest database from Hugging Face Space first to prevent overwriting newer changes
     try {
-      if (fs.existsSync(dbPath)) {
-        const stats = fs.statSync(dbPath);
-        if (stats.mtimeMs > dbFileLastModified) {
-          console.log('[DB LOG] Disk changed since last read, reloading and merging first...');
-          const fileContent = fs.readFileSync(dbPath, 'utf8');
-          mergeDatabase(JSON.parse(fileContent));
-          dbFileLastModified = stats.mtimeMs;
-        }
+      const cloudDb = await downloadFromHf();
+      if (cloudDb) {
+        console.log('[DB CLOUD LOG] Retrieved latest cloud database before writing. Merging...');
+        mergeDatabase(cloudDb);
       }
     } catch (err) {
-      console.error('[DB LOG] Disk pre-check failed:', err.message);
+      console.error('[DB CLOUD LOG] Pre-save cloud sync failed, falling back to local merge:', err.message);
+      
+      // Fallback: Check local disk change
+      try {
+        if (fs.existsSync(dbPath)) {
+          const stats = fs.statSync(dbPath);
+          if (stats.mtimeMs > dbFileLastModified) {
+            const fileContent = fs.readFileSync(dbPath, 'utf8');
+            mergeDatabase(JSON.parse(fileContent));
+          }
+        }
+      } catch (localErr) {
+        console.error('[DB LOG] Local pre-check failed:', localErr.message);
+      }
     }
 
+    // 2. Write atomically to local disk
     const tempPath = `${dbPath}.tmp`;
     try {
       fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf8');
@@ -333,24 +344,21 @@ function saveDb() {
       dbFileLastModified = stats.mtimeMs;
       dbInMemoryTimestamp = Date.now();
       
-      console.log('[DB LOG] Database result: Save successful. Cache/Memory updated. Whitelists:', {
-        users: db.roleWhitelist,
-        roles: db.commandRoleWhitelist,
-        servers: db.serverWhitelist
-      });
-
-      // Synchronize database to Hugging Face Cloud Storage in the background
-      uploadToHf(db);
-
-      resolve();
+      console.log('[DB LOG] Database result: Local atomic write successful.');
     } catch (e) {
-      console.error('[DB LOG] Database result: Save transaction failed! Rollback initiated. Error:', e.message);
+      console.error('[DB LOG] Local save failed:', e.message);
       if (fs.existsSync(tempPath)) {
         try { fs.unlinkSync(tempPath); } catch (_) {}
       }
-      resolve();
     }
-  }));
+
+    // 3. Commit/Upload the merged state back to Hugging Face Cloud Storage
+    try {
+      await uploadToHf(db);
+    } catch (err) {
+      console.error('[DB CLOUD LOG] Failed to upload database to Hugging Face:', err.message);
+    }
+  });
 }
 
 // Background synchronization task to pull updates from Hugging Face Space cloud storage
