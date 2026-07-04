@@ -140,6 +140,16 @@ class MusicPlugin {
       this.logger.warn(`Failed to set FFMPEG_PATH from music plugin: ${e.message}`);
     }
 
+    try {
+      const clientId = await play.getFreeClientID();
+      if (clientId) {
+        await play.setToken({ soundcloud: { client_id: clientId } });
+        this.logger.info('SoundCloud client authorized successfully.');
+      }
+    } catch (scErr) {
+      this.logger.warn(`Failed to authorize SoundCloud client: ${scErr.message}`);
+    }
+
     // Register Slash Commands
     this.router.registerCommand('play', (i) => this.handlePlay(i));
     this.router.registerCommand('nowplaying', (i) => this.handleNowPlaying(i));
@@ -276,6 +286,7 @@ class MusicPlugin {
   }
 
   async resolveTrack(query) {
+    const preferSoundCloud = !!process.env.RENDER;
     try {
       // If direct URL
       if (query.startsWith('http')) {
@@ -302,9 +313,24 @@ class MusicPlugin {
         }
       }
 
-      // Try YouTube search first with 10s timeout
-      try {
-        const search = await this._timeout(play.search(query, { limit: 1 }), 10000);
+      if (preferSoundCloud) {
+        // Try SoundCloud search first
+        try {
+          const scSearch = await this._timeout(play.search(query, { limit: 1, source: { soundcloud: 'tracks' } }), 10000);
+          if (scSearch && scSearch.length > 0) {
+            return {
+              title: scSearch[0].name || scSearch[0].title,
+              url: scSearch[0].permalink || scSearch[0].url,
+              duration: Math.floor((scSearch[0].duration || 0) / 1000),
+              source: 'soundcloud'
+            };
+          }
+        } catch (scErr) {
+          this.logger.warn(`SoundCloud search failed for "${query}": ${scErr.message}. Trying YouTube...`);
+        }
+
+        // YouTube fallback
+        const search = await this._timeout(play.search(query, { limit: 1 }), 10000).catch(() => null);
         if (search && search.length > 0) {
           return {
             title: search[0].title,
@@ -313,19 +339,32 @@ class MusicPlugin {
             source: 'youtube'
           };
         }
-      } catch (ytErr) {
-        this.logger.warn(`YouTube search failed for "${query}": ${ytErr.message}. Trying SoundCloud fallback...`);
-      }
+      } else {
+        // Try YouTube search first
+        try {
+          const search = await this._timeout(play.search(query, { limit: 1 }), 10000);
+          if (search && search.length > 0) {
+            return {
+              title: search[0].title,
+              url: search[0].url,
+              duration: search[0].durationInSec,
+              source: 'youtube'
+            };
+          }
+        } catch (ytErr) {
+          this.logger.warn(`YouTube search failed for "${query}": ${ytErr.message}. Trying SoundCloud...`);
+        }
 
-      // Fallback to SoundCloud search with 10s timeout
-      const scSearch = await this._timeout(play.search(query, { limit: 1, source: { soundcloud: 'tracks' } }), 10000).catch(() => null);
-      if (scSearch && scSearch.length > 0) {
-        return {
-          title: scSearch[0].name || scSearch[0].title,
-          url: scSearch[0].permalink_url || scSearch[0].url,
-          duration: Math.floor((scSearch[0].duration || 0) / 1000),
-          source: 'soundcloud'
-        };
+        // SoundCloud fallback
+        const scSearch = await this._timeout(play.search(query, { limit: 1, source: { soundcloud: 'tracks' } }), 10000).catch(() => null);
+        if (scSearch && scSearch.length > 0) {
+          return {
+            title: scSearch[0].name || scSearch[0].title,
+            url: scSearch[0].permalink || scSearch[0].url,
+            duration: Math.floor((scSearch[0].duration || 0) / 1000),
+            source: 'soundcloud'
+          };
+        }
       }
 
       return null;
