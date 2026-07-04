@@ -8,7 +8,24 @@ const CAPABILITY_LABELS = {
   'MODERATION_EXECUTE': '👮 Execute Moderation Actions'
 };
 
+let runtimeInstance = null;
+const loadDb = () => {};
+const saveDb = () => {
+  if (!runtimeInstance) return;
+  const store = global.asyncLocalStorage?.getStore();
+  const guildId = store?.guildId;
+  const dbMgr = runtimeInstance.getService('DatabaseManager');
+  if (dbMgr) {
+    if (guildId) {
+      dbMgr.saveGuildDb(guildId);
+    } else {
+      dbMgr.saveGlobal();
+    }
+  }
+};
+
 async function handleInteraction(interaction, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, client, staffCheck, isOwner, getOrCreateRole) {
+  runtimeInstance = runtime;
   loadDb(); // Sync with disk before interaction checks
 
   // ── SERVER WHITELIST CHECK ───────────────────────────────────────────────────
