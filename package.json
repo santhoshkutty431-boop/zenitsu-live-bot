@@ -6,7 +6,13 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy-commands.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check": "node --check index.js && node --check dashboard.js && node --check deploy-commands.js"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

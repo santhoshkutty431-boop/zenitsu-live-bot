@@ -159,15 +159,18 @@ const db = new Proxy({}, {
   getOwnPropertyDescriptor: (target, prop) => Reflect.getOwnPropertyDescriptor(runtime.getService('DatabaseManager').db, prop)
 });
 
+// Structured logger (Pino) — shared across index.js
+const log = runtime.logger;
+
 // Self-ping to keep Render alive
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 if (RENDER_URL) {
-  console.log(`🔄 Self-ping enabled → ${RENDER_URL}`);
+  log.info(`Self-ping enabled → ${RENDER_URL}`);
   setInterval(() => {
     http.get(RENDER_URL, (res) => {
-      console.log(`[${new Date().toISOString()}] Self-ping OK (${res.statusCode})`);
+      log.debug('Self-ping OK', { status: res.statusCode });
     }).on('error', (err) => {
-      console.log(`[${new Date().toISOString()}] Self-ping failed: ${err.message}`);
+      log.warn('Self-ping failed', { error: err.message });
     });
   }, 14 * 60 * 1000);
 }
@@ -221,7 +224,7 @@ const logToChannel = async (guild, channelName, embed) => {
 // Bootstrap the runtime
 runtime.bootstrap().then(() => {
   client.runtime = runtime;
-  console.log('✅ ZENITSU LIVE v4.0 Runtime Bootstrapped.');
+  log.info('ZENITSU LIVE v4.0 Runtime Bootstrapped.');
 
   // Bind events and command handlers
   eventHandler.registerEvents(
@@ -234,7 +237,7 @@ runtime.bootstrap().then(() => {
         interaction, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, client, staffCheck, isOwner, getOrCreateRole
       );
     } catch (err) {
-      console.error('[INTERACTION ERROR]', err);
+      log.error('Interaction handler error', { error: err.message, stack: err.stack });
     }
   });
 
@@ -242,11 +245,11 @@ runtime.bootstrap().then(() => {
   try {
     startDashboardServer(client, db, () => runtime.getService('DatabaseManager').saveGlobal());
   } catch (err) {
-    console.error('⚠️ Failed to start dashboard server:', err.message);
+    log.error('Failed to start dashboard server', { error: err.message });
   }
 
   client.once('ready', async () => {
-    console.log(`✅ Bot logged in as ${client.user.tag}`);
+    log.info(`Bot logged in as ${client.user.tag}`);
 
     // Register live synchronization event listeners
     const syncListeners = runtime.getService('SyncListeners');
@@ -261,14 +264,15 @@ runtime.bootstrap().then(() => {
       const app = await client.application.fetch();
       setDynamicOwnerId(app.owner.id);
     } catch (e) {
-      console.error('Failed to fetch application owner ID:', e.message);
+      log.error('Failed to fetch application owner ID', { error: e.message });
     }
   });
 
   // Connect to Discord
   client.login(config.token).catch(err => {
-    console.error('[CLIENT ERROR]', err);
+    log.error('Discord client login failed', { error: err.message });
   });
 }).catch(err => {
+  // Runtime not yet available — fall back to console
   console.error('[RUNTIME BOOTSTRAP ERROR]', err);
 });
