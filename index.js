@@ -223,7 +223,26 @@ const logToChannel = async (guild, channelNameOrId, embed) => {
   if (!guild || !channelNameOrId) return;
   
   let channelId = channelNameOrId;
-  if (typeof channelNameOrId === 'string' && isNaN(Number(channelNameOrId))) {
+  const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
+
+  if (!isMainServer) {
+    let targetName = 'server-logs';
+    if (channelNameOrId === ID.MESSAGE_LOG || channelNameOrId === 'MESSAGE_LOG') targetName = 'message-log';
+    else if (channelNameOrId === ID.VOICE_LOG || channelNameOrId === 'VOICE_LOG') targetName = 'voice-log';
+    else if (channelNameOrId === ID.MOD_LOG || channelNameOrId === 'MOD_LOG' || channelNameOrId === ID.MOD_REPORTS || channelNameOrId === 'MOD_REPORTS') targetName = 'mod-log';
+
+    const cleanName = targetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const foundCh = guild.channels.cache.find(c => {
+      const cClean = c.name.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      return cClean === cleanName || cClean.includes(cleanName);
+    });
+
+    if (foundCh) {
+      channelId = foundCh.id;
+    } else {
+      return; // Do not log if channel is not found on other servers
+    }
+  } else if (typeof channelNameOrId === 'string' && isNaN(Number(channelNameOrId))) {
     channelId = ID[channelNameOrId.toUpperCase()];
   }
   

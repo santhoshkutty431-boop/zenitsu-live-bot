@@ -22,6 +22,7 @@ async function sendLog(guild, channelId, embed, db) {
   if (!guild) return;
 
   let resolvedChannelId = channelId;
+  const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
 
   if (db && db.logging) {
     const title = embed.data?.title || '';
@@ -33,6 +34,29 @@ async function sendLog(guild, channelId, embed, db) {
       resolvedChannelId = db.logging.modLogId || db.logging.serverLogsId || channelId;
     } else if (title.includes('Member') || title.includes('Role') || title.includes('Channel')) {
       resolvedChannelId = db.logging.serverLogsId || channelId;
+    }
+  } else if (!isMainServer) {
+    // If no db.logging configuration exists and this is another server, search by channel name
+    const title = embed.data?.title || '';
+    let targetName = 'server-logs';
+    if (title.includes('Message Deleted') || title.includes('Message Edited')) {
+      targetName = 'message-log';
+    } else if (title.includes('Voice')) {
+      targetName = 'voice-log';
+    } else if (title.includes('Incident') || title.includes('Audit') || title.includes('Banned') || title.includes('Kicked') || title.includes('Warning') || title.includes('Mute') || title.includes('Timeout') || title.includes('Whitelist Removed') || title.includes('User Successfully Whitelisted') || title.includes('Moderation') || title.includes('Roles Updated')) {
+      targetName = 'mod-log';
+    }
+
+    const cleanName = targetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const foundCh = guild.channels.cache.find(c => {
+      const cClean = c.name.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      return cClean === cleanName || cClean.includes(cleanName);
+    });
+
+    if (foundCh) {
+      resolvedChannelId = foundCh.id;
+    } else {
+      return; // Do not log if channel is not found on other servers
     }
   }
 
