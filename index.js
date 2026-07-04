@@ -1060,23 +1060,11 @@ client.on('messageCreate', async message => {
         .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
         .setDescription(result.response)
         .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
+        .setFooter({ text: 'ZENITSU AI • Dedicated AI Channel' })
         .setTimestamp();
-
-      const actionRow = new ARB().addComponents(
-        new BB()
-          .setCustomId(`ai_channel_reset_${message.author.id}`)
-          .setLabel('💬 Reset Memory')
-          .setStyle(BS.Danger),
-        new BB()
-          .setCustomId(`ai_channel_message_${message.author.id}`)
-          .setLabel('🤖 Message AI')
-          .setStyle(BS.Primary)
-      );
 
       await message.reply({
         embeds: [aiEmbed],
-        components: [actionRow],
         allowedMentions: { repliedUser: false }
       }).catch(() => {});
     }
@@ -2011,7 +1999,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ ...payload, ephemeral: true });
       }
 
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
 
       const prompt = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
@@ -2577,7 +2565,7 @@ client.on('interactionCreate', async interaction => {
           ephemeral: true
         });
       }
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
       const prompt = interaction.fields.getTextInputValue('ai_followup_input');
 
       db.userLanguages = db.userLanguages || {};
