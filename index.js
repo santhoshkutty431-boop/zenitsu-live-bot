@@ -1218,12 +1218,6 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const cmd = interaction.commandName;
 
-    // v4.0 Runtime command router delegation
-    const commandRouter = runtime.getService('CommandRouter');
-    if (commandRouter.commands.has(cmd)) {
-      return commandRouter.route(interaction);
-    }
-
     // ── ROLE / TIER PERMISSION CHECK ─────────────────────────────────────────
     const res = resolvePermission(interaction.member, cmd, interaction.user.id, db);
     if (!res.allowed) {
@@ -1270,11 +1264,31 @@ client.on('interactionCreate', async interaction => {
           desc += `• **Missing Capability**: \`${missingCap}\`\n`;
         }
 
-        desc += `\n> **Suggested Action**: Contact the **Server Owner** to request whitelisting or capability assignment.`;
+        let suggestedAction = 'Contact the **Server Owner** to request whitelisting or command tier role assignment.';
+        if (requiredTier === 'SERVER_OWNER') {
+          suggestedAction = 'This command is restricted strictly to the **Server Owner**.';
+        } else if (requiredTier === 'BOT_DEVELOPER') {
+          suggestedAction = 'This command is restricted strictly to **Bot Developers**.';
+        } else if (missingCap) {
+          const capFriendlyName = CAPABILITY_LABELS[missingCap] || missingCap;
+          if (userTier === 'Whitelisted User') {
+            suggestedAction = `Contact the **Server Owner** to assign the missing capability (**${capFriendlyName}**) to your whitelist.`;
+          } else {
+            suggestedAction = `Contact the **Server Owner** to request whitelisting with the (**${capFriendlyName}**) capability.`;
+          }
+        }
+
+        desc += `\n> **Suggested Action**: ${suggestedAction}`;
         embed.setDescription(desc);
       }
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    // v4.0 Runtime command router delegation
+    const commandRouter = runtime.getService('CommandRouter');
+    if (commandRouter.commands.has(cmd)) {
+      return commandRouter.route(interaction);
     }
 
     // /help
