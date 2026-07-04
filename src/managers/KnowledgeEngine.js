@@ -453,29 +453,19 @@ class KnowledgeEngine {
   // ─── Embedding & AI call ──────────────────────────────────────────────────
 
   async _embed(text) {
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        const res = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: text
-          })
-        });
-        const data = await res.json();
-        if (data.data && data.data[0] && data.data[0].embedding) {
-          return data.data[0].embedding;
-        }
-      } catch (err) {
-        console.error('[Embedding API Error]:', err);
-      }
+    // Delegate to the shared HF embedder (semantic-spam module). Same 384-dim
+    // MiniLM vectors so we don't burn OpenAI quota. Falls back to Gemini
+    // if HF is unreachable.
+    try {
+      const { _internals } = require('../../modules/semantic-spam');
+      const vec = await _internals.embed(text);
+      if (vec) return vec;
+    } catch (err) {
+      console.error('[Embedding API Error]:', err.message);
     }
 
-    // Deterministic pseudo-embedding for local fallback
+    // Last-ditch deterministic pseudo-embedding — keeps RAG pipeline running
+    // even if both embedding providers are unreachable.
     const dim = 384;
     const vec = new Array(dim).fill(0);
     for (let i = 0; i < text.length; i++) {

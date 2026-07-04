@@ -249,7 +249,7 @@ class DatabaseManager {
       label,
       sampleText,
       JSON.stringify(vector),
-      Number(threshold) || 0.82,
+      Number(threshold) || 0.65,
       addedBy || 'system',
       Date.now()
     );

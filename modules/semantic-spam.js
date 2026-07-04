@@ -62,10 +62,54 @@ function cosineSimilarity(a, b) {
 }
 
 /**
- * Embed via Gemini (free tier) — 768-dim vectors from gemini-embedding-001.
- * Chosen over OpenAI because Gemini's embedding API has generous free quota
- * and this feature must work even when the OpenAI account is billed out.
- * All signatures + query vectors use the same provider, so dimensions match.
+ * Embed via HuggingFace Inference Router — 384-dim MiniLM vectors.
+ * Primary provider: uses HF_TOKEN already set up for DB sync, doesn't compete
+ * with Gemini/OpenAI quota (which /ai and RAG need), and produces small
+ * vectors that store 8× more compactly than Gemini's 3072-dim.
+ */
+async function embedViaHuggingFace(text) {
+  const token = process.env.HF_TOKEN;
+  if (!token) return null;
+
+  const body = JSON.stringify({ inputs: text });
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'router.huggingface.co',
+      path: '/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: EMBEDDING_TIMEOUT
+    }, (res) => {
+      let chunks = '';
+      res.on('data', d => (chunks += d));
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(chunks);
+          // MiniLM feature-extraction returns a flat [dim] array
+          const vec = Array.isArray(parsed) && typeof parsed[0] === 'number'
+            ? parsed
+            : (Array.isArray(parsed?.[0]) ? parsed[0] : null);
+          resolve(Array.isArray(vec) ? vec : null);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Fallback: Gemini embeddings. Only used if HF is unreachable. Note the
+ * dimension mismatch (3072 vs 384) — cosineSimilarity guards against that.
  */
 async function embedViaGemini(text) {
   const key = process.env.GEMINI_API_KEY;
@@ -107,6 +151,9 @@ async function embedViaGemini(text) {
 }
 
 async function embed(text) {
+  // HF primary. Gemini only kicks in if HF is completely unreachable.
+  const vec = await embedViaHuggingFace(text);
+  if (vec) return vec;
   return embedViaGemini(text);
 }
 
@@ -161,7 +208,7 @@ async function checkMessage(message, deps) {
       const score = cosineSimilarity(vec, sigVec);
       if (score > bestScore) bestScore = score;
 
-      const threshold = Number(sig.threshold) || 0.82;
+      const threshold = Number(sig.threshold) || 0.65;
       if (score >= threshold && (!hit || score > hit.score)) {
         hit = {
           hit: true,
@@ -222,16 +269,18 @@ async function addSignature({ dbService, guildId, label, sampleText, threshold, 
 }
 
 // Default global scam patterns shipped with the bot. Embedded on first
-// startup (once OPENAI_API_KEY is available) and reused across all guilds.
+// startup and reused across all guilds. Thresholds are calibrated for
+// MiniLM-L6-v2 (HF): legit messages score up to ~0.4, real scam variants
+// score 0.6-0.95, so 0.55-0.65 is a safe hit range.
 const DEFAULT_SIGNATURES = [
-  { label: 'nitro-scam-gift',      threshold: 0.80, sample: 'Free Discord Nitro giveaway! Click here to claim your 3 months of Nitro for free: discord-nitro.gift' },
-  { label: 'nitro-scam-airdrop',   threshold: 0.80, sample: 'Steam is giving away free games and nitro! Get yours here before the offer ends' },
-  { label: 'steam-scam-report',    threshold: 0.80, sample: 'Hey I accidentally reported you on Steam, please help me remove the report, contact the moderator here' },
-  { label: 'crypto-airdrop-scam',  threshold: 0.82, sample: 'You have been selected for a crypto airdrop! Connect your wallet at this link to claim 0.5 ETH' },
-  { label: 'onlyfans-dm-spam',     threshold: 0.82, sample: 'Hey cutie, check out my OnlyFans page for exclusive content, link in my bio' },
-  { label: 'server-invite-spam',   threshold: 0.85, sample: 'Join my server for free rewards, giveaways and nitro drops, invite link discord.gg' },
-  { label: 'phishing-account',     threshold: 0.82, sample: 'Your Discord account will be terminated within 24 hours due to policy violation, verify your account here to avoid deletion' },
-  { label: 'trading-scam',         threshold: 0.82, sample: 'I made 10000 dollars trading crypto in one week, DM me if you want to learn my strategy for free' },
+  { label: 'nitro-scam-gift',      threshold: 0.60, sample: 'Free Discord Nitro giveaway! Click here to claim your 3 months of Nitro for free: discord-nitro.gift' },
+  { label: 'nitro-scam-airdrop',   threshold: 0.60, sample: 'Steam is giving away free games and nitro! Get yours here before the offer ends' },
+  { label: 'steam-scam-report',    threshold: 0.60, sample: 'Hey I accidentally reported you on Steam, please help me remove the report, contact the moderator here' },
+  { label: 'crypto-airdrop-scam',  threshold: 0.62, sample: 'You have been selected for a crypto airdrop! Connect your wallet at this link to claim 0.5 ETH' },
+  { label: 'onlyfans-dm-spam',     threshold: 0.62, sample: 'Hey cutie, check out my OnlyFans page for exclusive content, link in my bio' },
+  { label: 'server-invite-spam',   threshold: 0.65, sample: 'Join my server for free rewards, giveaways and nitro drops, invite link discord.gg' },
+  { label: 'phishing-account',     threshold: 0.62, sample: 'Your Discord account will be terminated within 24 hours due to policy violation, verify your account here to avoid deletion' },
+  { label: 'trading-scam',         threshold: 0.62, sample: 'I made 10000 dollars trading crypto in one week, DM me if you want to learn my strategy for free' },
 ];
 
 /**
