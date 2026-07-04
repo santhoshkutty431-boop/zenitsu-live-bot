@@ -1980,6 +1980,13 @@ client.on('interactionCreate', async interaction => {
 
     // /ai
     else if (cmd === 'ai') {
+      if (db.aiChannelId && interaction.channelId !== db.aiChannelId) {
+        return interaction.reply({
+          content: `❌ AI chat is restricted. Please use the dedicated AI channel: <#${db.aiChannelId}>`,
+          ephemeral: true
+        });
+      }
+
       db.userLanguages = db.userLanguages || {};
       const userLang = db.userLanguages[interaction.user.id];
 
@@ -2099,7 +2106,6 @@ client.on('interactionCreate', async interaction => {
         .setDescription(
           '**Type any question directly in this channel to get an instant response!**\n\n' +
           '🔹 **Memory Recall:** I remember the last 10 messages of our conversation.\n\n' +
-          '🔹 **Global Chat:** Use the `/ai` command in any other channel to chat.\n\n' +
           '🔹 **Reset Memory:** Click the button below or use the `/ai-reset` command to clear your conversation history.\n\n' +
           '*Feel free to ask me anything about gaming, coding, the server, or general knowledge!*'
         )
@@ -2112,11 +2118,7 @@ client.on('interactionCreate', async interaction => {
         new ButtonBuilder()
           .setCustomId('ai_channel_reset')
           .setLabel('💬 Reset Memory')
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId('ai_chat_dm')
-          .setLabel('🤖 Chat in DMs')
-          .setStyle(ButtonStyle.Primary)
+          .setStyle(ButtonStyle.Danger)
       );
 
       await ch.send({ embeds: [introEmbed], components: [introRow] }).catch(err => {
