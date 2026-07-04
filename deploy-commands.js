@@ -15,6 +15,10 @@ const commands = [
     .setDescription('Show Zenitsu bot commands and permission tiers'),
 
   new SlashCommandBuilder()
+    .setName('debug-bot')
+    .setDescription('Exposes live bot status for diagnostics and checks'),
+
+  new SlashCommandBuilder()
     .setName('setup-panel')
     .setDescription('Deploys the basic panel interface to the configured channel'),
 
