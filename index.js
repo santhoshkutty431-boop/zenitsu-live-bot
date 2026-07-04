@@ -219,9 +219,16 @@ const getOrCreateRole = async (guild, name, color) => {
   }
   return role;
 };
-const logToChannel = async (guild, channelName, embed) => {
-  const channelId = ID[channelName.toUpperCase()];
+const logToChannel = async (guild, channelNameOrId, embed) => {
+  if (!guild || !channelNameOrId) return;
+  
+  let channelId = channelNameOrId;
+  if (typeof channelNameOrId === 'string' && isNaN(Number(channelNameOrId))) {
+    channelId = ID[channelNameOrId.toUpperCase()];
+  }
+  
   if (!channelId) return;
+
   try {
     let channel = guild.channels.cache.get(channelId);
     if (!channel) {
@@ -231,7 +238,7 @@ const logToChannel = async (guild, channelName, embed) => {
       await channel.send({ embeds: [embed] });
     }
   } catch (err) {
-    console.error(`Failed to log to channel ${channelName}:`, err.message);
+    console.error(`Failed to log to channel ${channelNameOrId}:`, err.message);
   }
 };
 

@@ -61,20 +61,23 @@ function isOwner(userId) {
 }
 
 async function logToChannel(guild, channelId, embed) {
-  if (!guild) return;
+  if (!guild || !channelId) return;
 
   let resolvedChannelId = channelId;
+  if (typeof channelId === 'string' && isNaN(Number(channelId))) {
+    resolvedChannelId = ID[channelId.toUpperCase()];
+  }
 
-  if (db && db.logging) {
+  if (db && db.logging && resolvedChannelId) {
     const title = embed.data?.title || '';
     if (title.includes('Message Deleted') || title.includes('Message Edited')) {
-      resolvedChannelId = db.logging.messageLogId || db.logging.serverLogsId || channelId;
+      resolvedChannelId = db.logging.messageLogId || db.logging.serverLogsId || resolvedChannelId;
     } else if (title.includes('Voice')) {
-      resolvedChannelId = db.logging.voiceLogId || channelId;
+      resolvedChannelId = db.logging.voiceLogId || resolvedChannelId;
     } else if (title.includes('Incident') || title.includes('Audit') || title.includes('Banned') || title.includes('Kicked') || title.includes('Warning') || title.includes('Mute') || title.includes('Timeout') || title.includes('Whitelist Removed') || title.includes('User Successfully Whitelisted') || title.includes('Moderation') || title.includes('Roles Updated')) {
-      resolvedChannelId = db.logging.modLogId || db.logging.serverLogsId || channelId;
+      resolvedChannelId = db.logging.modLogId || db.logging.serverLogsId || resolvedChannelId;
     } else if (title.includes('Member') || title.includes('Role') || title.includes('Channel')) {
-      resolvedChannelId = db.logging.serverLogsId || channelId;
+      resolvedChannelId = db.logging.serverLogsId || resolvedChannelId;
     }
   }
 
@@ -85,10 +88,12 @@ async function logToChannel(guild, channelId, embed) {
       ch = await guild.channels.fetch(resolvedChannelId).catch(() => null);
     }
     if (ch) {
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      await ch.send({ embeds: [embed] }).catch(err => {
+        console.error(`[LOG ERROR] Failed to send embed to channel ${resolvedChannelId}:`, err.message);
+      });
     }
   } catch (err) {
-    // Fail silently in event handlers to avoid crashing the bot loop
+    console.error(`[LOG ERROR] Exception in logToChannel:`, err.message);
   }
 }
 async function logToReports(guild, embed) {

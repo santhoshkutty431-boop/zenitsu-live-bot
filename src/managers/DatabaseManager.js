@@ -332,13 +332,18 @@ class DatabaseManager {
 
   async onInit() {
     this.logger.info('Initializing SQLite Database Manager...');
-    if (this.config.hfToken) {
-      this.logger.info('HF_TOKEN detected. Pulling cloud database file...');
+    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+
+    if (isSyncEnabled) {
+      this.logger.info('HF_TOKEN detected in cloud environment. Pulling cloud database file...');
       try {
         await this.syncFromHf();
       } catch (err) {
         this.logger.error(`Cloud database sync failed: ${err.message}`);
       }
+    } else if (this.config.hfToken) {
+      this.logger.info('HF_TOKEN detected but running locally. Cloud sync disabled to prevent database conflicts.');
     }
   }
 
@@ -523,7 +528,9 @@ class DatabaseManager {
   // ─── Cloud Sync (Binary Replication of zenitsu.db) ──────────────────────────
 
   scheduleSync() {
-    if (!this.config.hfToken) return;
+    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+    if (!isSyncEnabled) return;
     if (this.syncTimer) return;
     this.syncTimer = setTimeout(async () => {
       this.syncTimer = null;
@@ -532,7 +539,9 @@ class DatabaseManager {
   }
 
   async flushToHf() {
-    if (!this.config.hfToken) return;
+    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+    if (!isSyncEnabled) return;
 
     this.writeQueue = this.writeQueue.then(async () => {
       try {
@@ -603,24 +612,22 @@ class DatabaseManager {
       headers: { 'Authorization': `Bearer ${this.config.hfToken}` }
     };
 
-    const download = (targetUrl) => {
+    const download = (targetUrl, currentOptions = options, depth = 0) => {
+      if (depth > 5) {
+        this.logger.error('Database download failed: Max redirect depth exceeded');
+        return Promise.resolve(null);
+      }
       return new Promise((resolve, reject) => {
-        https.get(targetUrl, options, (res) => {
+        https.get(targetUrl, currentOptions, (res) => {
           if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
             const redirectUrl = res.headers.location;
             if (redirectUrl) {
-              const nextOptions = { ...options };
-              if (!redirectUrl.includes('huggingface.co')) {
+              const nextOptions = { ...currentOptions };
+              if (nextOptions.headers && !redirectUrl.includes('huggingface.co')) {
                 delete nextOptions.headers['Authorization'];
               }
-              return https.get(redirectUrl, nextOptions, (redirRes) => {
-                if (redirRes.statusCode !== 200) {
-                  return resolve(null);
-                }
-                const dataChunks = [];
-                redirRes.on('data', chunk => dataChunks.push(chunk));
-                redirRes.on('end', () => resolve(Buffer.concat(dataChunks)));
-              }).on('error', reject);
+              resolve(download(redirectUrl, nextOptions, depth + 1));
+              return;
             }
           }
 
