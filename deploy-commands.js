@@ -177,11 +177,12 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('whitelist')
-    .setDescription('Manage the role-giving whitelist')
+    .setDescription('Manage the whitelisted users and their capabilities')
     .addSubcommand(subcommand =>
       subcommand.setName('add')
-        .setDescription('Add a user to the whitelist')
-        .addUserOption(option => option.setName('user').setDescription('The user to whitelist').setRequired(true)))
+        .setDescription('Add a user to the whitelist with optional capabilities')
+        .addUserOption(option => option.setName('user').setDescription('The user to whitelist').setRequired(true))
+        .addStringOption(option => option.setName('capabilities').setDescription('Comma-separated list: AI_CONFIG, SECURITY_CONFIG, ROLE_ASSIGN, MODERATION_EXECUTE, etc.').setRequired(false)))
     .addSubcommand(subcommand =>
       subcommand.setName('remove')
         .setDescription('Remove a user from the whitelist')
@@ -434,6 +435,26 @@ const commands = [
     .addSubcommand(s => s
       .setName('list')
       .setDescription('Show all whitelisted roles for each command tier')),
+
+  new SlashCommandBuilder()
+    .setName('owner-help')
+    .setDescription('Detailed guide on bot features, whitelist permission hierarchy, and configuration'),
+
+  new SlashCommandBuilder()
+    .setName('whoami')
+    .setDescription('Inspect your active permissions, tier, and granted capabilities'),
+
+  new SlashCommandBuilder()
+    .setName('lockdown')
+    .setDescription('Toggle emergency lockdown status (Bot Developer only)')
+    .addStringOption(o => o
+      .setName('action')
+      .setDescription('Lockdown state')
+      .setRequired(true)
+      .addChoices(
+        { name: '🛑 Enable Lockdown', value: 'on' },
+        { name: '🟢 Lift Lockdown', value: 'off' }
+      )),
 
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)

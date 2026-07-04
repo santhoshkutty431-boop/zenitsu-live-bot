@@ -41,6 +41,13 @@ const { queryAI, MODELS, clearHistory }                      = require('./module
 const { handleAiEmbed }                                      = require('./modules/ai-embed');
 const { handleAiTicketSupport, handleAiModeration,
         handleAiReactionTranslate, handleAiDraw }            = require('./modules/ai-features');
+const {
+  setDynamicOwnerId,
+  resolvePermission,
+  invalidatePermCache,
+  generateAuditId,
+  verifyPermissionSchema
+} = require('./modules/permission-engine');
 
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
@@ -313,6 +320,7 @@ function loadDb() {
   } else {
     console.log('[DB LOG] DB file does not exist, using default memory state.');
   }
+  verifyPermissionSchema(db, saveDb);
 }
 
 function saveDb() {
@@ -531,6 +539,7 @@ client.once('ready', async () => {
   try {
     const app = await client.application.fetch();
     ownerId = app.owner.ownerId || app.owner.id;
+    setDynamicOwnerId(ownerId);
     console.log(`👑 Supreme Bot Owner resolved: ${ownerId}`);
   } catch (err) {
     console.error('⚠️ Failed to fetch application owner:', err.message);
@@ -1110,41 +1119,9 @@ function getCmdTier(cmd) {
 }
 
 function hasCommandAccess(member, cmd, userId) {
-  loadDb(); // Sync with disk before checking permissions
-  if (isOwner(userId)) return true; // bot owner bypasses everything
-  if (member && member.id === member.guild?.ownerId) return true; // Server Owner bypasses all command checks on their server
-
-  const tier = getCmdTier(cmd);
-
-  if (tier === 'PUBLIC') return true;
-
-  // Initialize DB lists if undefined
-  db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
-
-  // Check custom whitelisted roles first
-  if (member) {
-    if (tier === 'MEMBER' && db.commandRoleWhitelist.member && db.commandRoleWhitelist.member.some(roleId => member.roles.cache.has(roleId))) return true;
-    if (tier === 'STAFF' && db.commandRoleWhitelist.staff && db.commandRoleWhitelist.staff.some(roleId => member.roles.cache.has(roleId))) return true;
-    if (tier === 'ADMIN' && db.commandRoleWhitelist.admin && db.commandRoleWhitelist.admin.some(roleId => member.roles.cache.has(roleId))) return true;
-  }
-
-  if (tier === 'MEMBER') {
-    return member?.roles?.cache?.has(ID.MEMBER_ROLE) || staffCheck(member);
-  }
-
-  if (tier === 'STAFF') return staffCheck(member);
-
-  if (tier === 'ADMIN') {
-    return member?.permissions?.has(PermissionFlagsBits.Administrator) ||
-           member?.roles?.cache?.has(ID.OWNER_ROLE) ||
-           member?.roles?.cache?.has(ID.ADMIN_ROLE);
-  }
-
-  if (tier === 'OWNER') {
-    return isOwner(userId) || member?.roles?.cache?.has(ID.OWNER_ROLE);
-  }
-
-  return false;
+  loadDb();
+  const res = resolvePermission(member, cmd, userId, db);
+  return res.allowed;
 }
 
 client.on('interactionCreate', async interaction => {
@@ -1178,23 +1155,56 @@ client.on('interactionCreate', async interaction => {
     const cmd = interaction.commandName;
 
     // ── ROLE / TIER PERMISSION CHECK ─────────────────────────────────────────
-    if (!hasCommandAccess(interaction.member, cmd, interaction.user.id)) {
-      const tier = getCmdTier(cmd);
-      const tierLabels = {
-        MEMBER: '`Member` role',
-        STAFF:  '`Moderator` or `Support` role',
-        ADMIN:  '`Administrator` permission',
-        OWNER:  'Bot Owner',
-      };
-      return interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setTitle('🚫 Access Denied')
-          .setDescription(`You need **${tierLabels[tier] || 'higher permissions'}** to use \`/${cmd}\`.`)
-          .setColor(0xFF4444)
-          .setTimestamp()
-        ],
-        ephemeral: true,
-      });
+    const res = resolvePermission(interaction.member, cmd, interaction.user.id, db);
+    if (!res.allowed) {
+      const embed = new EmbedBuilder()
+        .setTitle('🚫 Access Denied')
+        .setColor(0xFF4444)
+        .setTimestamp();
+
+      if (res.reason === 'LOCKED') {
+        embed.setDescription(res.message);
+      } else {
+        const requiredTier = res.requiredTier || 'STAFF';
+        const missingCap = res.capability;
+        
+        let userTier = 'Normal User';
+        const guildId = interaction.guildId;
+        const userId = interaction.user.id;
+        db.guildWhitelists = db.guildWhitelists || {};
+        const guildWhitelist = db.guildWhitelists[guildId] || { users: {}, roles: {} };
+        
+        if (isDeveloper(userId)) {
+          userTier = 'Bot Developer';
+        } else if (interaction.member && userId === interaction.guild?.ownerId) {
+          userTier = 'Server Owner';
+        } else if (guildWhitelist.users?.[userId] || (db.roleWhitelist && db.roleWhitelist.includes(userId))) {
+          userTier = 'Whitelisted User';
+        } else {
+          db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
+          const roleWhitelist = db.commandRoleWhitelist;
+          if (roleWhitelist.admin && roleWhitelist.admin.some(id => interaction.member?.roles?.cache?.has(id))) {
+            userTier = 'Admin Role';
+          } else if (roleWhitelist.staff && roleWhitelist.staff.some(id => interaction.member?.roles?.cache?.has(id))) {
+            userTier = 'Staff Role';
+          } else if (roleWhitelist.member && roleWhitelist.member.some(id => interaction.member?.roles?.cache?.has(id))) {
+            userTier = 'Member Role';
+          }
+        }
+
+        let desc = `You do not have the required permissions to use \`/${cmd}\`.\n\n` +
+                   `• **Your Tier**: \`${userTier}\`\n` +
+                   `• **Required Tier**: \`${requiredTier}\`\n`;
+        
+        if (missingCap) {
+          desc += `• **Missing Capability**: \`${missingCap}\`\n`;
+        }
+
+        desc += `\n> **Suggested Action**: Contact the **Server Owner** to request whitelisting or capability assignment.`;
+        embed.setDescription(desc);
+      }
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     // /help
@@ -1439,46 +1449,157 @@ client.on('interactionCreate', async interaction => {
     // /whitelist
     else if (cmd === 'whitelist') {
       const sub = interaction.options.getSubcommand();
-      if (!db.roleWhitelist) db.roleWhitelist = [];
+      const guildId = interaction.guildId;
+      db.guildWhitelists = db.guildWhitelists || {};
+      db.guildWhitelists[guildId] = db.guildWhitelists[guildId] || { users: {}, roles: {} };
 
       if (sub === 'add') {
         const user = interaction.options.getUser('user');
-        if (db.roleWhitelist.includes(user.id)) {
-          return interaction.reply({ content: `⚠️ ${user} is already whitelisted.`, ephemeral: true });
+        const capString = interaction.options.getString('capabilities');
+
+        const systemCapabilities = ['AI_CONFIG', 'SECURITY_CONFIG', 'MODERATION_EXECUTE', 'ROLE_ASSIGN', 'EMBED_MANAGE', 'TICKET_CONFIG'];
+        
+        let targetCapabilities = [...systemCapabilities];
+        if (capString) {
+          targetCapabilities = capString.split(',').map(s => s.trim().toUpperCase()).filter(s => systemCapabilities.includes(s));
+          if (targetCapabilities.length === 0) {
+            return interaction.reply({ content: `❌ Invalid capabilities specified. Available options: \`${systemCapabilities.join(', ')}\``, ephemeral: true });
+          }
         }
-        db.roleWhitelist.push(user.id);
+
+        const isAlreadyWhitelisted = db.guildWhitelists[guildId].users[user.id] !== undefined;
+        const previousState = isAlreadyWhitelisted ? [...db.guildWhitelists[guildId].users[user.id]] : null;
+
+        db.guildWhitelists[guildId].users[user.id] = targetCapabilities;
+
+        if (!db.roleWhitelist) db.roleWhitelist = [];
+        if (!db.roleWhitelist.includes(user.id)) {
+          db.roleWhitelist.push(user.id);
+        }
+
         saveDb();
-        await interaction.reply({ content: `✅ Successfully whitelisted ${user} for role-giving permissions.`, ephemeral: true });
+        invalidatePermCache(guildId, user.id);
+
+        const auditId = generateAuditId();
+
+        const auditLogEmbed = new EmbedBuilder()
+          .setTitle('🔐 Permission Audit Log')
+          .addFields(
+            { name: 'Audit ID', value: `\`${auditId}\`` },
+            { name: 'Action', value: isAlreadyWhitelisted ? 'Updated Whitelisted User' : 'Added Whitelisted User' },
+            { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+            { name: 'Target User', value: `${user} (ID: \`${user.id}\`)` },
+            { name: 'Capabilities (New)', value: targetCapabilities.map(c => `• \`${c}\``).join('\n') },
+            { name: 'Capabilities (Prev)', value: previousState ? previousState.map(c => `• \`${c}\``).join('\n') : '`None (New Whitelist)`' },
+            { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+          )
+          .setColor(isAlreadyWhitelisted ? 0xF39C12 : 0x2ECC71)
+          .setTimestamp();
+        await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+        const capabilityLabels = {
+          AI_CONFIG: 'AI Configuration & Model Management',
+          SECURITY_CONFIG: 'Security & Anti-Raid Settings',
+          MODERATION_EXECUTE: 'Moderation Execution (Kick/Ban/Purge)',
+          ROLE_ASSIGN: 'Whitelisted Role Management',
+          EMBED_MANAGE: 'Embed & Say Announcement Management',
+          TICKET_CONFIG: 'Ticket System Setup & Config'
+        };
+
+        const listStr = targetCapabilities.map(cap => `• ${capabilityLabels[cap] || cap}`).join('\n');
+
+        const successEmbed = new EmbedBuilder()
+          .setTitle('✅ User Successfully Whitelisted')
+          .setDescription(`Successfully updated permissions for ${user}.`)
+          .addFields(
+            { name: '👤 User', value: `${user} (\`${user.id}\`)`, inline: true },
+            { name: '🛡️ Audit ID', value: `\`${auditId}\``, inline: true },
+            { name: '🔑 Granted Access', value: listStr }
+          )
+          .setFooter({ text: 'Use /owner-help to learn more' })
+          .setColor(0x2ECC71)
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [successEmbed], ephemeral: true });
       }
 
       else if (sub === 'remove') {
         const user = interaction.options.getUser('user');
-        if (!db.roleWhitelist.includes(user.id)) {
+
+        const isWhitelisted = db.guildWhitelists[guildId]?.users?.[user.id] !== undefined;
+        if (!isWhitelisted && !db.roleWhitelist.includes(user.id)) {
           return interaction.reply({ content: `⚠️ ${user} is not whitelisted.`, ephemeral: true });
         }
+
+        const previousState = db.guildWhitelists[guildId]?.users?.[user.id] || ['Legacy Role Whitelist'];
+
+        if (db.guildWhitelists[guildId]?.users) {
+          delete db.guildWhitelists[guildId].users[user.id];
+        }
         db.roleWhitelist = db.roleWhitelist.filter(id => id !== user.id);
+
         saveDb();
-        await interaction.reply({ content: `✅ Removed ${user} from the role-giving whitelist.`, ephemeral: true });
+        invalidatePermCache(guildId, user.id);
+
+        const auditId = generateAuditId();
+
+        const auditLogEmbed = new EmbedBuilder()
+          .setTitle('🔐 Permission Audit Log')
+          .addFields(
+            { name: 'Audit ID', value: `\`${auditId}\`` },
+            { name: 'Action', value: 'Removed Whitelisted User' },
+            { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+            { name: 'Target User', value: `${user} (ID: \`${user.id}\`)` },
+            { name: 'Capabilities (Revoked)', value: previousState.map(c => `• \`${c}\``).join('\n') },
+            { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+          )
+          .setColor(0xE74C3C)
+          .setTimestamp();
+        await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+        const successEmbed = new EmbedBuilder()
+          .setTitle('❌ Whitelist Removed')
+          .setDescription(`Successfully revoked all whitelisted capabilities for ${user}.`)
+          .addFields(
+            { name: '👤 User', value: `${user} (\`${user.id}\`)`, inline: true },
+            { name: '🛡️ Audit ID', value: `\`${auditId}\``, inline: true }
+          )
+          .setColor(0xE74C3C)
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [successEmbed], ephemeral: true });
       }
 
       else if (sub === 'list') {
-        if (!db.roleWhitelist.length) {
-          return interaction.reply({ content: '📝 The role-giving whitelist is currently empty. (Bot Owner & Guild Owner always bypass).', ephemeral: true });
+        const guildUsers = db.guildWhitelists[guildId]?.users || {};
+        const legacyUsers = db.roleWhitelist || [];
+
+        const allUserIds = Array.from(new Set([...Object.keys(guildUsers), ...legacyUsers]));
+
+        if (allUserIds.length === 0) {
+          return interaction.reply({ content: '📝 The whitelisted users list is currently empty for this server.', ephemeral: true });
         }
-        const listStr = db.roleWhitelist.map(id => `• <@${id}> (ID: \`${id}\`)`).join('\n');
+
+        const listLines = [];
+        for (const id of allUserIds) {
+          const caps = guildUsers[id] || ['Legacy (All capabilities)'];
+          listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${caps.map(c => `\`${c}\``).join(', ')}`);
+        }
+
         const embed = new EmbedBuilder()
-          .setTitle('🛡️ Role-Giving Whitelist')
-          .setDescription(`Only whitelisted users can assign roles to members on the server:\n\n${listStr}`)
+          .setTitle('🛡️ Whitelisted Users Directory')
+          .setDescription(`Below are the trusted users whitelisted on this server:\n\n${listLines.join('\n\n')}`)
           .setColor(0x00D4FF)
           .setTimestamp();
+
         await interaction.reply({ embeds: [embed], ephemeral: true });
       }
     }
 
     // /whitelist-role
     else if (cmd === 'whitelist-role') {
-
       const sub = interaction.options.getSubcommand();
+      const guildId = interaction.guildId;
       db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
 
       if (sub === 'add') {
@@ -1492,7 +1613,36 @@ client.on('interactionCreate', async interaction => {
 
         db.commandRoleWhitelist[tier].push(role.id);
         saveDb();
-        await interaction.reply({ content: `✅ Successfully whitelisted ${role} for **${tier.toUpperCase()}** commands.`, ephemeral: true });
+        invalidatePermCache(guildId);
+
+        const auditId = generateAuditId();
+
+        const auditLogEmbed = new EmbedBuilder()
+          .setTitle('🔐 Permission Audit Log')
+          .addFields(
+            { name: 'Audit ID', value: `\`${auditId}\`` },
+            { name: 'Action', value: 'Added Whitelisted Role' },
+            { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+            { name: 'Target Role', value: `${role} (ID: \`${role.id}\`)` },
+            { name: 'Assigned Tier', value: `\`${tier.toUpperCase()}\`` },
+            { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+          )
+          .setColor(0x2ECC71)
+          .setTimestamp();
+        await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+        const successEmbed = new EmbedBuilder()
+          .setTitle('✅ Role Whitelisted Successfully')
+          .setDescription(`Custom role configuration updated.`)
+          .addFields(
+            { name: '🛡️ Role', value: `${role} (\`${role.id}\`)`, inline: true },
+            { name: '🔑 Assigned Tier', value: `\`${tier.toUpperCase()}\``, inline: true },
+            { name: '🛡️ Audit ID', value: `\`${auditId}\``, inline: true }
+          )
+          .setColor(0x2ECC71)
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [successEmbed], ephemeral: true });
       }
 
       else if (sub === 'remove') {
@@ -1505,7 +1655,36 @@ client.on('interactionCreate', async interaction => {
 
         db.commandRoleWhitelist[tier] = db.commandRoleWhitelist[tier].filter(id => id !== role.id);
         saveDb();
-        await interaction.reply({ content: `✅ Removed ${role} from the **${tier.toUpperCase()}** command whitelist.`, ephemeral: true });
+        invalidatePermCache(guildId);
+
+        const auditId = generateAuditId();
+
+        const auditLogEmbed = new EmbedBuilder()
+          .setTitle('🔐 Permission Audit Log')
+          .addFields(
+            { name: 'Audit ID', value: `\`${auditId}\`` },
+            { name: 'Action', value: 'Removed Whitelisted Role' },
+            { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+            { name: 'Target Role', value: `${role} (ID: \`${role.id}\`)` },
+            { name: 'Revoked Tier', value: `\`${tier.toUpperCase()}\`` },
+            { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+          )
+          .setColor(0xE74C3C)
+          .setTimestamp();
+        await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+        const successEmbed = new EmbedBuilder()
+          .setTitle('❌ Role Whitelist Removed')
+          .setDescription(`Successfully removed custom role authorization.`)
+          .addFields(
+            { name: '🛡️ Role', value: `${role} (\`${role.id}\`)`, inline: true },
+            { name: '🔑 Revoked Tier', value: `\`${tier.toUpperCase()}\``, inline: true },
+            { name: '🛡️ Audit ID', value: `\`${auditId}\``, inline: true }
+          )
+          .setColor(0xE74C3C)
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [successEmbed], ephemeral: true });
       }
 
       else if (sub === 'list') {
@@ -2153,6 +2332,259 @@ client.on('interactionCreate', async interaction => {
     // /draw
     else if (cmd === 'draw') {
       await handleAiDraw(interaction);
+    }
+
+    // /lockdown
+    else if (cmd === 'lockdown') {
+      const action = interaction.options.getString('action');
+      const isLock = action === 'on';
+
+      db.emergencyLock = isLock;
+      saveDb();
+
+      invalidatePermCache();
+
+      const auditId = generateAuditId();
+
+      const auditLogEmbed = new EmbedBuilder()
+        .setTitle('🔐 Emergency Lockdown Status Changed')
+        .addFields(
+          { name: 'Audit ID', value: `\`${auditId}\`` },
+          { name: 'Status', value: isLock ? '🛑 ACTIVE (Emergency Lockdown Enabled)' : '🟢 INACTIVE (Lockdown Lifted)' },
+          { name: 'Triggered By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+          { name: 'Time', value: new Date().toUTCString() }
+        )
+        .setColor(isLock ? 0xE74C3C : 0x2ECC71)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(isLock ? '🛑 Emergency Lockdown Active' : '🟢 Lockdown Lifted')
+            .setDescription(isLock 
+              ? 'Emergency Lockdown has been **enabled**. All non-developer management and configuration commands are temporarily suspended.'
+              : 'Lockdown has been **lifted**. Standard command access lists and permission checks are fully restored.'
+            )
+            .setColor(isLock ? 0xE74C3C : 0x2ECC71)
+            .setTimestamp()
+        ],
+        ephemeral: true
+      });
+    }
+
+    // /whoami
+    else if (cmd === 'whoami') {
+      const guildId = interaction.guildId;
+      const userId = interaction.user.id;
+
+      let isDevUser = isDeveloper(userId);
+      let isGuildOwner = interaction.member && userId === interaction.guild?.ownerId;
+
+      db.guildWhitelists = db.guildWhitelists || {};
+      const guildWhitelist = db.guildWhitelists[guildId] || { users: {}, roles: {} };
+
+      let isWhitelistedUser = false;
+      let userCaps = [];
+
+      if (guildWhitelist.users && guildWhitelist.users[userId]) {
+        isWhitelistedUser = true;
+        userCaps = guildWhitelist.users[userId];
+      } else if (db.roleWhitelist && db.roleWhitelist.includes(userId)) {
+        isWhitelistedUser = true;
+        userCaps = ['AI_CONFIG', 'SECURITY_CONFIG', 'MODERATION_EXECUTE', 'ROLE_ASSIGN', 'EMBED_MANAGE', 'TICKET_CONFIG'];
+      }
+
+      db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
+      const roleWhitelist = db.commandRoleWhitelist;
+      
+      const whitelistedRolesList = [];
+      if (interaction.member) {
+        if (roleWhitelist.admin && roleWhitelist.admin.some(id => interaction.member.roles.cache.has(id))) whitelistedRolesList.push('Admin commands tier');
+        if (roleWhitelist.staff && roleWhitelist.staff.some(id => interaction.member.roles.cache.has(id))) whitelistedRolesList.push('Staff commands tier');
+        if (roleWhitelist.member && roleWhitelist.member.some(id => interaction.member.roles.cache.has(id))) whitelistedRolesList.push('Normal member commands tier');
+      }
+
+      let primaryTier = 'Normal User';
+      if (isDevUser) primaryTier = 'Bot Developer';
+      else if (isGuildOwner) primaryTier = 'Server Owner';
+      else if (isWhitelistedUser) primaryTier = 'Whitelisted User';
+      else if (whitelistedRolesList.length > 0) primaryTier = `Whitelisted Role User (${whitelistedRolesList.join(', ')})`;
+
+      const isDiscordAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ? '✅ Yes' : '❌ No';
+
+      const capLabels = {
+        AI_CONFIG: 'AI Configuration & Model Management',
+        SECURITY_CONFIG: 'Security & Anti-Raid Settings',
+        MODERATION_EXECUTE: 'Moderation Execution (Kick/Ban/Purge)',
+        ROLE_ASSIGN: 'Whitelisted Role Management',
+        EMBED_MANAGE: 'Embed & Say Announcement Management',
+        TICKET_CONFIG: 'Ticket System Setup & Config'
+      };
+
+      const capListStr = userCaps.length > 0
+        ? userCaps.map(c => `✅ \`${c}\` (${capLabels[c] || c})`).join('\n')
+        : '❌ None';
+
+      const inspectorEmbed = new EmbedBuilder()
+        .setTitle('🔍 Your Permission Profile')
+        .setDescription(`Current permissions and access authorization on **${interaction.guild.name}**:`)
+        .addFields(
+          { name: '👑 Primary Tier', value: `\`${primaryTier}\``, inline: true },
+          { name: '🛠️ Discord Administrator', value: `\`${isDiscordAdmin}\``, inline: true },
+          { name: '🔑 Granted Capabilities', value: capListStr }
+        )
+        .setColor(0x00D4FF)
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [inspectorEmbed], ephemeral: true });
+    }
+
+    // /owner-help
+    else if (cmd === 'owner-help') {
+      const pages = [
+        new EmbedBuilder()
+          .setTitle('🚀 Owner Help Center — Getting Started')
+          .setDescription(
+            'Welcome to **ZENITSU LIVE**! This guide helps server owners and administrators configure the bot for optimal performance.\n\n' +
+            '🔹 **1. Inviting the Bot**\n' +
+            'Ensure the bot has `Administrator` permissions when inviting it to allow full configuration access.\n\n' +
+            '🔹 **2. Initial Setup**\n' +
+            '• Run `/setup-panel` to setup ticket systems.\n' +
+            '• Run `/ai-channel` to bind a public AI chatting channel.\n' +
+            '• Run `/security` to configure anti-spam and anti-raid parameters.'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('🔐 Owner Help Center — Permission Hierarchy')
+          .setDescription(
+            'ZENITSU LIVE implements a secure 5-tier hierarchical permission system:\n\n' +
+            '👑 **1. Bot Developer:** Dynamic resolution. Bypasses all locks and limits.\n' +
+            '👑 **2. Server Owner:** Full control of all server and configuration commands.\n' +
+            '🛡️ **3. Whitelisted User:** Granular capabilities granted via `/whitelist add`.\n' +
+            '👮 **4. Whitelisted Role:** Tier-based command access (Admin/Staff/Member).\n' +
+            '👥 **5. Public Users:** Access to public `/ai` and music commands only.\n\n' +
+            '**Whitelist commands:**\n' +
+            '• `/whitelist add user:@User capabilities:AI_CONFIG,SECURITY_CONFIG`\n' +
+            '• `/whitelist-role add role:@Role tier:staff`'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('🤖 Owner Help Center — AI Features')
+          .setDescription(
+            'Configuring and interacting with Zenitsu AI:\n\n' +
+            '🔹 **AI Channel Chatting:**\n' +
+            'Use `/ai-channel` to link a channel. Auto-replies are disabled by default. Users can query AI using `/ai` with memory context preserved.\n\n' +
+            '🔹 **Preferred Languages:**\n' +
+            'Use `/ai-lang` to set your dialect (English, Hinglish, Tanglish).\n\n' +
+            '🔹 **Model Selection:**\n' +
+            'Use `/ai-model` to configure the default model (Gemini 2.0, GPT-4o, Llama 3.3).'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('⚔️ Owner Help Center — Moderation Commands')
+          .setDescription(
+            'Zenitsu provides full-suite moderation utility commands:\n\n' +
+            '• `/warn user reason` — Warn a member and increment their case count.\n' +
+            '• `/kick user reason` — Kick a member from the server.\n' +
+            '• `/ban user reason` — Ban a member (perm/temp).\n' +
+            '• `/purge count` — Delete messages in bulk.\n' +
+            '• `/lock /unlock` — Lock down channels.\n' +
+            '• `/cases user` — List moderation history cases.'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('🎫 Owner Help Center — Support Tickets')
+          .setDescription(
+            'Setup a ticket support center:\n\n' +
+            '• `/setup-panel` — Creates an interactive panel for users to open support tickets.\n' +
+            '• **AI Support:** Auto-translation and automated AI response helper in tickets.\n' +
+            '• **Transcripts:** Auto-saved transcript history uploaded to moderation log on close.'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('🛡️ Owner Help Center — Server Protection')
+          .setDescription(
+            'Keep your server safe using `/security` options:\n\n' +
+            '• **Anti-Raid:** Automated gate checks for new accounts.\n' +
+            '• **Anti-Spam:** Mute/warn members who spam messages.\n' +
+            '• **Anti-Scam:** Scan links and messages for phishing scams.\n' +
+            '• **Anti-Invite:** Blocks unauthorized discord invite links.'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('🎵 Owner Help Center — Music Player')
+          .setDescription(
+            'Listen to music with high quality audio:\n\n' +
+            '• `/request-song` — Search and queue audio links.\n' +
+            '• `/queue` — View current playlist.\n' +
+            '• Future updates include 24/7 audio connection and audio filters.'
+          )
+          .setColor(0xEDC231),
+
+        new EmbedBuilder()
+          .setTitle('📜 Owner Help Center — Capability Reference')
+          .setDescription(
+            'Capabilities to assign using `/whitelist add`:\n\n' +
+            '• `AI_CONFIG` — Configure model, channels, embed generation.\n' +
+            '• `SECURITY_CONFIG` — Access security and anti-raid command.\n' +
+            '• `MODERATION_EXECUTE` — Access ban, kick, timeout, warn commands.\n' +
+            '• `ROLE_ASSIGN` — Manage roles and `/whitelist-role` assignments.\n' +
+            '• `EMBED_MANAGE` — Manage /embed, /say, /clear-channel.\n' +
+            '• `TICKET_CONFIG` — Manage `/setup-panel` support center.'
+          )
+          .setColor(0xEDC231)
+      ];
+
+      pages.forEach((page, i) => {
+        page.setFooter({ text: `Page ${i + 1} of ${pages.length} • ZENITSU LIVE Support` });
+      });
+
+      let currentPageIndex = 0;
+
+      const getRow = (index) => {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('owner_help_prev')
+            .setLabel('⬅️ Previous')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(index === 0),
+          new ButtonBuilder()
+            .setCustomId('owner_help_next')
+            .setLabel('➡️ Next')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(index === pages.length - 1)
+        );
+      };
+
+      const response = await interaction.reply({
+        embeds: [pages[currentPageIndex]],
+        components: [getRow(currentPageIndex)],
+        ephemeral: true
+      });
+
+      const collector = response.createMessageComponentCollector({
+        filter: i => i.user.id === interaction.user.id,
+        time: 120000
+      });
+
+      collector.on('collect', async i => {
+        if (i.customId === 'owner_help_prev') {
+          currentPageIndex--;
+        } else if (i.customId === 'owner_help_next') {
+          currentPageIndex++;
+        }
+        await i.update({
+          embeds: [pages[currentPageIndex]],
+          components: [getRow(currentPageIndex)]
+        });
+      });
     }
   }
 
