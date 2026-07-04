@@ -421,7 +421,8 @@ const commands = [
           { name: '🛠️ Admin Commands', value: 'admin' },
           { name: '👮 Staff Commands', value: 'staff' },
           { name: '👥 Normal Member Commands', value: 'member' }
-        )))
+        ))
+      .addStringOption(o => o.setName('capabilities').setDescription('Optional capabilities for the role: ROLE_ASSIGN, SECURITY_CONFIG, AI_CONFIG').setRequired(false)))
     .addSubcommand(s => s
       .setName('remove')
       .setDescription('Remove a role from a command tier whitelist')

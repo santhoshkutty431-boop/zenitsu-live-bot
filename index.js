@@ -1665,13 +1665,22 @@ client.on('interactionCreate', async interaction => {
       if (sub === 'add') {
         const role = interaction.options.getRole('role');
         const tier = interaction.options.getString('tier');
+        const capabilitiesStr = interaction.options.getString('capabilities');
 
         if (!db.commandRoleWhitelist[tier]) db.commandRoleWhitelist[tier] = [];
         if (db.commandRoleWhitelist[tier].includes(role.id)) {
           return interaction.reply({ content: `⚠️ The role ${role} is already whitelisted for **${tier.toUpperCase()}** commands.`, ephemeral: true });
         }
 
+        let capabilities = [];
+        if (capabilitiesStr) {
+          capabilities = capabilitiesStr.split(',').map(c => c.trim().toUpperCase()).filter(c => c);
+        }
+
         db.commandRoleWhitelist[tier].push(role.id);
+        db.roleCapabilities = db.roleCapabilities || {};
+        db.roleCapabilities[role.id] = capabilities;
+
         saveDb();
         invalidatePermCache(guildId);
 
@@ -1685,6 +1694,7 @@ client.on('interactionCreate', async interaction => {
             { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
             { name: 'Target Role', value: `${role} (ID: \`${role.id}\`)` },
             { name: 'Assigned Tier', value: `\`${tier.toUpperCase()}\`` },
+            { name: 'Capabilities', value: capabilities.length ? `\`${capabilities.join(', ')}\`` : 'None' },
             { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
           )
           .setColor(0x2ECC71)
@@ -1697,6 +1707,7 @@ client.on('interactionCreate', async interaction => {
           .addFields(
             { name: '🛡️ Role', value: `${role} (\`${role.id}\`)`, inline: true },
             { name: '🔑 Assigned Tier', value: `\`${tier.toUpperCase()}\``, inline: true },
+            { name: '🔑 Capabilities', value: capabilities.length ? `\`${capabilities.join(', ')}\`` : 'None', inline: true },
             { name: '🛡️ Audit ID', value: `\`${auditId}\``, inline: true }
           )
           .setColor(0x2ECC71)
@@ -1714,6 +1725,10 @@ client.on('interactionCreate', async interaction => {
         }
 
         db.commandRoleWhitelist[tier] = db.commandRoleWhitelist[tier].filter(id => id !== role.id);
+        if (db.roleCapabilities) {
+          delete db.roleCapabilities[role.id];
+        }
+        
         saveDb();
         invalidatePermCache(guildId);
 
