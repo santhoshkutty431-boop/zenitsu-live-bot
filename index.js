@@ -2658,11 +2658,12 @@ client.on('interactionCreate', async interaction => {
             '👑 **1. Bot Developer:** Dynamic resolution. Bypasses all locks and limits.\n' +
             '👑 **2. Server Owner:** Full control of all server and configuration commands.\n' +
             '🛡️ **3. Whitelisted User:** Granular capabilities granted via `/whitelist add`.\n' +
-            '👮 **4. Whitelisted Role:** Tier-based command access (Admin/Staff/Member).\n' +
+            '👮 **4. Whitelisted Role:** Tier-based command access with optional capabilities via `/whitelist-role add`.\n' +
             '👥 **5. Public Users:** Access to public `/ai` and music commands only.\n\n' +
             '**Whitelist commands:**\n' +
             '• `/whitelist add user:@User capabilities:AI_CONFIG,SECURITY_CONFIG`\n' +
-            '• `/whitelist-role add role:@Role tier:staff`'
+            '• `/whitelist-role add role:@Role tier:staff capabilities:MODERATION_EXECUTE`\n' +
+            '• Use `/whitelist list`, `/whitelist-role list`, or `/whitelist-server list` to view and manage entries interactively!'
           )
           .setColor(0xEDC231),
 
@@ -2726,13 +2727,14 @@ client.on('interactionCreate', async interaction => {
         new EmbedBuilder()
           .setTitle('📜 Owner Help Center — Capability Reference')
           .setDescription(
-            'Capabilities to assign using `/whitelist add`:\n\n' +
-            '• `AI_CONFIG` — Configure model, channels, embed generation.\n' +
-            '• `SECURITY_CONFIG` — Access security and anti-raid command.\n' +
-            '• `MODERATION_EXECUTE` — Access ban, kick, timeout, warn commands.\n' +
-            '• `ROLE_ASSIGN` — Manage roles and `/whitelist-role` assignments.\n' +
-            '• `EMBED_MANAGE` — Manage /embed, /say, /clear-channel.\n' +
-            '• `TICKET_CONFIG` — Manage `/setup-panel` support center.'
+            'Capabilities to assign using `/whitelist add` or `/whitelist-role add`:\n\n' +
+            '• `AI_CONFIG` — 🤖 AI Configuration & Models\n' +
+            '• `SECURITY_CONFIG` — 🛡️ Security & Anti-Raid Settings\n' +
+            '• `MODERATION_EXECUTE` — 👮 Moderation Execution\n' +
+            '• `ROLE_ASSIGN` — 🔑 Whitelisted Role Management\n' +
+            '• `EMBED_MANAGE` — 📢 Custom Embeds & Announcements\n' +
+            '• `TICKET_CONFIG` — 🎫 Support Ticket Panel Setup\n\n' +
+            '*Note: When you appoint a user, the bot will automatically send them a direct message detailing their granted permissions.*'
           )
           .setColor(0xEDC231)
       ];
