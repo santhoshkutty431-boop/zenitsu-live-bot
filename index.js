@@ -1017,59 +1017,7 @@ client.on('messageCreate', async message => {
     if (violated) return;
   }
 
-  // ── ZENITSU AI — Auto-Reply in designated AI channel ─────────────────────
-  if (db.aiChannelId && message.channel.id === db.aiChannelId) {
-    if (message.content.startsWith('/') || message.content.length < 2) return;
 
-    // Check if user has selected a language
-    db.userLanguages = db.userLanguages || {};
-    let userLang = db.userLanguages[message.author.id];
-
-    if (!userLang) {
-      // Default to english in public AI channel to avoid spamming language selector embeds
-      userLang = 'english';
-      db.userLanguages[message.author.id] = 'english';
-      saveDb();
-    }
-
-    // Show typing indicator
-    await message.channel.sendTyping().catch(() => {});
-
-    const modelKey = db.aiDefaultModel || 'gemini';
-    const result   = await queryAI(message.author.id, message.content, modelKey, userLang, {
-      applicationId: message.client.application?.id || 'default',
-      guildId: message.guild.id,
-      channelId: message.channel.id,
-      threadId: message.channel.isThread() ? message.channel.id : 'none',
-      shardId: message.client.shard?.ids?.[0]?.toString() || '0'
-    });
-
-    // Send private analytics log to staff channel
-    await logAiAnalytics(message.author, message.content, result, message.guild);
-
-    const { EmbedBuilder: EB, ActionRowBuilder: ARB, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
-
-    if (result.error) {
-      // User-friendly error message that hides specific API details
-      await message.reply({ 
-        content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!', 
-        allowedMentions: { repliedUser: false } 
-      }).catch(() => {});
-    } else {
-      const aiEmbed = new EB()
-        .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
-        .setDescription(`<@${message.author.id}>\n\n${result.response}`)
-        .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Dedicated AI Channel' })
-        .setTimestamp();
-
-      await message.reply({
-        embeds: [aiEmbed],
-        allowedMentions: { repliedUser: false }
-      }).catch(() => {});
-    }
-    return;
-  }
 
   // ── [13] XP System ────────────────────────────────────────────────────────
   const userId = message.author.id;
@@ -2030,10 +1978,15 @@ client.on('interactionCreate', async interaction => {
           { name: '🤖 Answer',        value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` },
         )
         .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Memory Active' })
+        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [aiEmbed] });
+      const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+      );
+
+      await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
     }
 
     // /ai-lang
