@@ -32,12 +32,21 @@ class Runtime {
         stack: reason?.stack
       });
     });
+    // Historically this handler called shutdown() on EVERY uncaught exception,
+    // which meant ONE misbehaving background task (music tick, HTTP hiccup,
+    // event listener throwing) would kill the whole bot — Koyeb would restart
+    // it, but every deferred interaction in flight would get orphaned as
+    // "Sentinel Security is thinking..." forever, because the code that would
+    // have called editReply() no longer exists.
+    //
+    // Now we just log. If the process is genuinely unrecoverable, Node will
+    // let it die on its own via a subsequent hard fault; if it's a
+    // recoverable one-off, the bot keeps serving other requests.
     process.on('uncaughtException', (error) => {
-      this.logger.critical('Uncaught Exception thrown:', {
+      this.logger.critical('Uncaught Exception (bot continues running):', {
         error: error.message,
         stack: error.stack
       });
-      this.shutdown('UNCAUGHT_EXCEPTION');
     });
 
     // Start all registered services in order
