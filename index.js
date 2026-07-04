@@ -43,6 +43,7 @@ const { handleAiTicketSupport, handleAiModeration,
         handleAiReactionTranslate, handleAiDraw }            = require('./modules/ai-features');
 const {
   setDynamicOwnerId,
+  isDeveloper,
   resolvePermission,
   invalidatePermCache,
   generateAuditId,
