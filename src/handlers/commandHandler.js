@@ -1174,10 +1174,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
         });
 
-        // Send private analytics log to staff channel
-        await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
-
         if (result.error) {
+          logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
           return interaction.editReply({ 
             content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
           });
@@ -1202,6 +1200,9 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         );
 
         await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+
+        // Send private analytics log to staff channel in the background
+        logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
       } catch (err) {
         console.error('Error in /ai command:', err);
         await interaction.editReply({
@@ -2579,10 +2580,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
         });
 
-        // Send analytics
-        await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
-
         if (result.error) {
+          logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
           return interaction.editReply({ 
             content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
           });
@@ -2601,6 +2600,9 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         );
 
         await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+
+        // Send analytics in the background
+        logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
       } catch (err) {
         console.error('Error in ai_followup_modal:', err);
         await interaction.editReply({
