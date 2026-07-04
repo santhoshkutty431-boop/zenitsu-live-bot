@@ -12,7 +12,8 @@ const {
   TextInputBuilder, 
   TextInputStyle, 
   InteractionType,
-  AuditLogEvent
+  AuditLogEvent,
+  StringSelectMenuBuilder
 } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
@@ -1661,9 +1662,19 @@ client.on('interactionCreate', async interaction => {
         }
 
         const listLines = [];
+        const selectOptions = [];
+
         for (const id of allUserIds) {
           const caps = guildUsers[id] || ['Legacy (All capabilities)'];
           listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${caps.map(c => `\`${c}\``).join(', ')}`);
+
+          const cachedUser = interaction.client.users.cache.get(id);
+          const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
+          selectOptions.push({
+            label: label.slice(0, 100),
+            description: `Remove ${label.slice(0, 50)} from whitelist`,
+            value: id
+          });
         }
 
         const embed = new EmbedBuilder()
@@ -1672,7 +1683,17 @@ client.on('interactionCreate', async interaction => {
           .setColor(0x00D4FF)
           .setTimestamp();
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        const components = [];
+        if (selectOptions.length > 0) {
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('remove_whitelist_select')
+            .setPlaceholder('🛑 Select a user to remove from whitelist')
+            .addOptions(selectOptions.slice(0, 25));
+
+          components.push(new ActionRowBuilder().addComponents(selectMenu));
+        }
+
+        await interaction.reply({ embeds: [embed], components, ephemeral: true });
       }
     }
 
@@ -2684,6 +2705,90 @@ client.on('interactionCreate', async interaction => {
   }
 
 
+
+  // ── STRING SELECT MENUS ────────────────────────────────────────────────────
+  else if (interaction.isStringSelectMenu()) {
+    const { customId, guildId } = interaction;
+    if (customId === 'remove_whitelist_select') {
+      const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
+      if (!isExecOwner) {
+        return interaction.reply({ content: '❌ Only the **Server Owner** can modify the bot whitelist.', ephemeral: true });
+      }
+
+      await interaction.deferUpdate();
+
+      const targetUserId = interaction.values[0];
+      const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
+
+      if (db.guildWhitelists?.[guildId]?.users) {
+        delete db.guildWhitelists[guildId].users[targetUserId];
+      }
+      if (db.roleWhitelist) {
+        db.roleWhitelist = db.roleWhitelist.filter(id => id !== targetUserId);
+      }
+
+      saveDb();
+      invalidatePermCache(guildId, targetUserId);
+
+      const auditId = generateAuditId();
+
+      const auditLogEmbed = new EmbedBuilder()
+        .setTitle('🔐 Permission Audit Log')
+        .addFields(
+          { name: 'Audit ID', value: `\`${auditId}\`` },
+          { name: 'Action', value: 'Removed Whitelisted User (Interactive)' },
+          { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+          { name: 'Target User', value: targetUser ? `${targetUser} (ID: \`${targetUserId}\`)` : `\`${targetUserId}\`` },
+          { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+        )
+        .setColor(0xE74C3C)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+      const guildUsers = db.guildWhitelists[guildId]?.users || {};
+      const legacyUsers = db.roleWhitelist || [];
+      const allUserIds = Array.from(new Set([...Object.keys(guildUsers), ...legacyUsers]));
+
+      const listLines = [];
+      const selectOptions = [];
+
+      for (const id of allUserIds) {
+        const caps = guildUsers[id] || ['Legacy (All capabilities)'];
+        listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${caps.map(c => `\`${c}\``).join(', ')}`);
+
+        const cachedUser = interaction.client.users.cache.get(id);
+        const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
+        selectOptions.push({
+          label: label.slice(0, 100),
+          description: `Remove ${label.slice(0, 50)} from whitelist`,
+          value: id
+        });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle('🛡️ Whitelisted Users Directory')
+        .setDescription(
+          `✅ Successfully removed <@${targetUserId}> from the whitelist.\n` +
+          `🛡️ **Audit ID**: \`${auditId}\`\n\n` +
+          `Below are the trusted users whitelisted on this server:\n\n` +
+          (listLines.length > 0 ? listLines.join('\n\n') : '*No whitelisted users left.*')
+        )
+        .setColor(0x00D4FF)
+        .setTimestamp();
+
+      const components = [];
+      if (selectOptions.length > 0) {
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('remove_whitelist_select')
+          .setPlaceholder('🛑 Select a user to remove from whitelist')
+          .addOptions(selectOptions.slice(0, 25));
+
+        components.push(new ActionRowBuilder().addComponents(selectMenu));
+      }
+
+      await interaction.editReply({ embeds: [embed], components });
+    }
+  }
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
   else if (interaction.isButton()) {
