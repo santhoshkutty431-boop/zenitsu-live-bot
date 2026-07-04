@@ -347,6 +347,20 @@ const commands = [
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
       .setRequired(false)),
 
+  new SlashCommandBuilder()
+    .setName('ai-model')
+    .setDescription('Set the default AI model for the server (Admin only)')
+    .addStringOption(o => o
+      .setName('model')
+      .setDescription('Select the default AI model')
+      .setRequired(true)
+      .addChoices(
+        { name: '🔷 Gemini 2.0 Flash (Free)',       value: 'gemini' },
+        { name: '🟢 GPT-4o (Best)',                  value: 'gpt4o'  },
+        { name: '🟡 GPT-3.5 Turbo (Fast & Cheap)',   value: 'gpt35'  },
+        { name: '⚡ Groq Llama-3.3-70b (Free+Fast)', value: 'groq'   },
+      )),
+
   // ══════════════════════════════════════════════════════════════════════════
   //  PRIVACY & SERVER WHITELIST
   // ══════════════════════════════════════════════════════════════════════════

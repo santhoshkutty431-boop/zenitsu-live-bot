@@ -2131,6 +2131,33 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
+    // /ai-model
+    else if (cmd === 'ai-model') {
+      if (!isOwner(interaction.user.id) && !interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({ content: '❌ Only **Administrators** can change the default AI model.', ephemeral: true });
+      }
+
+      const selectedModel = interaction.options.getString('model');
+      db.aiDefaultModel = selectedModel;
+      saveDb();
+
+      const modelNames = {
+        gemini: '🔷 Gemini 2.0 Flash (Free)',
+        gpt4o:  '🟢 GPT-4o (Best)',
+        gpt35:  '🟡 GPT-3.5 Turbo (Fast & Cheap)',
+        groq:   '⚡ Groq Llama-3.3-70b (Free+Fast)'
+      };
+
+      await interaction.reply({
+        embeds: [new EmbedBuilder()
+          .setTitle('✅ Default AI Model Updated')
+          .setDescription(`The server's default AI model has been set to **${modelNames[selectedModel]}**.\nAuto-replies in the AI channel will now use this model by default.`)
+          .setColor(0x2ECC71)
+          .setTimestamp()],
+        ephemeral: true
+      });
+    }
+
     // /whitelist-server
     else if (cmd === 'whitelist-server') {
       if (!isOwner(interaction.user.id) && !interaction.member?.roles?.cache?.has(ID.OWNER_ROLE))
