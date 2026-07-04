@@ -226,9 +226,15 @@ class DatabaseManager {
         duration_sec INTEGER DEFAULT 0,
         queue_json TEXT NOT NULL,
         setup_channel_id TEXT,
-        setup_message_id TEXT
+        setup_message_id TEXT,
+        current_song_url TEXT
       );
     `);
+    try {
+      this.sqlDb.exec('ALTER TABLE music_players ADD COLUMN current_song_url TEXT;');
+    } catch (e) {
+      // Column already exists, safe to ignore
+    }
   }
 
   // ─── Spam signature helpers ──────────────────────────────────────────────
@@ -747,7 +753,8 @@ class DatabaseManager {
       durationSec: row.duration_sec,
       queue: JSON.parse(row.queue_json),
       setupChannelId: row.setup_channel_id,
-      setupMessageId: row.setup_message_id
+      setupMessageId: row.setup_message_id,
+      currentSongUrl: row.current_song_url
     };
   }
 
@@ -755,8 +762,8 @@ class DatabaseManager {
     const stmt = this.sqlDb.prepare(`
       INSERT OR REPLACE INTO music_players (
         guild_id, current_song, is_paused, loop_mode, volume, 
-        position_sec, duration_sec, queue_json, setup_channel_id, setup_message_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        position_sec, duration_sec, queue_json, setup_channel_id, setup_message_id, current_song_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       p.guildId,
@@ -768,7 +775,8 @@ class DatabaseManager {
       p.durationSec || 0,
       JSON.stringify(p.queue || []),
       p.setupChannelId || null,
-      p.setupMessageId || null
+      p.setupMessageId || null,
+      p.currentSongUrl || null
     );
     this.scheduleSync();
   }
@@ -786,7 +794,8 @@ class DatabaseManager {
       durationSec: row.duration_sec,
       queue: JSON.parse(row.queue_json),
       setupChannelId: row.setup_channel_id,
-      setupMessageId: row.setup_message_id
+      setupMessageId: row.setup_message_id,
+      currentSongUrl: row.current_song_url
     }));
   }
 

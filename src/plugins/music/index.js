@@ -6,6 +6,15 @@ const {
   PermissionFlagsBits,
   ChannelType
 } = require('discord.js');
+const {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  VoiceConnectionStatus,
+  entersState
+} = require('@discordjs/voice');
+const play = require('play-dl');
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -20,7 +29,7 @@ function makeControllerEmbedAndButtons(player) {
   };
 
   const barLen = 12;
-  const dotPos = total > 0 ? Math.round((current / total) * barLen) : 0;
+  const dotPos = total > 0 ? Math.min(barLen - 1, Math.round((current / total) * barLen)) : 0;
   const bar = '▬'.repeat(Math.max(0, dotPos)) + '🔘' + '▬'.repeat(Math.max(0, barLen - dotPos - 1));
 
   const statusEmoji = player.isPaused ? '⏸️ Paused' : '💿 Now Playing';
@@ -35,7 +44,7 @@ function makeControllerEmbedAndButtons(player) {
   if (player.currentSong) {
     embed.setDescription(
       `### ${statusEmoji}\n` +
-      `**[${trackTitle}](https://youtube.com)**\n\n` +
+      `**[${trackTitle}](${player.currentSongUrl || 'https://youtube.com'})**\n\n` +
       `\`${formatTime(current)}\` ${bar} \`${formatTime(total)}\`\n\n` +
       `• **Volume:** ${volumeEmoji} \`${player.volume}%\`  |  • **Loop Mode:** \`${player.loopMode.toUpperCase()}\``
     );
@@ -47,7 +56,7 @@ function makeControllerEmbedAndButtons(player) {
   }
 
   if (player.queue && player.queue.length > 0) {
-    const queueList = player.queue.slice(0, 5).map((q, idx) => `\`${idx + 1}.\` ${q}`).join('\n');
+    const queueList = player.queue.slice(0, 5).map((q, idx) => `\`${idx + 1}.\` ${q.title}`).join('\n');
     const remaining = player.queue.length > 5 ? `\n*...and ${player.queue.length - 5} more track(s)*` : '';
     embed.addFields({ name: '📋 Upcoming Queue', value: queueList + remaining });
   }
@@ -116,6 +125,7 @@ class MusicPlugin {
     this.dbService = runtime.getService('DatabaseManager');
     this.router = runtime.getService('CommandRouter');
     this.tickInterval = null;
+    this.activePlayers = new Map(); // guildId -> { connection, audioPlayer, disconnectTimeout }
   }
 
   async onLoad() {
@@ -135,30 +145,48 @@ class MusicPlugin {
         try {
           if (message.author.bot || !message.guild) return;
 
-          const player = this.dbService.getMusicPlayer(message.guild.id);
-          if (player && player.setupChannelId && message.channel.id === player.setupChannelId) {
+          const playerState = this.dbService.getMusicPlayer(message.guild.id);
+          if (playerState && playerState.setupChannelId && message.channel.id === playerState.setupChannelId) {
             // Delete request message immediately
             await message.delete().catch(() => {});
 
             const query = message.content.trim();
             if (query.length === 0) return;
 
-            // Add to queue
-            player.queue.push(query);
-
-            if (!player.currentSong) {
-              // Start playing immediately if idle
-              player.currentSong = player.queue.shift();
-              player.positionSec = 0;
-              player.durationSec = Math.floor(Math.random() * 120) + 120; // 2-4 minutes
-              player.isPaused = false;
+            // Check if user is in voice channel
+            const voiceChannel = message.member?.voice?.channel;
+            if (!voiceChannel) {
+              const sentErr = await message.channel.send(`❌ **${message.author.username}**, you must be in a voice channel to request music!`);
+              setTimeout(() => sentErr.delete().catch(() => {}), 4000);
+              return;
             }
 
-            this.dbService.saveMusicPlayer(player);
-            await this.updateControllerMessage(player);
+            // Search and resolve song
+            const track = await this.resolveTrack(query);
+            if (!track) {
+              const sentErr = await message.channel.send(`❌ No song results found for: **${query}**`);
+              setTimeout(() => sentErr.delete().catch(() => {}), 4000);
+              return;
+            }
+
+            // Join and get player
+            const guildPlayer = await this.getOrCreatePlayer(voiceChannel);
+
+            // Add to queue
+            playerState.queue.push(track);
+            this.dbService.saveMusicPlayer(playerState);
+
+            let isPlaying = guildPlayer.audioPlayer.state.status === 'playing';
+
+            if (!isPlaying && !playerState.currentSong) {
+              // Start playing immediately if idle
+              await this.playTrack(message.guild.id, track);
+            } else {
+              await this.updateControllerMessage(playerState);
+            }
 
             // Self-deleting confirmation feedback
-            const sent = await message.channel.send(`✅ Added **${query}** to queue!`);
+            const sent = await message.channel.send(`✅ Added **${track.title}** to queue!`);
             setTimeout(() => sent.delete().catch(() => {}), 3000);
           }
         } catch (err) {
@@ -167,7 +195,7 @@ class MusicPlugin {
       });
     }
 
-    // Start 5-second tick clock for progress bars and track transitions
+    // Start 5-second tick clock for progress bars only
     this.startTickClock();
   }
 
@@ -176,6 +204,14 @@ class MusicPlugin {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
     }
+    // Clean up active connections
+    for (const [guildId, player] of this.activePlayers.entries()) {
+      try {
+        player.audioPlayer.stop();
+        player.connection.destroy();
+      } catch (e) {}
+    }
+    this.activePlayers.clear();
   }
 
   startTickClock() {
@@ -185,36 +221,15 @@ class MusicPlugin {
       try {
         const players = this.dbService.getAllMusicPlayers();
         for (const player of players) {
-          let stateChanged = false;
-
-          if (player.currentSong && !player.isPaused) {
+          const active = this.activePlayers.get(player.guildId);
+          if (active && active.audioPlayer.state.status === 'playing') {
             player.positionSec += 5;
-            stateChanged = true;
-
-            // Track finished -> Skip to next
+            
+            // Safety cap
             if (player.positionSec >= player.durationSec) {
-              if (player.loopMode === 'track') {
-                player.positionSec = 0;
-              } else {
-                if (player.loopMode === 'queue') {
-                  player.queue.push(player.currentSong);
-                }
-                
-                if (player.queue.length > 0) {
-                  player.currentSong = player.queue.shift();
-                  player.positionSec = 0;
-                  player.durationSec = Math.floor(Math.random() * 120) + 120; // 2-4 minutes
-                } else {
-                  player.currentSong = null;
-                  player.positionSec = 0;
-                  player.durationSec = 0;
-                }
-              }
+              player.positionSec = player.durationSec;
             }
-          }
 
-          // Save state & update controller message if anything changed (or periodically to keep bar moving)
-          if (stateChanged || (player.currentSong && player.positionSec % 10 === 0)) {
             this.dbService.saveMusicPlayer(player);
             await this.updateControllerMessage(player);
           }
@@ -242,14 +257,205 @@ class MusicPlugin {
     }
   }
 
+  // ─── CORE VOICE / AUDIO OPERATIONS ─────────────────────────────────────────
+
+  async resolveTrack(query) {
+    try {
+      if (query.startsWith('http')) {
+        const info = await play.video_basic_info(query).catch(() => null);
+        if (info && info.video_details) {
+          return {
+            title: info.video_details.title,
+            url: info.video_details.url,
+            duration: info.video_details.durationInSec
+          };
+        }
+      }
+      const search = await play.search(query, { limit: 1 });
+      if (search && search.length > 0) {
+        return {
+          title: search[0].title,
+          url: search[0].url,
+          duration: search[0].durationInSec
+        };
+      }
+      return null;
+    } catch (err) {
+      this.logger.error(`Failed to resolve track for "${query}": ${err.message}`);
+      return null;
+    }
+  }
+
+  async getOrCreatePlayer(voiceChannel) {
+    const guildId = voiceChannel.guild.id;
+    let player = this.activePlayers.get(guildId);
+
+    if (!player) {
+      const connection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guildId,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      });
+
+      const audioPlayer = createAudioPlayer();
+      connection.subscribe(audioPlayer);
+
+      player = { connection, audioPlayer, disconnectTimeout: null };
+      this.activePlayers.set(guildId, player);
+
+      // Register event listeners
+      audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        this.handleTrackEnd(guildId);
+      });
+
+      audioPlayer.on('error', (error) => {
+        this.logger.error(`Audio player error in guild ${guildId}: ${error.message}`);
+        this.handleTrackEnd(guildId);
+      });
+
+      connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        try {
+          await Promise.race([
+            entersState(connection, VoiceConnectionStatus.Signalling, 5000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+          ]);
+          // Reconnected!
+        } catch (error) {
+          // Connection disconnected permanently
+          this.cleanupPlayer(guildId);
+        }
+      });
+    }
+
+    if (player.disconnectTimeout) {
+      clearTimeout(player.disconnectTimeout);
+      player.disconnectTimeout = null;
+    }
+
+    return player;
+  }
+
+  async playTrack(guildId, track) {
+    const player = this.activePlayers.get(guildId);
+    if (!player) return;
+
+    try {
+      const stream = await play.stream(track.url);
+      const resource = createAudioResource(stream.stream, { inputType: stream.type });
+
+      player.audioPlayer.play(resource);
+
+      // Save state to DB
+      const playerState = this.dbService.getMusicPlayer(guildId) || {
+        guildId,
+        loopMode: 'off',
+        volume: 100,
+        queue: []
+      };
+
+      playerState.currentSong = track.title;
+      playerState.currentSongUrl = track.url;
+      playerState.durationSec = track.duration;
+      playerState.positionSec = 0;
+      playerState.isPaused = false;
+
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+    } catch (err) {
+      this.logger.error(`Failed to play track ${track.title} in guild ${guildId}: ${err.message}`);
+      this.handleTrackEnd(guildId);
+    }
+  }
+
+  async handleTrackEnd(guildId) {
+    const playerState = this.dbService.getMusicPlayer(guildId);
+    if (!playerState) return;
+
+    if (playerState.loopMode === 'track' && playerState.currentSong) {
+      // Replay
+      const track = {
+        title: playerState.currentSong,
+        url: playerState.currentSongUrl,
+        duration: playerState.durationSec
+      };
+      await this.playTrack(guildId, track);
+    } else {
+      if (playerState.loopMode === 'queue' && playerState.currentSong) {
+        playerState.queue.push({
+          title: playerState.currentSong,
+          url: playerState.currentSongUrl,
+          duration: playerState.durationSec
+        });
+      }
+
+      if (playerState.queue.length > 0) {
+        const nextTrack = playerState.queue.shift();
+        this.dbService.saveMusicPlayer(playerState);
+        await this.playTrack(guildId, nextTrack);
+      } else {
+        // Queue finished -> Idle
+        playerState.currentSong = null;
+        playerState.currentSongUrl = null;
+        playerState.durationSec = 0;
+        playerState.positionSec = 0;
+        playerState.isPaused = false;
+        
+        this.dbService.saveMusicPlayer(playerState);
+        await this.updateControllerMessage(playerState);
+
+        // Schedule auto-disconnect after 60s of idle
+        const active = this.activePlayers.get(guildId);
+        if (active) {
+          active.disconnectTimeout = setTimeout(() => {
+            this.cleanupPlayer(guildId);
+          }, 60000);
+        }
+      }
+    }
+  }
+
+  cleanupPlayer(guildId) {
+    const player = this.activePlayers.get(guildId);
+    if (player) {
+      try {
+        player.audioPlayer.stop();
+        player.connection.destroy();
+      } catch (e) {}
+      this.activePlayers.delete(guildId);
+    }
+
+    const state = this.dbService.getMusicPlayer(guildId);
+    if (state) {
+      state.currentSong = null;
+      state.currentSongUrl = null;
+      state.durationSec = 0;
+      state.positionSec = 0;
+      state.isPaused = false;
+      this.dbService.saveMusicPlayer(state);
+      this.updateControllerMessage(state).catch(() => {});
+    }
+  }
+
   // ─── COMMAND HANDLERS ──────────────────────────────────────────────────────
 
   async handlePlay(interaction) {
     const query = interaction.options.getString('song');
-    const guildId = interaction.guildId;
+    const voiceChannel = interaction.member?.voice?.channel;
+    if (!voiceChannel) {
+      return interaction.reply({ content: '❌ You must be in a voice channel to play music!', ephemeral: true });
+    }
 
-    let player = this.dbService.getMusicPlayer(guildId) || {
-      guildId,
+    await interaction.deferReply({ ephemeral: true });
+
+    const track = await this.resolveTrack(query);
+    if (!track) {
+      return interaction.editReply({ content: `❌ No results found for: **${query}**` });
+    }
+
+    const guildPlayer = await this.getOrCreatePlayer(voiceChannel);
+
+    const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
+      guildId: interaction.guildId,
       currentSong: null,
       isPaused: false,
       loopMode: 'off',
@@ -261,31 +467,38 @@ class MusicPlugin {
       setupMessageId: null
     };
 
-    player.queue.push(query);
-    let startMsg = '';
+    let replyMsg = '';
+    const isPlaying = guildPlayer.audioPlayer.state.status === 'playing';
 
-    if (!player.currentSong) {
-      player.currentSong = player.queue.shift();
-      player.positionSec = 0;
-      player.durationSec = Math.floor(Math.random() * 120) + 120;
-      player.isPaused = false;
-      startMsg = `💿 Now playing: **${player.currentSong}**`;
+    if (!isPlaying && !playerState.currentSong) {
+      await this.playTrack(interaction.guildId, track);
+      replyMsg = `💿 Now playing: **${track.title}**`;
     } else {
-      startMsg = `✅ Added **${query}** to queue!`;
+      playerState.queue.push(track);
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+      replyMsg = `✅ Added **${track.title}** to queue!`;
     }
 
-    this.dbService.saveMusicPlayer(player);
-    await this.updateControllerMessage(player);
-
-    await interaction.reply({ content: startMsg, ephemeral: true });
+    await interaction.editReply({ content: replyMsg });
   }
 
   async handlePlayNow(interaction) {
     const query = interaction.options.getString('song');
-    const guildId = interaction.guildId;
+    const voiceChannel = interaction.member?.voice?.channel;
+    if (!voiceChannel) {
+      return interaction.reply({ content: '❌ You must be in a voice channel to play music!', ephemeral: true });
+    }
 
-    let player = this.dbService.getMusicPlayer(guildId) || {
-      guildId,
+    await interaction.deferReply({ ephemeral: true });
+
+    const track = await this.resolveTrack(query);
+    if (!track) {
+      return interaction.editReply({ content: `❌ No results found for: **${query}**` });
+    }
+
+    const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
+      guildId: interaction.guildId,
       currentSong: null,
       isPaused: false,
       loopMode: 'off',
@@ -297,60 +510,66 @@ class MusicPlugin {
       setupMessageId: null
     };
 
-    if (player.currentSong) {
-      // Put currently playing song back to start of queue
-      player.queue.unshift(player.currentSong);
+    await this.getOrCreatePlayer(voiceChannel);
+
+    if (playerState.currentSong) {
+      // Put currently playing song back to queue start
+      playerState.queue.unshift({
+        title: playerState.currentSong,
+        url: playerState.currentSongUrl,
+        duration: playerState.durationSec
+      });
     }
 
-    player.currentSong = query;
-    player.positionSec = 0;
-    player.durationSec = Math.floor(Math.random() * 120) + 120;
-    player.isPaused = false;
-
-    this.dbService.saveMusicPlayer(player);
-    await this.updateControllerMessage(player);
-
-    await interaction.reply({ content: `⏭️ Interrupted current track. Now playing: **${query}** immediately!`, ephemeral: true });
+    await this.playTrack(interaction.guildId, track);
+    await interaction.editReply({ content: `⏭️ Interrupted track. Playing **${track.title}** immediately!` });
   }
 
   async handleNowPlaying(interaction) {
-    const player = this.dbService.getMusicPlayer(interaction.guildId);
-    if (!player || !player.currentSong) {
+    const playerState = this.dbService.getMusicPlayer(interaction.guildId);
+    if (!playerState || !playerState.currentSong) {
       return interaction.reply({ content: '🎵 Nothing is currently playing.', ephemeral: true });
     }
 
-    const { embed, components } = makeControllerEmbedAndButtons(player);
+    const { embed, components } = makeControllerEmbedAndButtons(playerState);
     await interaction.reply({ embeds: [embed], components, ephemeral: true });
   }
 
   async handlePause(interaction) {
-    const player = this.dbService.getMusicPlayer(interaction.guildId);
-    if (!player || !player.currentSong) {
+    const playerState = this.dbService.getMusicPlayer(interaction.guildId);
+    const active = this.activePlayers.get(interaction.guildId);
+    if (!playerState || !playerState.currentSong || !active) {
       return interaction.reply({ content: '⚠️ Nothing is playing to pause/resume.', ephemeral: true });
     }
 
-    player.isPaused = !player.isPaused;
-    this.dbService.saveMusicPlayer(player);
-    await this.updateControllerMessage(player);
+    playerState.isPaused = !playerState.isPaused;
+    if (playerState.isPaused) {
+      active.audioPlayer.pause();
+    } else {
+      active.audioPlayer.unpause();
+    }
+
+    this.dbService.saveMusicPlayer(playerState);
+    await this.updateControllerMessage(playerState);
 
     await interaction.reply({
-      content: player.isPaused ? '⏸️ Player paused.' : '▶️ Player resumed.',
+      content: playerState.isPaused ? '⏸️ Player paused.' : '▶️ Player resumed.',
       ephemeral: true
     });
   }
 
   async handleQueue(interaction) {
-    const player = this.dbService.getMusicPlayer(interaction.guildId);
-    if (!player) {
+    const playerState = this.dbService.getMusicPlayer(interaction.guildId);
+    if (!playerState) {
       return interaction.reply({ content: '🎵 Queue is empty.', ephemeral: true });
     }
 
-    const currentTrack = player.currentSong ? `💿 **Now Playing:** ${player.currentSong}\n\n` : '';
-    if (player.queue.length === 0) {
+    const currentTrack = playerState.currentSong ? `💿 **Now Playing:** ${playerState.currentSong}\n\n` : '';
+    if (playerState.queue.length === 0) {
       return interaction.reply({ content: `${currentTrack}📋 Queue is empty.`, ephemeral: true });
     }
 
-    const list = player.queue.map((q, idx) => `\`${idx + 1}.\` ${q}`).join('\n');
+    const list = playerState.queue.map((q, idx) => `\`${idx + 1}.\` ${q.title}`).join('\n');
     const embed = new EmbedBuilder()
       .setTitle('📋 Current Music Queue')
       .setDescription(currentTrack + list)
@@ -382,7 +601,7 @@ class MusicPlugin {
       topic: '🎵 Type song name/link to queue. Use the buttons below to control the player.',
     });
 
-    const player = this.dbService.getMusicPlayer(interaction.guildId) || {
+    const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
       guildId: interaction.guildId,
       currentSong: null,
       isPaused: false,
@@ -395,12 +614,12 @@ class MusicPlugin {
       setupMessageId: null
     };
 
-    const { embed, components } = makeControllerEmbedAndButtons(player);
+    const { embed, components } = makeControllerEmbedAndButtons(playerState);
     const ctrlMsg = await musicChan.send({ embeds: [embed], components });
 
-    player.setupChannelId = musicChan.id;
-    player.setupMessageId = ctrlMsg.id;
-    this.dbService.saveMusicPlayer(player);
+    playerState.setupChannelId = musicChan.id;
+    playerState.setupMessageId = ctrlMsg.id;
+    this.dbService.saveMusicPlayer(playerState);
 
     await interaction.editReply({ content: `✅ Dedicated music control channel created: ${musicChan}` });
   }
@@ -408,92 +627,93 @@ class MusicPlugin {
   // ─── BUTTON CONTROLS ────────────────────────────────────────────────────────
 
   async handleControllerButton(interaction) {
-    const player = this.dbService.getMusicPlayer(interaction.guildId);
-    if (!player) {
+    const guildId = interaction.guildId;
+    const playerState = this.dbService.getMusicPlayer(guildId);
+    const active = this.activePlayers.get(guildId);
+    if (!playerState) {
       return interaction.reply({ content: '⚠️ Player not initialized.', ephemeral: true });
     }
 
     const customId = interaction.customId;
 
     if (customId === 'music_ctrl_play_pause') {
-      player.isPaused = !player.isPaused;
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
-      await interaction.reply({ content: player.isPaused ? '⏸️ Paused.' : '▶️ Resumed.', ephemeral: true });
+      if (!active) return interaction.reply({ content: '⚠️ Bot is not currently in a voice channel.', ephemeral: true });
+      playerState.isPaused = !playerState.isPaused;
+      if (playerState.isPaused) {
+        active.audioPlayer.pause();
+      } else {
+        active.audioPlayer.unpause();
+      }
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+      await interaction.reply({ content: playerState.isPaused ? '⏸️ Paused.' : '▶️ Resumed.', ephemeral: true });
     }
     
     else if (customId === 'music_ctrl_skip') {
-      if (player.queue.length > 0) {
-        player.currentSong = player.queue.shift();
-        player.positionSec = 0;
-        player.durationSec = Math.floor(Math.random() * 120) + 120;
-        player.isPaused = false;
-      } else {
-        player.currentSong = null;
-        player.positionSec = 0;
-        player.durationSec = 0;
-      }
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
+      if (!active) return interaction.reply({ content: '⚠️ Bot is not currently in a voice channel.', ephemeral: true });
+      this.handleTrackEnd(guildId);
       await interaction.reply({ content: '⏭️ Track skipped.', ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_back') {
-      player.positionSec = 0;
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
+      if (!active) return interaction.reply({ content: '⚠️ Bot is not currently in a voice channel.', ephemeral: true });
+      playerState.positionSec = 0;
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+      
+      const currentTrack = {
+        title: playerState.currentSong,
+        url: playerState.currentSongUrl,
+        duration: playerState.durationSec
+      };
+      await this.playTrack(guildId, currentTrack);
       await interaction.reply({ content: '⏮️ Restarted current track.', ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_loop') {
       const modes = ['off', 'track', 'queue'];
-      const nextIdx = (modes.indexOf(player.loopMode) + 1) % modes.length;
-      player.loopMode = modes[nextIdx];
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
-      await interaction.reply({ content: `🔄 Loop mode set to **${player.loopMode.toUpperCase()}**.`, ephemeral: true });
+      const nextIdx = (modes.indexOf(playerState.loopMode) + 1) % modes.length;
+      playerState.loopMode = modes[nextIdx];
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+      await interaction.reply({ content: `🔄 Loop mode set to **${playerState.loopMode.toUpperCase()}**.`, ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_shuffle') {
       // Shuffle array in-place
-      for (let i = player.queue.length - 1; i > 0; i--) {
+      for (let i = playerState.queue.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [player.queue[i], player.queue[j]] = [player.queue[j], player.queue[i]];
+        [playerState.queue[i], playerState.queue[j]] = [playerState.queue[j], playerState.queue[i]];
       }
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
       await interaction.reply({ content: '🔀 Queue shuffled.', ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_vol_down') {
-      player.volume = Math.max(0, player.volume - 10);
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
-      await interaction.reply({ content: `🔉 Volume lowered to **${player.volume}%**.`, ephemeral: true });
+      playerState.volume = Math.max(0, playerState.volume - 10);
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+      await interaction.reply({ content: `🔉 Volume lowered to **${playerState.volume}%**.`, ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_vol_up') {
-      player.volume = Math.min(100, player.volume + 10);
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
-      await interaction.reply({ content: `🔊 Volume raised to **${player.volume}%**.`, ephemeral: true });
+      playerState.volume = Math.min(100, playerState.volume + 10);
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
+      await interaction.reply({ content: `🔊 Volume raised to **${playerState.volume}%**.`, ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_clear') {
-      player.queue = [];
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
+      playerState.queue = [];
+      this.dbService.saveMusicPlayer(playerState);
+      await this.updateControllerMessage(playerState);
       await interaction.reply({ content: '🗑️ Queue cleared.', ephemeral: true });
     }
 
     else if (customId === 'music_ctrl_stop') {
-      player.currentSong = null;
-      player.positionSec = 0;
-      player.durationSec = 0;
-      player.queue = [];
-      this.dbService.saveMusicPlayer(player);
-      await this.updateControllerMessage(player);
-      await interaction.reply({ content: '🛑 Player stopped.', ephemeral: true });
+      this.cleanupPlayer(guildId);
+      await interaction.reply({ content: '🛑 Player stopped and bot disconnected.', ephemeral: true });
     }
   }
 }
