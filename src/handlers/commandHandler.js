@@ -2449,7 +2449,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         });
       }
       await interaction.deferReply({ ephemeral: true });
-      const { clearHistory } = require('./modules/ai-handler');
+      // clearHistory is already imported at the top of the file — no need to lazy-require.
       clearHistory(interaction.user.id, {
         applicationId: interaction.client.application?.id || 'default',
         guildId: interaction.guildId || 'dm',
