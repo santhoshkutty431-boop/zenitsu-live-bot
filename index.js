@@ -829,14 +829,18 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         
         if (executorId) {
           loadDb(); // Sync with disk before security checks
-          const isExecOwner = executorId === ownerId;
-          const isExecGuildOwner = executorId === newMember.guild.ownerId;
           const executorMember = await newMember.guild.members.fetch(executorId).catch(() => null);
-          const isExecOwnerRole = executorMember && executorMember.roles.cache.has(ID.OWNER_ROLE);
           const isExecBot = executorId === client.user.id;
-          const isExecWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executorId);
 
-          if (!isExecOwner && !isExecGuildOwner && !isExecOwnerRole && !isExecBot && !isExecWhitelisted) {
+          let isExecAuthorized = false;
+          if (isExecBot) {
+            isExecAuthorized = true;
+          } else if (executorMember) {
+            const permRes = resolvePermission(executorMember, 'role', executorId, db);
+            isExecAuthorized = permRes.allowed;
+          }
+
+          if (!isExecAuthorized) {
             // Revert role addition
             for (const [roleId, role] of addedRoles) {
               await newMember.roles.remove(role, 'Anti-Abuse Guard: Unauthorized role assignment').catch(() => {});
@@ -852,7 +856,22 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
             await logToReports(newMember.guild, alertEmbed);
             await logToChannel(newMember.guild, ID.MOD_LOG, alertEmbed);
             
-            // Prevent logging the unauthorized roles update as a normal update
+            // Warn executor via DM
+            if (executorMember) {
+              const dmEmbed = new EmbedBuilder()
+                .setTitle('⚠️ Zenitsu Guard: Unauthorized Role Assignment')
+                .setDescription(
+                  `You tried to assign role(s) on **${newMember.guild.name}** but you do not have permission to do so.\n\n` +
+                  `• **Target User:** ${newMember.user.tag}\n` +
+                  `• **Role(s):** ${addedRoles.map(r => r.name).join(', ')}\n\n` +
+                  `**Action Taken:** The role assignment has been automatically reverted.\n` +
+                  `*Contact the Server Owner to request whitelisting for the \`ROLE_ASSIGN\` capability.*`
+                )
+                .setColor(0xE74C3C)
+                .setTimestamp();
+              await executorMember.send({ embeds: [dmEmbed] }).catch(() => {});
+            }
+
             return;
           }
         }
