@@ -13,7 +13,8 @@ const {
   TextInputStyle, 
   InteractionType,
   AuditLogEvent,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  ActivityType
 } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
@@ -597,7 +598,12 @@ client.once('ready', async () => {
   console.log(`   Mod log     : ${ID.MOD_LOG      || '(not set)'}`);
   client.user.setPresence({
     status: 'online',
-    activities: [{ name: 'ZENITSU LIVE | /help', type: 3 }],
+    activities: [
+      {
+        name: '🛡️ Protecting Communities',
+        type: ActivityType.Watching,
+      },
+    ],
   });
 });
 
