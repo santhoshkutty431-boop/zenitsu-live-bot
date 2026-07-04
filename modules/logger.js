@@ -37,9 +37,16 @@ async function sendLog(guild, channelId, embed, db) {
   }
 
   if (!resolvedChannelId) return;
-  const ch = guild.channels.cache.get(resolvedChannelId);
-  if (ch?.isTextBased()) {
-    await ch.send({ embeds: [embed] }).catch(() => {});
+  try {
+    let ch = guild.channels.cache.get(resolvedChannelId);
+    if (!ch) {
+      ch = await guild.channels.fetch(resolvedChannelId).catch(() => null);
+    }
+    if (ch?.isTextBased()) {
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    }
+  } catch (err) {
+    // Fail silently to prevent crashing event handler loop
   }
 }
 
