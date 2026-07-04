@@ -85,6 +85,40 @@ const client = new Client({
   ]
 });
 
+// v4.0 CORE RUNTIME SETUP
+const RuntimeClass = require('./src/core/Runtime');
+const DatabaseManager = require('./src/managers/DatabaseManager');
+const CacheManager = require('./src/managers/CacheManager');
+const CommandRouter = require('./src/managers/CommandRouter');
+const PermissionEngine = require('./src/managers/PermissionEngine');
+const AIProviderManager = require('./src/managers/AIProviderManager');
+const SessionManager = require('./src/managers/SessionManager');
+const TaskScheduler = require('./src/managers/TaskScheduler');
+const HealthMonitor = require('./src/managers/HealthMonitor');
+const KnowledgeEngine = require('./src/managers/KnowledgeEngine');
+const CognitionEngine = require('./src/managers/CognitionEngine');
+const PluginManager = require('./src/managers/PluginManager');
+
+const runtime = new RuntimeClass();
+runtime.registerService('DatabaseManager', new DatabaseManager(runtime));
+runtime.registerService('CacheManager', new CacheManager(runtime));
+runtime.registerService('CommandRouter', new CommandRouter(runtime));
+runtime.registerService('PermissionEngine', new PermissionEngine(runtime));
+runtime.registerService('AIProviderManager', new AIProviderManager(runtime));
+runtime.registerService('SessionManager', new SessionManager(runtime));
+runtime.registerService('TaskScheduler', new TaskScheduler(runtime));
+const healthMonitor = new HealthMonitor(runtime);
+healthMonitor.setDiscordClient(client);
+runtime.registerService('HealthMonitor', healthMonitor);
+runtime.registerService('KnowledgeEngine', new KnowledgeEngine(runtime));
+runtime.registerService('CognitionEngine', new CognitionEngine(runtime));
+runtime.registerService('PluginManager', new PluginManager(runtime));
+
+// Bootstrap the runtime
+runtime.bootstrap().catch(err => {
+  console.error('[RUNTIME BOOTSTRAP ERROR]', err);
+});
+
 client.on('error', err => {
   console.error('[CLIENT ERROR]', err);
 });
@@ -1173,6 +1207,12 @@ client.on('interactionCreate', async interaction => {
   // ── SLASH COMMANDS ─────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand()) {
     const cmd = interaction.commandName;
+
+    // v4.0 Runtime command router delegation
+    const commandRouter = runtime.getService('CommandRouter');
+    if (commandRouter.commands.has(cmd)) {
+      return commandRouter.route(interaction);
+    }
 
     // ── ROLE / TIER PERMISSION CHECK ─────────────────────────────────────────
     const res = resolvePermission(interaction.member, cmd, interaction.user.id, db);
