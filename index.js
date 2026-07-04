@@ -1203,7 +1203,7 @@ client.on('interactionCreate', async interaction => {
           .setTitle('🔒 Private Bot')
           .setDescription(
             'This bot is **private** and only operates in authorized servers.\n\n' +
-            '> To request access for your server, contact the **bot owner**.'
+            '> To request access for your server, check the **bot\'s bio/profile** for the owner\'s support server link, join it, and contact the owner: **kutty**.'
           )
           .setColor(0xFF0000)
           .setFooter({ text: 'ZENITSU BOT — Private Use Only' })
