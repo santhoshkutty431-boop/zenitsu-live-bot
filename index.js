@@ -1065,11 +1065,11 @@ client.on('messageCreate', async message => {
 
       const actionRow = new ARB().addComponents(
         new BB()
-          .setCustomId('ai_channel_reset')
+          .setCustomId(`ai_channel_reset_${message.author.id}`)
           .setLabel('💬 Reset Memory')
           .setStyle(BS.Danger),
         new BB()
-          .setCustomId('ai_channel_message')
+          .setCustomId(`ai_channel_message_${message.author.id}`)
           .setLabel('🤖 Message AI')
           .setStyle(BS.Primary)
       );
@@ -2046,8 +2046,8 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ai_channel_reset').setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('ai_channel_message').setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
       );
 
       await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
@@ -2464,7 +2464,14 @@ client.on('interactionCreate', async interaction => {
     }
 
     // AI Channel Buttons
-    else if (customId === 'ai_channel_reset') {
+    else if (customId.startsWith('ai_channel_reset_')) {
+      const originalUserId = customId.split('_').pop();
+      if (interaction.user.id !== originalUserId) {
+        return interaction.reply({
+          content: '❌ Only the person who initiated this conversation can use this button.',
+          ephemeral: true
+        });
+      }
       await interaction.deferReply({ ephemeral: true });
       const { clearHistory } = require('./modules/ai-handler');
       clearHistory(interaction.user.id, {
@@ -2490,9 +2497,16 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    else if (customId === 'ai_channel_message') {
+    else if (customId.startsWith('ai_channel_message_')) {
+      const originalUserId = customId.split('_').pop();
+      if (interaction.user.id !== originalUserId) {
+        return interaction.reply({
+          content: '❌ Only the person who initiated this conversation can use this button.',
+          ephemeral: true
+        });
+      }
       const modal = new ModalBuilder()
-        .setCustomId('ai_followup_modal')
+        .setCustomId(`ai_followup_modal_${originalUserId}`)
         .setTitle('Message ZENITSU AI');
 
       const promptInput = new TextInputBuilder()
@@ -2555,7 +2569,14 @@ client.on('interactionCreate', async interaction => {
       }
       await interaction.reply({ content: `✅ UID **${uid}** registered as Bypassed.`, ephemeral: true });
     }
-    if (interaction.customId === 'ai_followup_modal') {
+    if (interaction.customId.startsWith('ai_followup_modal_')) {
+      const originalUserId = interaction.customId.split('_').pop();
+      if (interaction.user.id !== originalUserId) {
+        return interaction.reply({
+          content: '❌ Only the person who initiated this conversation can submit this modal.',
+          ephemeral: true
+        });
+      }
       await interaction.deferReply();
       const prompt = interaction.fields.getTextInputValue('ai_followup_input');
 
@@ -2588,8 +2609,8 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ai_channel_reset').setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('ai_channel_message').setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId(`ai_channel_reset_${originalUserId}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`ai_channel_message_${originalUserId}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
       );
 
       await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
