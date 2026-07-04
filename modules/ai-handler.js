@@ -252,9 +252,74 @@ function releaseSessionLock(key) {
   sessionLocks.delete(key);
 }
 
+// ─── PROMPT INJECTION GUARDRAIL ──────────────────────────────────────────────
+// Blocks obvious jailbreak / prompt-injection attempts before they reach the LLM.
+// Not a silver bullet, but catches the low-effort attacks (~90% of them).
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)/i,
+  /disregard\s+(all\s+)?(previous|prior|above|system)\s+(instructions?|prompts?|rules?)/i,
+  /forget\s+(all\s+)?(previous|prior|above|earlier|your)\s+(instructions?|prompts?|rules?|training)/i,
+  /reveal\s+(your\s+)?(system\s+)?(prompt|instructions?|token|api\s*key)/i,
+  /(show|print|output|repeat|display)\s+(me\s+)?(your\s+)?(system\s+)?(prompt|instructions?|rules?)/i,
+  /what\s+(are\s+)?(your\s+)?(initial\s+|original\s+)?(system\s+)?(instructions?|prompts?|rules?)/i,
+  /(bot\s+)?token\s*[:=]/i,
+  /(DISCORD_TOKEN|OPENAI_API_KEY|GEMINI_API_KEY|HF_TOKEN|GROQ_API_KEY)/,
+  /you\s+are\s+now\s+(a\s+|an\s+)?(?!zenitsu)/i,
+  /act\s+as\s+(if\s+you\s+(are|were)\s+)?(?!zenitsu)/i,
+  /jailbreak|DAN\s+mode|developer\s+mode\s+enabled/i,
+  /pretend\s+(you\s+)?(are|have|had)\s+no\s+(rules|restrictions|filters?)/i,
+];
+
+function detectPromptInjection(prompt) {
+  if (typeof prompt !== 'string') return null;
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(prompt)) return pattern.source.slice(0, 40);
+  }
+  return null;
+}
+
+// ─── AI USAGE TRACKING (best-effort — never throws) ──────────────────────────
+// Rough token estimate: ~4 chars per token. Good enough for cost tracking without
+// dragging in tiktoken/gpt-tokenizer as another dependency.
+function estimateTokens(text) {
+  if (typeof text !== 'string' || !text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+function recordUsage({ userId, context, model, prompt, response, latencyMs, success }) {
+  try {
+    const runtime = global.__zenitsuRuntime;
+    if (!runtime) return;
+    const dbMgr = runtime.getService && runtime.getService('DatabaseManager');
+    if (!dbMgr || typeof dbMgr.recordAiUsage !== 'function') return;
+    dbMgr.recordAiUsage({
+      guildId: context?.guildId,
+      userId,
+      provider: model?.provider,
+      model: model?.name || model?.label,
+      tokensIn: estimateTokens(prompt),
+      tokensOut: estimateTokens(response),
+      latencyMs,
+      success
+    });
+  } catch (_) {
+    // Never let telemetry break AI
+  }
+}
+
 async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, context = {}) {
   const sessionKey = resolveSessionKey(userId, context);
-  
+
+  // Prompt injection guardrail
+  const injection = detectPromptInjection(prompt);
+  if (injection) {
+    console.log(`[AI GUARDRAIL] Blocked prompt injection from user ${userId}: matched /${injection}.../`);
+    return {
+      error: true,
+      message: '🛡️ Your message was blocked because it looks like an attempt to override my instructions. Ask your question normally and I\'ll help!'
+    };
+  }
+
   // Rate limit check
   const rl = checkRateLimit(userId);
   if (!rl.allowed) {
@@ -305,6 +370,7 @@ async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, con
         continue;
       }
 
+      const t0 = Date.now();
       try {
         let response;
         if      (model.provider === 'google') response = await callGemini(model, messages);
@@ -314,9 +380,11 @@ async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, con
 
         responseText = response;
         successfulModel = model;
+        recordUsage({ userId, context, model, prompt, response: responseText, latencyMs: Date.now() - t0, success: true });
         break; // Successfully got response, stop failover loop
       } catch (err) {
         attemptErrorLogs.push(`${model.label} error: ${err.message}`);
+        recordUsage({ userId, context, model, prompt, response: '', latencyMs: Date.now() - t0, success: false });
       }
     }
 

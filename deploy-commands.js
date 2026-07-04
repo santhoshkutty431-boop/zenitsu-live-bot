@@ -474,10 +474,65 @@ const commands = [
         .setMaxLength(500)
     ),
 
+  new SlashCommandBuilder()
+    .setName('reload')
+    .setDescription('[Dev] Hot-reload a plugin without restarting the bot')
+    .addStringOption(o => o
+      .setName('plugin')
+      .setDescription('The plugin folder name (e.g. ai, moderation, tickets)')
+      .setRequired(true)),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
-  .setContexts(InteractionContextType.Guild)
-  .toJSON());
+  .setContexts(InteractionContextType.Guild));
+
+// ─── Default member permission gates ───────────────────────────────────────────
+// Discord itself hides these commands from users without the required permission,
+// providing a first-line UX/security layer on top of our own permission engine.
+const PERMISSION_GATES = {
+  // Admin / server-management
+  'ban':              PermissionFlagsBits.BanMembers,
+  'tempban':          PermissionFlagsBits.BanMembers,
+  'unban':            PermissionFlagsBits.BanMembers,
+  'kick':             PermissionFlagsBits.KickMembers,
+  'warn':             PermissionFlagsBits.ModerateMembers,
+  'unwarn':           PermissionFlagsBits.ModerateMembers,
+  'mute':             PermissionFlagsBits.ModerateMembers,
+  'unmute':           PermissionFlagsBits.ModerateMembers,
+  'timeout':          PermissionFlagsBits.ModerateMembers,
+  'untimeout':        PermissionFlagsBits.ModerateMembers,
+  'note':             PermissionFlagsBits.ModerateMembers,
+  'cases':            PermissionFlagsBits.ModerateMembers,
+  'case':             PermissionFlagsBits.ModerateMembers,
+  'purge':            PermissionFlagsBits.ManageMessages,
+  'clear-channel':    PermissionFlagsBits.ManageChannels,
+  'lock':             PermissionFlagsBits.ManageChannels,
+  'unlock':           PermissionFlagsBits.ManageChannels,
+  'slowmode':         PermissionFlagsBits.ManageChannels,
+  'nick':             PermissionFlagsBits.ManageNicknames,
+  'role':             PermissionFlagsBits.ManageRoles,
+  'embed':            PermissionFlagsBits.ManageMessages,
+  'ai-embed':         PermissionFlagsBits.ManageMessages,
+  'say':              PermissionFlagsBits.ManageMessages,
+  'ai-channel':       PermissionFlagsBits.ManageGuild,
+  'ai-model':         PermissionFlagsBits.ManageGuild,
+  'security':         PermissionFlagsBits.ManageGuild,
+  'setup-panel':      PermissionFlagsBits.ManageGuild,
+  'setup':            PermissionFlagsBits.ManageGuild,
+  'whitelist':        PermissionFlagsBits.Administrator,
+  'whitelist-role':   PermissionFlagsBits.Administrator,
+  'whitelist-server': PermissionFlagsBits.Administrator,
+  'lockdown':         PermissionFlagsBits.Administrator,
+  'protectme':        PermissionFlagsBits.ModerateMembers,
+  'reload':           PermissionFlagsBits.Administrator,
+};
+
+for (const command of commands) {
+  const gate = PERMISSION_GATES[command.name];
+  if (gate) command.setDefaultMemberPermissions(gate);
+}
+
+const commandsJson = commands.map(c => c.toJSON());
 
 
 const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_token');
@@ -503,7 +558,7 @@ const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_t
     // Deploy global commands
     const data = await rest.put(
       Routes.applicationCommands(config.clientId),
-      { body: commands },
+      { body: commandsJson },
     );
 
     console.log(`Successfully reloaded ${data.length} global application (/) commands.`);

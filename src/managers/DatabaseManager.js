@@ -88,7 +88,9 @@ class DatabaseManager {
 
     this.sqlDb = new Database(DB_PATH);
     this.sqlDb.pragma('journal_mode = WAL'); // Enable WAL mode for high concurrency
-    
+    this.sqlDb.pragma('synchronous = NORMAL'); // Safe with WAL, ~2-5x faster writes
+    this.sqlDb.pragma('foreign_keys = ON');
+
     this._initTables();
 
     // Prepared statements
@@ -177,7 +179,62 @@ class DatabaseManager {
         result TEXT,
         timestamp INTEGER
       );
+      CREATE TABLE IF NOT EXISTS ai_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT,
+        user_id TEXT,
+        provider TEXT,
+        model TEXT,
+        tokens_in INTEGER,
+        tokens_out INTEGER,
+        latency_ms INTEGER,
+        success INTEGER,
+        timestamp INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_usage_guild_ts ON ai_usage (guild_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_ai_usage_user_ts  ON ai_usage (user_id,  timestamp);
     `);
+  }
+
+  recordAiUsage({ guildId, userId, provider, model, tokensIn, tokensOut, latencyMs, success }) {
+    try {
+      const stmt = this.sqlDb.prepare(`
+        INSERT INTO ai_usage (guild_id, user_id, provider, model, tokens_in, tokens_out, latency_ms, success, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        guildId || 'global',
+        userId || 'unknown',
+        provider || 'unknown',
+        model || 'unknown',
+        Number(tokensIn) || 0,
+        Number(tokensOut) || 0,
+        Number(latencyMs) || 0,
+        success ? 1 : 0,
+        Date.now()
+      );
+    } catch (err) {
+      this.logger.error(`Failed to record AI usage: ${err.message}`);
+    }
+  }
+
+  getAiUsageSummary(guildId, sinceTs = 0) {
+    try {
+      return this.sqlDb.prepare(`
+        SELECT provider, model,
+               COUNT(*) AS calls,
+               SUM(tokens_in) AS tokens_in,
+               SUM(tokens_out) AS tokens_out,
+               SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures
+        FROM ai_usage
+        WHERE guild_id = ? AND timestamp >= ?
+        GROUP BY provider, model
+        ORDER BY calls DESC
+      `).all(guildId, sinceTs);
+    } catch (err) {
+      this.logger.error(`Failed to fetch AI usage summary: ${err.message}`);
+      return [];
+    }
   }
 
   recordAudit(guildId, actorId, targetId, command, params, result) {
@@ -512,6 +569,8 @@ class DatabaseManager {
         // Re-open SQLite connection and prepare statements
         this.sqlDb = new Database(DB_PATH);
         this.sqlDb.pragma('journal_mode = WAL');
+        this.sqlDb.pragma('synchronous = NORMAL');
+        this.sqlDb.pragma('foreign_keys = ON');
         
         this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
         this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');

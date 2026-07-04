@@ -66,7 +66,8 @@ const COMMAND_REGISTRY = {
 
   // Bot Developer
   'whitelist-server': { tier: 'BOT_DEVELOPER', capability: null },
-  'lockdown': { tier: 'BOT_DEVELOPER', capability: null }
+  'lockdown': { tier: 'BOT_DEVELOPER', capability: null },
+  'reload': { tier: 'BOT_DEVELOPER', capability: null }
 };
 
 function setDynamicOwnerId(id) {

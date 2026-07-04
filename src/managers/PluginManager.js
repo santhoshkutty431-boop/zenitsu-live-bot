@@ -62,6 +62,50 @@ class PluginManager {
   getPlugin(name) {
     return this.plugins.get(name);
   }
+
+  listPluginNames() {
+    return Array.from(this.plugins.keys());
+  }
+
+  async reloadPlugin(name) {
+    const pluginPath = path.join(this.pluginDir, name);
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error(`Plugin folder not found: ${name}`);
+    }
+
+    // Unload current instance if present
+    const current = this.plugins.get(name);
+    if (current && typeof current.onUnload === 'function') {
+      try { await current.onUnload(); }
+      catch (err) { this.logger.error(`Error unloading ${name}: ${err.message}`); }
+    }
+
+    // Un-register from command router so re-registration doesn't collide
+    const router = this.runtime.getService('CommandRouter');
+    if (router && router.commands) {
+      // Best-effort: we don't track which commands each plugin owns, but the
+      // Map.set() in registerCommand will overwrite existing entries on reload.
+    }
+
+    // Purge the require cache for the plugin folder (index.js + siblings)
+    const resolved = require.resolve(pluginPath);
+    for (const key of Object.keys(require.cache)) {
+      if (key.startsWith(path.dirname(resolved))) {
+        delete require.cache[key];
+      }
+    }
+
+    // Reload
+    const PluginClass = require(pluginPath);
+    const instance = new PluginClass(this.runtime);
+    if (typeof instance.onLoad === 'function') {
+      await instance.onLoad();
+    }
+    this.plugins.set(name, instance);
+    this.logger.info(`Plugin reloaded: ${name}`);
+    await this.runtime.eventBus.publish('PLUGIN_RELOADED', { plugin: name });
+    return instance;
+  }
 }
 
 module.exports = PluginManager;

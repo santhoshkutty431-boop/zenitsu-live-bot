@@ -1512,6 +1512,43 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     // /owner-help
+    else if (cmd === 'reload') {
+      // Dev-only: hot-swap a plugin without restarting the bot
+      const pluginName = interaction.options.getString('plugin');
+      const pluginMgr = runtime.getService('PluginManager');
+      const available = pluginMgr ? pluginMgr.listPluginNames() : [];
+
+      if (!pluginMgr) {
+        return interaction.reply({ content: '❌ PluginManager unavailable.', ephemeral: true });
+      }
+
+      if (!available.includes(pluginName)) {
+        return interaction.reply({
+          content: `❌ Unknown plugin \`${pluginName}\`.\nAvailable: ${available.map(n => `\`${n}\``).join(', ') || '*(none)*'}`,
+          ephemeral: true
+        });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      const t0 = Date.now();
+      try {
+        await pluginMgr.reloadPlugin(pluginName);
+        const embed = new EmbedBuilder()
+          .setTitle('♻️ Plugin Reloaded')
+          .setDescription(`Successfully reloaded **${pluginName}** in ${Date.now() - t0}ms.`)
+          .setColor(0x2ECC71)
+          .setTimestamp();
+        await interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        const embed = new EmbedBuilder()
+          .setTitle('❌ Reload Failed')
+          .setDescription(`Failed to reload **${pluginName}**:\n\`\`\`\n${err.message}\n\`\`\``)
+          .setColor(0xE74C3C)
+          .setTimestamp();
+        await interaction.editReply({ embeds: [embed] });
+      }
+    }
+
     else if (cmd === 'owner-help') {
       const pages = [
         new EmbedBuilder()

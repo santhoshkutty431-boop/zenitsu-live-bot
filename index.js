@@ -128,6 +128,9 @@ const SyncListeners = require('./src/core/sync/SyncListeners');
 const PluginManager = require('./src/managers/PluginManager');
 
 const runtime = new RuntimeClass();
+// Expose runtime for legacy modules that need cross-cutting access
+// (e.g. ai-handler telemetry). Prefer explicit injection for new code.
+global.__zenitsuRuntime = runtime;
 runtime.registerService('DatabaseManager', new DatabaseManager(runtime));
 runtime.registerService('CacheManager', new CacheManager(runtime));
 runtime.registerService('CommandRouter', new CommandRouter(runtime));
@@ -248,7 +251,7 @@ runtime.bootstrap().then(() => {
     log.error('Failed to start dashboard server', { error: err.message });
   }
 
-  client.once('ready', async () => {
+  client.once('clientReady', async () => {
     log.info(`Bot logged in as ${client.user.tag}`);
 
     // Register live synchronization event listeners
