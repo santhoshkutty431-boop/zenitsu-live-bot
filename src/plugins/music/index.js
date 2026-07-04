@@ -249,7 +249,6 @@ class MusicPlugin {
               player.positionSec = player.durationSec;
             }
 
-            this.dbService.saveMusicPlayer(player);
             await this.updateControllerMessage(player);
           }
         }
