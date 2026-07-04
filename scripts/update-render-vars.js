@@ -11,7 +11,7 @@ if (!token) {
 
 // Simple parser for local .env file
 function loadEnv() {
-  const envPath = path.join(__dirname, '.env');
+  const envPath = path.join(__dirname, '../.env');
   const envVars = {};
   if (fs.existsSync(envPath)) {
     const lines = fs.readFileSync(envPath, 'utf8').split('\n');

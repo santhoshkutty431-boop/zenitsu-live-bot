@@ -199,10 +199,10 @@ const ID = {
   BASIC_PANEL:   '1460152526463832097',
   STAFF_CHAT:    '1521940599031333045',
 
-  SERVER_LOGS:   process.env.SERVER_LOGS_ID || '',
-  VOICE_LOG:     process.env.VOICE_LOG_ID   || '',
-  MOD_LOG:       process.env.MOD_LOG_ID     || '',
-  MESSAGE_LOG:   process.env.MESSAGE_LOG_ID || '',
+  SERVER_LOGS:   process.env.SERVER_LOGS_ID || '1521577044687847464',
+  VOICE_LOG:     process.env.VOICE_LOG_ID   || '1521577051516047573',
+  MOD_LOG:       process.env.MOD_LOG_ID     || '1521577060689248519',
+  MESSAGE_LOG:   process.env.MESSAGE_LOG_ID || '1521935264426229793',
 };
 
 // Event helper imports

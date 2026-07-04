@@ -37,10 +37,10 @@ const DEFAULT_GUILD_CONFIG = {
     antiNuke: false
   },
   logging: {
-    serverLogsId: process.env.SERVER_LOGS_ID || '',
-    voiceLogId: process.env.VOICE_LOG_ID || '',
-    modLogId: process.env.MOD_LOG_ID || '',
-    messageLogId: process.env.MESSAGE_LOG_ID || ''
+    serverLogsId: process.env.SERVER_LOGS_ID || '1521577044687847464',
+    voiceLogId: process.env.VOICE_LOG_ID || '1521577051516047573',
+    modLogId: process.env.MOD_LOG_ID || '1521577060689248519',
+    messageLogId: process.env.MESSAGE_LOG_ID || '1521935264426229793'
   },
   theme: {
     primaryColor: 0xEDC231
