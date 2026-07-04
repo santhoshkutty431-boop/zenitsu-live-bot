@@ -1581,6 +1581,26 @@ client.on('interactionCreate', async interaction => {
           .setTimestamp();
 
         await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+
+        // Send appointment DM to target user
+        const memberTarget = await interaction.guild.members.fetch(user.id).catch(() => null);
+        if (memberTarget) {
+          const appointmentEmbed = new EmbedBuilder()
+            .setTitle('⚡ ZENITSU LIVE — Security Permission Appointed')
+            .setDescription(
+              `Hello! You have been whitelisted as an authorized administrator in **${interaction.guild.name}** by the **Server Owner**.\n\n` +
+              `You have been granted the following capabilities:`
+            )
+            .addFields(
+              { name: '🔑 Granted Capabilities', value: listStr },
+              { name: '📖 How to get started', value: '• Run `/whoami` to inspect your active capabilities in the server.\n• Ask `/ai` helper questions for ticket or moderation setups.' }
+            )
+            .setColor(0xEDC231)
+            .setThumbnail(interaction.client.user.displayAvatarURL())
+            .setTimestamp();
+          
+          await memberTarget.send({ embeds: [appointmentEmbed] }).catch(() => {});
+        }
       }
 
       else if (sub === 'remove') {
