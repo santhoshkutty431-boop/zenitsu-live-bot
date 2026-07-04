@@ -5,6 +5,7 @@ const {
   ChannelType,
   ApplicationIntegrationType,
   InteractionContextType,
+  PermissionFlagsBits,
 } = require('discord.js');
 const config = require('./config');
 
