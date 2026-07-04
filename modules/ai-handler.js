@@ -114,18 +114,41 @@ function checkRateLimit(userId) {
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
+    let settled = false;
+
+    const settleOk = (v) => { if (!settled) { settled = true; resolve(v); } };
+    const settleErr = (e) => { if (!settled) { settled = true; reject(e); } };
+
     const req  = https.request({
       hostname, path, method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers },
+      timeout: 10000 // 10 seconds timeout
     }, res => {
       let raw = '';
       res.on('data', c => raw += c);
       res.on('end', () => {
-        try { resolve(JSON.parse(raw)); }
-        catch (e) { reject(new Error('Invalid JSON: ' + raw.slice(0, 200))); }
+        try { settleOk(JSON.parse(raw)); }
+        catch (e) { settleErr(new Error('Invalid JSON: ' + raw.slice(0, 200))); }
       });
+      res.on('error', settleErr);
     });
-    req.on('error', reject);
+
+    req.on('error', settleErr);
+    req.on('timeout', () => {
+      req.destroy();
+      settleErr(new Error('Request timed out after 10 seconds'));
+    });
+
+    // Watchdog fallback (11 seconds) in case Node's timeout doesn't fire
+    const watchdog = setTimeout(() => {
+      if (!settled) {
+        req.destroy();
+        settleErr(new Error('Request watchdog timed out after 11 seconds'));
+      }
+    }, 11000);
+
+    req.on('close', () => clearTimeout(watchdog));
+
     req.write(data);
     req.end();
   });
