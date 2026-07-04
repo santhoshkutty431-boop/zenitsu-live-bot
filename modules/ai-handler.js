@@ -267,7 +267,12 @@ async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, con
 
   try {
     // Define failover order
-    const failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
+    let failoverQueue = [];
+    if (modelKey === 'gpt4o' || modelKey === 'gpt35') {
+      failoverQueue = [modelKey, 'groq', 'gemini'];
+    } else {
+      failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
+    }
 
     let attemptErrorLogs = [];
     let successfulModel = null;
