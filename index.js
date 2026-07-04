@@ -222,8 +222,17 @@ const getOrCreateRole = async (guild, name, color) => {
 const logToChannel = async (guild, channelName, embed) => {
   const channelId = ID[channelName.toUpperCase()];
   if (!channelId) return;
-  const channel = guild.channels.cache.get(channelId);
-  if (channel) await channel.send({ embeds: [embed] });
+  try {
+    let channel = guild.channels.cache.get(channelId);
+    if (!channel) {
+      channel = await guild.channels.fetch(channelId).catch(() => null);
+    }
+    if (channel) {
+      await channel.send({ embeds: [embed] });
+    }
+  } catch (err) {
+    console.error(`Failed to log to channel ${channelName}:`, err.message);
+  }
 };
 
 // Bootstrap the runtime

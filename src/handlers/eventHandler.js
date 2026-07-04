@@ -79,8 +79,17 @@ async function logToChannel(guild, channelId, embed) {
   }
 
   if (!resolvedChannelId) return;
-  const ch = guild.channels.cache.get(resolvedChannelId);
-  if (ch) await ch.send({ embeds: [embed] }).catch(() => {});
+  try {
+    let ch = guild.channels.cache.get(resolvedChannelId);
+    if (!ch) {
+      ch = await guild.channels.fetch(resolvedChannelId).catch(() => null);
+    }
+    if (ch) {
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    }
+  } catch (err) {
+    // Fail silently in event handlers to avoid crashing the bot loop
+  }
 }
 async function logToReports(guild, embed) {
   await logToChannel(guild, ID.MOD_REPORTS, embed);
