@@ -259,12 +259,19 @@ class MusicPlugin {
 
   // ─── CORE VOICE / AUDIO OPERATIONS ─────────────────────────────────────────
 
+  _timeout(promise, ms) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Request timed out after ${ms / 1000}s`)), ms))
+    ]);
+  }
+
   async resolveTrack(query) {
     try {
       // If direct URL
       if (query.startsWith('http')) {
         if (query.includes('youtube.com') || query.includes('youtu.be')) {
-          const info = await play.video_basic_info(query).catch(() => null);
+          const info = await this._timeout(play.video_basic_info(query), 10000).catch(() => null);
           if (info && info.video_details) {
             return {
               title: info.video_details.title,
@@ -274,7 +281,7 @@ class MusicPlugin {
             };
           }
         } else if (query.includes('soundcloud.com')) {
-          const info = await play.soundcloud(query).catch(() => null);
+          const info = await this._timeout(play.soundcloud(query), 10000).catch(() => null);
           if (info) {
             return {
               title: info.name || info.title,
@@ -286,9 +293,9 @@ class MusicPlugin {
         }
       }
 
-      // Try YouTube search first
+      // Try YouTube search first with 10s timeout
       try {
-        const search = await play.search(query, { limit: 1 });
+        const search = await this._timeout(play.search(query, { limit: 1 }), 10000);
         if (search && search.length > 0) {
           return {
             title: search[0].title,
@@ -301,8 +308,8 @@ class MusicPlugin {
         this.logger.warn(`YouTube search failed for "${query}": ${ytErr.message}. Trying SoundCloud fallback...`);
       }
 
-      // Fallback to SoundCloud search
-      const scSearch = await play.search(query, { limit: 1, source: { soundcloud: 'tracks' } }).catch(() => null);
+      // Fallback to SoundCloud search with 10s timeout
+      const scSearch = await this._timeout(play.search(query, { limit: 1, source: { soundcloud: 'tracks' } }), 10000).catch(() => null);
       if (scSearch && scSearch.length > 0) {
         return {
           title: scSearch[0].name || scSearch[0].title,
@@ -375,14 +382,14 @@ class MusicPlugin {
     try {
       let stream;
       try {
-        stream = await play.stream(track.url);
+        stream = await this._timeout(play.stream(track.url), 12000);
       } catch (streamErr) {
         this.logger.warn(`Failed to stream ${track.title} from YouTube: ${streamErr.message}. Trying SoundCloud fallback...`);
         // If it was a YouTube track, search SoundCloud for the same title and play that instead!
         if (track.source === 'youtube') {
           const fallbackTrack = await this.resolveTrack(track.title);
           if (fallbackTrack && fallbackTrack.source === 'soundcloud') {
-            stream = await play.stream(fallbackTrack.url);
+            stream = await this._timeout(play.stream(fallbackTrack.url), 12000);
             track.title = fallbackTrack.title;
             track.url = fallbackTrack.url;
             track.duration = fallbackTrack.duration;
