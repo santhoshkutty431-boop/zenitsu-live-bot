@@ -1,8 +1,16 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, InteractionType } = require('discord.js');
 const config = require('../../config');
 const { handleAiEmbed } = require('../../modules/ai-embed');
-const { queryAI } = require('../../modules/ai-handler');
+const { queryAI, clearHistory } = require('../../modules/ai-handler');
 const { handleAiDraw } = require('../../modules/ai-features');
+const { handleEmbed } = require('../../commands/embed-handler');
+const {
+  createCase, getCase, getCasesForUser, closeCase,
+  formatCaseEmbed, formatUserCasesEmbed,
+  CaseType, parseDuration, formatDuration
+} = require('../../modules/case-manager');
+const { DEFAULT_SECURITY_CONFIG } = require('../../modules/security');
+const { getLanguageSelectorEmbed, logToReports } = require('./eventHandler');
 const { logAiAnalytics } = require('../../modules/logger');
 const { generateAuditId, invalidatePermCache } = require('../../modules/permission-engine');
 

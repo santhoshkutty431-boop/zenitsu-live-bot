@@ -1,8 +1,29 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, AuditLogEvent } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
+// Logger + AI feature modules used by event handlers
+const {
+  logMemberJoin,
+  logMemberLeave,
+  logMessageDelete,
+  logMessageEdit,
+  logVoiceUpdate,
+  logRoleUpdate,
+  logChannelUpdate,
+  logGuildMemberRoleUpdate
+} = require('../../modules/logger');
+const {
+  handleAiTicketSupport,
+  handleAiModeration,
+  handleAiReactionTranslate
+} = require('../../modules/ai-features');
+const { handleAuditLogEntry, handleMessageSecurity } = require('../../modules/security');
+
 let runtimeInstance = null;
+// Module-level shared state set by registerEvents(), used by module-scope helpers below
+let ID = {};
+let db = {};
 const loadDb = () => {};
 const saveDb = async () => {
   if (!runtimeInstance) return;
@@ -138,8 +159,11 @@ function staffCheck(member) {
 const staffCheckFn = staffCheck;
 const getOrCreateRoleFn = getOrCreateRole;
 
-function registerEvents(client, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, staffCheck, isOwner, getOrCreateRole, secHandleJoin, secHandleMsg) {
+function registerEvents(client, runtime, _db, _ID, logToChannel, isDeveloper, resolvePermission, staffCheck, isOwner, getOrCreateRole, secHandleJoin, secHandleMsg) {
   runtimeInstance = runtime;
+  // Publish db/ID to module scope so helpers like logToReports() see them
+  db = _db;
+  ID = _ID;
   // Bind all event listeners to the client
 client.on('guildMemberAdd', async member => {
   console.log(`[JOIN] ${member.user.tag} joined`);
@@ -780,4 +804,4 @@ client.on('guildCreate', async guild => {
 });
 }
 
-module.exports = { registerEvents };
+module.exports = { registerEvents, getLanguageSelectorEmbed, logToReports };
