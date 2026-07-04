@@ -1,5 +1,5 @@
 # Use official Node.js LTS
-FROM node:20-alpine
+FROM node:20-slim
 
 # Set working directory
 WORKDIR /app
