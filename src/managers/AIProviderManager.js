@@ -196,7 +196,7 @@ class AIProviderManager {
     });
   }
 
-  httpsPost(hostname, path, headers, payload) {
+  httpsPost(hostname, path, headers, payload, timeoutMs = 30_000) {
     return new Promise((resolve, reject) => {
       const dataStr = JSON.stringify(payload);
       const options = {
@@ -208,22 +208,46 @@ class AIProviderManager {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(dataStr),
           ...headers
-        }
+        },
+        // Node's socket-level timeout — fires if there's no activity on
+        // the socket for timeoutMs. Combined with the explicit
+        // req.setTimeout below, this defends against sockets that connect
+        // but then go silent (Gemini/OpenAI have been known to do this).
+        timeout: timeoutMs
       };
+
+      let settled = false;
+      const settleOk = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const settleErr = (e) => { if (!settled) { settled = true; reject(e); } };
 
       const req = https.request(options, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
           try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            reject(new Error(`Non-JSON HTTP response received: ${body.slice(0, 200)}`));
+            settleOk(JSON.parse(body));
+          } catch {
+            settleErr(new Error(`Non-JSON HTTP response received: ${body.slice(0, 200)}`));
           }
         });
+        res.on('error', settleErr);
       });
 
-      req.on('error', reject);
+      req.on('error', settleErr);
+      req.on('timeout', () => {
+        req.destroy(new Error(`AI provider request timed out after ${timeoutMs / 1000}s`));
+      });
+
+      // Belt-and-suspenders fallback: if `timeout` event never fires (which
+      // happens on some Node builds when the socket is stuck in SYN_SENT),
+      // trip a manual watchdog that abort-destroys the request.
+      const watchdog = setTimeout(() => {
+        if (!settled) {
+          req.destroy(new Error(`AI provider watchdog timed out after ${timeoutMs / 1000}s`));
+        }
+      }, timeoutMs + 1000);
+      req.on('close', () => clearTimeout(watchdog));
+
       req.write(dataStr);
       req.end();
     });
