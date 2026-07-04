@@ -273,7 +273,7 @@ const logToChannel = async (guild, channelNameOrId, embed) => {
   if (!channelId && kind && ID[kind] && isMainServer) channelId = ID[kind];
 
   // 3. Raw channel ID passed by caller
-  if (!channelId && typeof channelNameOrId === 'string' && /^\d+$/.test(channelNameOrId)) {
+  if (!channelId && !kind && typeof channelNameOrId === 'string' && /^\d+$/.test(channelNameOrId)) {
     channelId = channelNameOrId;
   }
 
