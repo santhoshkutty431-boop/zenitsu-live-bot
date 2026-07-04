@@ -39,16 +39,32 @@ class AIPlugin {
     const prompt = interaction.options.getString('prompt');
     await interaction.deferReply();
 
-    const cognition = this.runtime.getService('CognitionEngine');
-    const result = await cognition.processRequest(
-      interaction.user.id,
-      interaction.guildId,
-      interaction.guild,
-      prompt
-    );
+    // Everything below has to be wrapped — if any step throws (Gemini rate
+    // limit, cognition sub-engine, verification, network glitch) and we don't
+    // editReply, the interaction stays on "Sentinel Security is thinking..."
+    // forever.
+    let result;
+    try {
+      const cognition = this.runtime.getService('CognitionEngine');
+      result = await cognition.processRequest(
+        interaction.user.id,
+        interaction.guildId,
+        interaction.guild,
+        prompt
+      );
+    } catch (err) {
+      this.logger.error(`[/ai] processRequest threw: ${err.message}`, { stack: err.stack });
+      return interaction.editReply({
+        content: `❌ AI request failed: \`${err.message}\`\nPlease try again. If it keeps happening, check the bot logs.`
+      }).catch(() => {});
+    }
+
+    if (!result) {
+      return interaction.editReply({ content: '❌ AI returned no response. Try again.' }).catch(() => {});
+    }
 
     if (result.error) {
-      return interaction.editReply({ content: result.message || '❌ AI Query failed.' });
+      return interaction.editReply({ content: result.message || '❌ AI Query failed.' }).catch(() => {});
     }
 
     if (result.status === 'PENDING_APPROVAL') {
@@ -80,15 +96,23 @@ class AIPlugin {
       return interaction.editReply({ embeds: [approvalEmbed], components: [row] });
     }
 
-    // Save to isolated session memory
-    this.sessionService.addToHistory(interaction.user.id, 'user', prompt, {
-      guildId: interaction.guildId,
-      channelId: interaction.channelId
-    });
-    this.sessionService.addToHistory(interaction.user.id, 'assistant', result.response, {
-      guildId: interaction.guildId,
-      channelId: interaction.channelId
-    });
+    // Guard against missing response payload (some pipeline branches return
+    // only { response: '...' } vs. richer shapes)
+    const answerText = result.response || result.message || 'No response.';
+
+    try {
+      // Save to isolated session memory
+      this.sessionService.addToHistory(interaction.user.id, 'user', prompt, {
+        guildId: interaction.guildId,
+        channelId: interaction.channelId
+      });
+      this.sessionService.addToHistory(interaction.user.id, 'assistant', answerText, {
+        guildId: interaction.guildId,
+        channelId: interaction.channelId
+      });
+    } catch (err) {
+      this.logger.warn(`[/ai] Session save failed: ${err.message}`);
+    }
 
     const aiEmbed = new EmbedBuilder()
       .setAuthor({
@@ -97,7 +121,7 @@ class AIPlugin {
       })
       .addFields(
         { name: '💬 Your Question', value: prompt.slice(0, 1024) },
-        { name: '🤖 Answer', value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` }
+        { name: '🤖 Answer', value: `<@${interaction.user.id}>\n\n${answerText.slice(0, 1024)}` }
       )
       .setColor(0x00D4FF)
       .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
@@ -108,7 +132,9 @@ class AIPlugin {
       new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
     );
 
-    await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+    await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] }).catch(err => {
+      this.logger.error(`[/ai] editReply failed: ${err.message}`);
+    });
   }
 
   async handleAiReset(interaction) {
