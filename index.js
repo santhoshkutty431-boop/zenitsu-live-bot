@@ -205,7 +205,7 @@ function uploadToHf(dataObj) {
     const options = {
       hostname: 'huggingface.co',
       port: 443,
-      path: `/spaces/${HF_REPO}/commit/main`,
+      path: `/api/spaces/${HF_REPO}/commit/main`,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${HF_TOKEN}`,
