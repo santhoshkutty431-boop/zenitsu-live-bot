@@ -219,33 +219,75 @@ const getOrCreateRole = async (guild, name, color) => {
   }
   return role;
 };
+// Channel resolution honours THREE sources, in priority order:
+//   1. db.logging.<xLogId>  — set per-guild via /setup-logs
+//   2. ID map / env vars    — bot-wide default
+//   3. name-based lookup    — for guilds that never ran /setup-logs and
+//                             don't match the main-server env vars
+const LOG_KIND_TO_DB_KEY = {
+  MESSAGE_LOG: 'messageLogId',
+  VOICE_LOG:   'voiceLogId',
+  MOD_LOG:     'modLogId',
+  MOD_REPORTS: 'modLogId',   // reports are moderator escalations
+  SERVER_LOGS: 'serverLogsId'
+};
+const LOG_KIND_TO_CHANNEL_NAME = {
+  MESSAGE_LOG: 'message-log',
+  VOICE_LOG:   'voice-log',
+  MOD_LOG:     'mod-log',
+  MOD_REPORTS: 'mod-log',
+  SERVER_LOGS: 'server-logs'
+};
+
+function resolveLogKind(nameOrId, ID) {
+  // If caller passed a NAME string ('MOD_LOG'), that IS the kind.
+  if (typeof nameOrId === 'string' && !/^\d+$/.test(nameOrId)) {
+    return nameOrId.toUpperCase();
+  }
+  // If caller passed a numeric channel ID that matches one of the ID constants,
+  // work backwards to the kind so we can still consult db.logging.
+  for (const [kind, id] of Object.entries(ID)) {
+    if (id && id === nameOrId && LOG_KIND_TO_DB_KEY[kind]) return kind;
+  }
+  return null;
+}
+
 const logToChannel = async (guild, channelNameOrId, embed) => {
   if (!guild || !channelNameOrId) return;
-  
-  let channelId = channelNameOrId;
+
+  let channelId = null;
+  const kind = resolveLogKind(channelNameOrId, ID);
+
+  // 1. Per-guild /setup-logs config
+  if (kind) {
+    try {
+      const gdb = runtime.getService('DatabaseManager').getGuildDb(guild.id);
+      const configured = gdb?.logging?.[LOG_KIND_TO_DB_KEY[kind]];
+      if (configured) channelId = configured;
+    } catch { /* db not ready — fall through */ }
+  }
+
+  // 2. ID map / env var (main-server default)
+  if (!channelId && kind && ID[kind]) channelId = ID[kind];
+
+  // 3. Raw channel ID passed by caller
+  if (!channelId && typeof channelNameOrId === 'string' && /^\d+$/.test(channelNameOrId)) {
+    channelId = channelNameOrId;
+  }
+
+  // 4. Name-based lookup on non-main servers (or as last resort)
   const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
-
-  if (!isMainServer) {
-    let targetName = 'server-logs';
-    if (channelNameOrId === ID.MESSAGE_LOG || channelNameOrId === 'MESSAGE_LOG') targetName = 'message-log';
-    else if (channelNameOrId === ID.VOICE_LOG || channelNameOrId === 'VOICE_LOG') targetName = 'voice-log';
-    else if (channelNameOrId === ID.MOD_LOG || channelNameOrId === 'MOD_LOG' || channelNameOrId === ID.MOD_REPORTS || channelNameOrId === 'MOD_REPORTS') targetName = 'mod-log';
-
+  if (!channelId && kind && LOG_KIND_TO_CHANNEL_NAME[kind]) {
+    const targetName = LOG_KIND_TO_CHANNEL_NAME[kind];
     const cleanName = targetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
     const foundCh = guild.channels.cache.find(c => {
       const cClean = c.name.toLowerCase().replace(/[^a-z0-9-]/g, '');
       return cClean === cleanName || cClean.includes(cleanName);
     });
-
-    if (foundCh) {
-      channelId = foundCh.id;
-    } else {
-      return; // Do not log if channel is not found on other servers
-    }
-  } else if (typeof channelNameOrId === 'string' && isNaN(Number(channelNameOrId))) {
-    channelId = ID[channelNameOrId.toUpperCase()];
+    if (foundCh) channelId = foundCh.id;
+    else if (!isMainServer) return; // give up on non-main servers
   }
-  
+
   if (!channelId) return;
 
   try {
@@ -253,7 +295,7 @@ const logToChannel = async (guild, channelNameOrId, embed) => {
     if (!channel) {
       channel = await guild.channels.fetch(channelId).catch(() => null);
     }
-    if (channel) {
+    if (channel && channel.isTextBased?.()) {
       await channel.send({ embeds: [embed] });
     }
   } catch (err) {
