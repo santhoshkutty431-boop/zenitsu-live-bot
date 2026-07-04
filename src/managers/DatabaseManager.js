@@ -110,7 +110,8 @@ class DatabaseManager {
       get: (target, prop) => {
         const store = asyncLocalStorage.getStore();
         const guildId = store?.guildId;
-        if (guildId) {
+        const isGlobalOnly = ['serverWhitelist', 'developerIds', 'featureFlags'].includes(prop);
+        if (guildId && !isGlobalOnly) {
           return this.getGuildDb(guildId)[prop];
         } else {
           return this.getGlobal()[prop];
@@ -119,7 +120,8 @@ class DatabaseManager {
       set: (target, prop, value) => {
         const store = asyncLocalStorage.getStore();
         const guildId = store?.guildId;
-        if (guildId) {
+        const isGlobalOnly = ['serverWhitelist', 'developerIds', 'featureFlags'].includes(prop);
+        if (guildId && !isGlobalOnly) {
           const gdb = this.getGuildDb(guildId);
           gdb[prop] = value;
           this.saveGuildDb(guildId);
@@ -133,7 +135,8 @@ class DatabaseManager {
       has: (target, prop) => {
         const store = asyncLocalStorage.getStore();
         const guildId = store?.guildId;
-        const obj = guildId ? this.getGuildDb(guildId) : this.getGlobal();
+        const isGlobalOnly = ['serverWhitelist', 'developerIds', 'featureFlags'].includes(prop);
+        const obj = (guildId && !isGlobalOnly) ? this.getGuildDb(guildId) : this.getGlobal();
         return prop in obj;
       },
       ownKeys: (target) => {
@@ -145,7 +148,8 @@ class DatabaseManager {
       getOwnPropertyDescriptor: (target, prop) => {
         const store = asyncLocalStorage.getStore();
         const guildId = store?.guildId;
-        const obj = guildId ? this.getGuildDb(guildId) : this.getGlobal();
+        const isGlobalOnly = ['serverWhitelist', 'developerIds', 'featureFlags'].includes(prop);
+        const obj = (guildId && !isGlobalOnly) ? this.getGuildDb(guildId) : this.getGlobal();
         return Reflect.getOwnPropertyDescriptor(obj, prop);
       }
     });
@@ -237,6 +241,16 @@ class DatabaseManager {
     });
     transaction();
     this.scheduleSync();
+  }
+
+  save() {
+    const store = asyncLocalStorage.getStore();
+    const guildId = store?.guildId;
+    if (guildId) {
+      this.saveGuildDb(guildId);
+    } else {
+      this.saveGlobal();
+    }
   }
 
   // ─── Guild ──────────────────────────────────────────────────────────────────
