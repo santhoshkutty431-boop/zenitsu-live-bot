@@ -261,24 +261,57 @@ class MusicPlugin {
 
   async resolveTrack(query) {
     try {
+      // If direct URL
       if (query.startsWith('http')) {
-        const info = await play.video_basic_info(query).catch(() => null);
-        if (info && info.video_details) {
-          return {
-            title: info.video_details.title,
-            url: info.video_details.url,
-            duration: info.video_details.durationInSec
-          };
+        if (query.includes('youtube.com') || query.includes('youtu.be')) {
+          const info = await play.video_basic_info(query).catch(() => null);
+          if (info && info.video_details) {
+            return {
+              title: info.video_details.title,
+              url: info.video_details.url,
+              duration: info.video_details.durationInSec,
+              source: 'youtube'
+            };
+          }
+        } else if (query.includes('soundcloud.com')) {
+          const info = await play.soundcloud(query).catch(() => null);
+          if (info) {
+            return {
+              title: info.name || info.title,
+              url: info.url,
+              duration: Math.floor((info.duration || 0) / 1000),
+              source: 'soundcloud'
+            };
+          }
         }
       }
-      const search = await play.search(query, { limit: 1 });
-      if (search && search.length > 0) {
+
+      // Try YouTube search first
+      try {
+        const search = await play.search(query, { limit: 1 });
+        if (search && search.length > 0) {
+          return {
+            title: search[0].title,
+            url: search[0].url,
+            duration: search[0].durationInSec,
+            source: 'youtube'
+          };
+        }
+      } catch (ytErr) {
+        this.logger.warn(`YouTube search failed for "${query}": ${ytErr.message}. Trying SoundCloud fallback...`);
+      }
+
+      // Fallback to SoundCloud search
+      const scSearch = await play.search(query, { limit: 1, source: { soundcloud: 'tracks' } }).catch(() => null);
+      if (scSearch && scSearch.length > 0) {
         return {
-          title: search[0].title,
-          url: search[0].url,
-          duration: search[0].durationInSec
+          title: scSearch[0].name || scSearch[0].title,
+          url: scSearch[0].permalink_url || scSearch[0].url,
+          duration: Math.floor((scSearch[0].duration || 0) / 1000),
+          source: 'soundcloud'
         };
       }
+
       return null;
     } catch (err) {
       this.logger.error(`Failed to resolve track for "${query}": ${err.message}`);
@@ -340,9 +373,26 @@ class MusicPlugin {
     if (!player) return;
 
     try {
-      const stream = await play.stream(track.url);
-      const resource = createAudioResource(stream.stream, { inputType: stream.type });
+      let stream;
+      try {
+        stream = await play.stream(track.url);
+      } catch (streamErr) {
+        this.logger.warn(`Failed to stream ${track.title} from YouTube: ${streamErr.message}. Trying SoundCloud fallback...`);
+        // If it was a YouTube track, search SoundCloud for the same title and play that instead!
+        if (track.source === 'youtube') {
+          const fallbackTrack = await this.resolveTrack(track.title);
+          if (fallbackTrack && fallbackTrack.source === 'soundcloud') {
+            stream = await play.stream(fallbackTrack.url);
+            track.title = fallbackTrack.title;
+            track.url = fallbackTrack.url;
+            track.duration = fallbackTrack.duration;
+            track.source = 'soundcloud';
+          }
+        }
+        if (!stream) throw streamErr; // Re-throw if fallback failed
+      }
 
+      const resource = createAudioResource(stream.stream, { inputType: stream.type });
       player.audioPlayer.play(resource);
 
       // Save state to DB
@@ -447,40 +497,45 @@ class MusicPlugin {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const track = await this.resolveTrack(query);
-    if (!track) {
-      return interaction.editReply({ content: `❌ No results found for: **${query}**` });
+    try {
+      const track = await this.resolveTrack(query);
+      if (!track) {
+        return interaction.editReply({ content: `❌ No results found for: **${query}**` });
+      }
+
+      const guildPlayer = await this.getOrCreatePlayer(voiceChannel);
+
+      const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
+        guildId: interaction.guildId,
+        currentSong: null,
+        isPaused: false,
+        loopMode: 'off',
+        volume: 100,
+        positionSec: 0,
+        durationSec: 0,
+        queue: [],
+        setupChannelId: null,
+        setupMessageId: null
+      };
+
+      let replyMsg = '';
+      const isPlaying = guildPlayer.audioPlayer.state.status === 'playing';
+
+      if (!isPlaying && !playerState.currentSong) {
+        await this.playTrack(interaction.guildId, track);
+        replyMsg = `💿 Now playing: **${track.title}** (${track.source === 'soundcloud' ? 'SoundCloud' : 'YouTube'})`;
+      } else {
+        playerState.queue.push(track);
+        this.dbService.saveMusicPlayer(playerState);
+        await this.updateControllerMessage(playerState);
+        replyMsg = `✅ Added **${track.title}** to queue!`;
+      }
+
+      await interaction.editReply({ content: replyMsg });
+    } catch (err) {
+      this.logger.error(`Error in handlePlay command: ${err.message}`);
+      await interaction.editReply({ content: `❌ An error occurred: ${err.message}` }).catch(() => {});
     }
-
-    const guildPlayer = await this.getOrCreatePlayer(voiceChannel);
-
-    const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
-      guildId: interaction.guildId,
-      currentSong: null,
-      isPaused: false,
-      loopMode: 'off',
-      volume: 100,
-      positionSec: 0,
-      durationSec: 0,
-      queue: [],
-      setupChannelId: null,
-      setupMessageId: null
-    };
-
-    let replyMsg = '';
-    const isPlaying = guildPlayer.audioPlayer.state.status === 'playing';
-
-    if (!isPlaying && !playerState.currentSong) {
-      await this.playTrack(interaction.guildId, track);
-      replyMsg = `💿 Now playing: **${track.title}**`;
-    } else {
-      playerState.queue.push(track);
-      this.dbService.saveMusicPlayer(playerState);
-      await this.updateControllerMessage(playerState);
-      replyMsg = `✅ Added **${track.title}** to queue!`;
-    }
-
-    await interaction.editReply({ content: replyMsg });
   }
 
   async handlePlayNow(interaction) {
@@ -492,37 +547,42 @@ class MusicPlugin {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const track = await this.resolveTrack(query);
-    if (!track) {
-      return interaction.editReply({ content: `❌ No results found for: **${query}**` });
+    try {
+      const track = await this.resolveTrack(query);
+      if (!track) {
+        return interaction.editReply({ content: `❌ No results found for: **${query}**` });
+      }
+
+      const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
+        guildId: interaction.guildId,
+        currentSong: null,
+        isPaused: false,
+        loopMode: 'off',
+        volume: 100,
+        positionSec: 0,
+        durationSec: 0,
+        queue: [],
+        setupChannelId: null,
+        setupMessageId: null
+      };
+
+      await this.getOrCreatePlayer(voiceChannel);
+
+      if (playerState.currentSong) {
+        // Put currently playing song back to queue start
+        playerState.queue.unshift({
+          title: playerState.currentSong,
+          url: playerState.currentSongUrl,
+          duration: playerState.durationSec
+        });
+      }
+
+      await this.playTrack(interaction.guildId, track);
+      await interaction.editReply({ content: `⏭️ Interrupted track. Playing **${track.title}** immediately!` });
+    } catch (err) {
+      this.logger.error(`Error in handlePlayNow command: ${err.message}`);
+      await interaction.editReply({ content: `❌ An error occurred: ${err.message}` }).catch(() => {});
     }
-
-    const playerState = this.dbService.getMusicPlayer(interaction.guildId) || {
-      guildId: interaction.guildId,
-      currentSong: null,
-      isPaused: false,
-      loopMode: 'off',
-      volume: 100,
-      positionSec: 0,
-      durationSec: 0,
-      queue: [],
-      setupChannelId: null,
-      setupMessageId: null
-    };
-
-    await this.getOrCreatePlayer(voiceChannel);
-
-    if (playerState.currentSong) {
-      // Put currently playing song back to queue start
-      playerState.queue.unshift({
-        title: playerState.currentSong,
-        url: playerState.currentSongUrl,
-        duration: playerState.durationSec
-      });
-    }
-
-    await this.playTrack(interaction.guildId, track);
-    await interaction.editReply({ content: `⏭️ Interrupted track. Playing **${track.title}** immediately!` });
   }
 
   async handleNowPlaying(interaction) {
