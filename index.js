@@ -1060,19 +1060,23 @@ client.on('messageCreate', async message => {
         .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
         .setDescription(result.response)
         .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Click button below to reset memory' })
+        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
         .setTimestamp();
 
-      const resetRow = new ARB().addComponents(
+      const actionRow = new ARB().addComponents(
         new BB()
           .setCustomId('ai_channel_reset')
           .setLabel('💬 Reset Memory')
-          .setStyle(BS.Danger)
+          .setStyle(BS.Danger),
+        new BB()
+          .setCustomId('ai_channel_message')
+          .setLabel('🤖 Message AI')
+          .setStyle(BS.Primary)
       );
 
       await message.reply({
         embeds: [aiEmbed],
-        components: [resetRow],
+        components: [actionRow],
         allowedMentions: { repliedUser: false }
       }).catch(() => {});
     }
@@ -2038,10 +2042,15 @@ client.on('interactionCreate', async interaction => {
           { name: '🤖 Answer',        value: result.response.slice(0, 1024) },
         )
         .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Reply is remembered • /ai-reset to clear' })
+        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [aiEmbed] });
+      const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ai_channel_reset').setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('ai_channel_message').setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+      );
+
+      await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
     }
 
     // /ai-lang
@@ -2481,6 +2490,25 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
+    else if (customId === 'ai_channel_message') {
+      const modal = new ModalBuilder()
+        .setCustomId('ai_followup_modal')
+        .setTitle('Message ZENITSU AI');
+
+      const promptInput = new TextInputBuilder()
+        .setCustomId('ai_followup_input')
+        .setLabel('Type your question below:')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('What is on your mind?')
+        .setRequired(true)
+        .setMaxLength(1000);
+
+      const row = new ActionRowBuilder().addComponents(promptInput);
+      modal.addComponents(row);
+
+      await interaction.showModal(modal);
+    }
+
     // Report button
     else if (customId === 'report_submit_btn') {
       const modal = new ModalBuilder().setCustomId('report_modal').setTitle('Submit a Report');
@@ -2526,6 +2554,45 @@ client.on('interactionCreate', async interaction => {
         saveDb();
       }
       await interaction.reply({ content: `✅ UID **${uid}** registered as Bypassed.`, ephemeral: true });
+    }
+    if (interaction.customId === 'ai_followup_modal') {
+      await interaction.deferReply();
+      const prompt = interaction.fields.getTextInputValue('ai_followup_input');
+
+      db.userLanguages = db.userLanguages || {};
+      let userLang = db.userLanguages[interaction.user.id] || 'english';
+
+      const modelKey = db.aiDefaultModel || 'gemini';
+      const result = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
+        applicationId: interaction.client.application?.id || 'default',
+        guildId: interaction.guildId || 'dm',
+        channelId: interaction.channelId || 'none',
+        threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
+        shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
+      });
+
+      // Send analytics
+      await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
+
+      if (result.error) {
+        return interaction.editReply({ 
+          content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+        });
+      }
+
+      const aiEmbed = new EmbedBuilder()
+        .setAuthor({ name: 'ZENITSU AI', iconURL: interaction.client.user.displayAvatarURL() })
+        .setDescription(result.response)
+        .setColor(0x00D4FF)
+        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
+        .setTimestamp();
+
+      const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ai_channel_reset').setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('ai_channel_message').setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+      );
+
+      await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
     }
   }
 });
