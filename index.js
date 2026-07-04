@@ -872,18 +872,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
               await executorMember.send({ embeds: [dmEmbed] }).catch(() => {});
             }
 
-            // Warn target user via DM
-            const targetDmEmbed = new EmbedBuilder()
-              .setTitle('⚠️ Zenitsu Guard: Role Update Reverted')
-              .setDescription(
-                `A role was recently assigned to you on **${newMember.guild.name}** but it has been reverted because the executor (<@${executorId}>) does not have permission to assign roles.\n\n` +
-                `• **Reverted Role(s):** ${addedRoles.map(r => r.name).join(', ')}\n\n` +
-                `*If you believe this is an error, please contact a Server Administrator.*`
-              )
-              .setColor(0xE74C3C)
-              .setTimestamp();
-            await newMember.send({ embeds: [targetDmEmbed] }).catch(() => {});
-
             return;
           }
         }
