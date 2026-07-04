@@ -3027,8 +3027,49 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ─── START ─────────────────────────────────────────────────────────────────────
-client.on('guildCreate', guild => {
+client.on('guildCreate', async guild => {
   console.log(`📥 Joined a new server: ${guild.name} (ID: ${guild.id}) - Members: ${guild.memberCount}`);
+
+  try {
+    const owner = await guild.members.fetch(guild.ownerId).catch(() => null);
+    if (owner) {
+      const welcomeEmbed = new EmbedBuilder()
+        .setTitle('⚡ ZENITSU LIVE — Onboarding Help Guide')
+        .setDescription(
+          `Thank you for inviting **ZENITSU LIVE** to **${guild.name}**!\n\n` +
+          `I have sent this message to help you configure the bot successfully. As the **Server Owner**, you have full control over the configuration.`
+        )
+        .addFields(
+          { 
+            name: '🚀 Getting Started', 
+            value: '• Run `/owner-help` in your server to read the complete 8-page configuration guide.\n' +
+                   '• Use `/whoami` to inspect your active permissions tier.' 
+          },
+          { 
+            name: '🔐 Enterprise Permissions & Whitelisting', 
+            value: 'The bot uses a secure 5-tier permission hierarchy. Normal administrators cannot configure the bot unless explicitly whitelisted.\n' +
+                   '• Run `/whitelist add user:@User` to grant a trusted administrator specific capabilities (e.g. `AI_CONFIG`, `SECURITY_CONFIG`).\n' +
+                   '• Run `/whitelist-role add role:@Role tier:staff` to authorize moderating/staff roles to execute commands.' 
+          },
+          { 
+            name: '🤖 AI Configuration', 
+            value: '• Use `/ai-channel channel:#channel` to designate a chat channel. Auto-replies are disabled, users query using `/ai`.\n' +
+                   '• Use `/ai-model model:gpt4o` to set the default server model.' 
+          },
+          { 
+            name: '🛡️ Anti-Abuse Role Guard', 
+            value: 'To prevent admin abuse, any role additions made via the Discord UI by unauthorized users are automatically reverted, and they are warned in DMs. Whitelisted users must have the `ROLE_ASSIGN` capability to manage roles.' 
+          }
+        )
+        .setColor(0xEDC231)
+        .setThumbnail(client.user.displayAvatarURL())
+        .setTimestamp();
+
+      await owner.send({ embeds: [welcomeEmbed] }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('Error sending welcome DM to server owner:', err.message);
+  }
 });
 
 async function startBot() {
