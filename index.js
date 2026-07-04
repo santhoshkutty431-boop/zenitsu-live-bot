@@ -2011,7 +2011,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ ...payload, ephemeral: true });
       }
 
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
 
       const prompt = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
@@ -2577,7 +2577,7 @@ client.on('interactionCreate', async interaction => {
           ephemeral: true
         });
       }
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       const prompt = interaction.fields.getTextInputValue('ai_followup_input');
 
       db.userLanguages = db.userLanguages || {};
