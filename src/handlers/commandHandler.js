@@ -1502,30 +1502,40 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
     // /debug-bot
     else if (cmd === 'debug-bot') {
-      const gitHash = require('child_process').execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-      const nodeVersion = process.version;
-      const uptime = Math.floor(process.uptime());
-      const isRender = !!process.env.RENDER;
-      const isKoyeb = !!process.env.KOYEB_APP_NAME;
-      const spaceStage = process.env.SPACE_ID || 'none';
-      const geminiSet = !!process.env.GEMINI_API_KEY;
-      const groqSet = !!process.env.GROQ_API_KEY;
-      const openaiSet = !!process.env.OPENAI_API_KEY;
-      
-      const debugEmbed = new EmbedBuilder()
-        .setTitle('⚙️ Bot Live Debug Diagnostics')
-        .addFields(
-          { name: 'Commit Hash', value: `\`${gitHash}\``, inline: true },
-          { name: 'Uptime', value: `\`${uptime}s\``, inline: true },
-          { name: 'Node.js', value: `\`${nodeVersion}\``, inline: true },
-          { name: 'Hosting Environment', value: isRender ? '🟢 Render' : (isKoyeb ? '🔵 Koyeb' : '💻 Local/Other'), inline: true },
-          { name: 'Space ID', value: `\`${spaceStage}\``, inline: true },
-          { name: 'Keys Configured', value: `Gemini: ${geminiSet ? '✅' : '❌'} | Groq: ${groqSet ? '✅' : '❌'} | OpenAI: ${openaiSet ? '✅' : '❌'}` }
-        )
-        .setColor(0xEDC231)
-        .setTimestamp();
+      try {
+        let gitHash = 'unknown';
+        try {
+          gitHash = require('child_process').execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        } catch (e) {
+          gitHash = 'no-git-env';
+        }
+        const nodeVersion = process.version;
+        const uptime = Math.floor(process.uptime());
+        const isRender = !!process.env.RENDER;
+        const isKoyeb = !!process.env.KOYEB_APP_NAME;
+        const spaceStage = process.env.SPACE_ID || 'none';
+        const geminiSet = !!process.env.GEMINI_API_KEY;
+        const groqSet = !!process.env.GROQ_API_KEY;
+        const openaiSet = !!process.env.OPENAI_API_KEY;
         
-      await interaction.reply({ embeds: [debugEmbed], ephemeral: true });
+        const debugEmbed = new EmbedBuilder()
+          .setTitle('⚙️ Bot Live Debug Diagnostics')
+          .addFields(
+            { name: 'Commit Hash', value: `\`${gitHash}\``, inline: true },
+            { name: 'Uptime', value: `\`${uptime}s\``, inline: true },
+            { name: 'Node.js', value: `\`${nodeVersion}\``, inline: true },
+            { name: 'Hosting Environment', value: isRender ? '🟢 Render' : (isKoyeb ? '🔵 Koyeb' : '💻 Local/Other'), inline: true },
+            { name: 'Space ID', value: `\`${spaceStage}\``, inline: true },
+            { name: 'Keys Configured', value: `Gemini: ${geminiSet ? '✅' : '❌'} | Groq: ${groqSet ? '✅' : '❌'} | OpenAI: ${openaiSet ? '✅' : '❌'}` }
+          )
+          .setColor(0xEDC231)
+          .setTimestamp();
+          
+        await interaction.reply({ embeds: [debugEmbed], ephemeral: true });
+      } catch (err) {
+        console.error('Error executing debug-bot command:', err);
+        await interaction.reply({ content: `❌ Debug diagnostics failed: \`${err.message}\``, ephemeral: true }).catch(() => {});
+      }
     }
 
     // /whoami
