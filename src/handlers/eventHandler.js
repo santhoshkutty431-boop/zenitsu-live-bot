@@ -1,4 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 
 // ─── IN-MEMORY VOICE TRACKER (upgrade 10) ─────────────────────────────────────
 const voiceJoins = new Map(); // userId → { channelName, startTime }
