@@ -482,6 +482,10 @@ const commands = [
       .setDescription('The plugin folder name (e.g. ai, moderation, tickets)')
       .setRequired(true)),
 
+  new SlashCommandBuilder()
+    .setName('reindex')
+    .setDescription('[Dev] Rebuild the knowledge index for this server (RAG memory)'),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild));
@@ -525,6 +529,7 @@ const PERMISSION_GATES = {
   'lockdown':         PermissionFlagsBits.Administrator,
   'protectme':        PermissionFlagsBits.ModerateMembers,
   'reload':           PermissionFlagsBits.Administrator,
+  'reindex':          PermissionFlagsBits.Administrator,
 };
 
 for (const command of commands) {

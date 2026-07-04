@@ -1549,6 +1549,41 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
     }
 
+    else if (cmd === 'reindex') {
+      // Dev-only: rebuild the knowledge base for this guild by re-indexing
+      // every approved channel's message history. Useful after config changes.
+      const knowledge = runtime.getService('KnowledgeEngine');
+      if (!knowledge || typeof knowledge.initialIndex !== 'function') {
+        return interaction.reply({ content: '❌ KnowledgeEngine unavailable.', ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      const t0 = Date.now();
+      try {
+        // Run in background — indexing can take a while for large channels.
+        knowledge.initialIndex(interaction.guild).catch(err => {
+          runtime.logger.error(`Reindex failed for guild ${interaction.guildId}: ${err.message}`);
+        });
+
+        const embed = new EmbedBuilder()
+          .setTitle('🔄 Reindex Started')
+          .setDescription(
+            `Rebuilding the knowledge index for **${interaction.guild.name}**.\n\n` +
+            `This runs in the background and can take several minutes on large channels. ` +
+            `Watch the bot logs for progress. \`/ask\` will use the new index as soon as it lands.`
+          )
+          .addFields(
+            { name: 'Started', value: `<t:${Math.floor(t0 / 1000)}:R>`, inline: true },
+            { name: 'Trigger', value: `${interaction.user}`, inline: true }
+          )
+          .setColor(0x00D4FF)
+          .setTimestamp();
+        await interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        await interaction.editReply({ content: `❌ Failed to start reindex: ${err.message}` });
+      }
+    }
+
     else if (cmd === 'owner-help') {
       const pages = [
         new EmbedBuilder()

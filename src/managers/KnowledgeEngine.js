@@ -25,6 +25,7 @@ class KnowledgeEngine {
     this.logger.info('Initializing Knowledge Engine (v5.2 Semantic Digital Twin)...');
     this.dbService = this.runtime.getService('DatabaseManager');
     this.permService = this.runtime.getService('PermissionEngine');
+    this.aiService = this.runtime.getService('AIProviderManager');
 
     // Subscribe to EventBus updates for sync
     this.runtime.eventBus.subscribe('DISCORD_GUILD_UPDATE', async (data) => this.syncGuild(data.guild));
