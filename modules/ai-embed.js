@@ -27,12 +27,17 @@ const { queryAI } = require('./ai-handler');
 const AI_EMBED_PROMPT = `You are a helper that converts a user's request for an embed message into a raw JSON format representing a Discord embed.
 Analyze the user's description and generate the best-fitting, most professional embed.
 
+If the user's request involves creating a poll (e.g. asking a question with multiple options to vote on, prioritizing features, choosing options, etc.), you MUST:
+1. Never write "Option 1", "Option 2", or list the options/choices inside the embed description or fields. Keep the embed description as a clean call-to-action/announcement.
+2. Set "isPoll" to true in the JSON schema.
+3. Provide the poll details in the "poll" object field.
+
 Your output MUST be a valid JSON object only. Do not wrap it in markdown code blocks like \`\`\`json. Output nothing else but the raw JSON.
 
 The JSON schema you must output is:
 {
   "title": "String (max 256 chars, optional)",
-  "description": "String (max 4096 chars, optional, supports bold, italic, lists, markdown)",
+  "description": "String (max 4096 chars, optional, supports bold, italic, lists, markdown. MUST NOT contain option list or choices if it is a poll)",
   "color": "String (hex color like '#FFB700', or name preset: red, green, blue, yellow, orange, purple, pink, cyan, gold, teal, zenitsu, dark)",
   "thumbnail": "String (valid URL, optional)",
   "image": "String (valid URL, optional)",
@@ -50,7 +55,13 @@ The JSON schema you must output is:
       "value": "String (max 1024)",
       "inline": boolean
     }
-  ] (max 10 items)
+  ] (max 10 items),
+  "isPoll": boolean (true if the user requested a poll/voting, false otherwise),
+  "poll": {
+    "question": "String (the core question being voted on, required if isPoll is true)",
+    "options": ["String" (array of option texts, e.g. ["UID Bypass", "Basic Panel"]. Max 10 options, required if isPoll is true)],
+    "durationMinutes": number (default: 60, number of minutes the poll should run, parsed from user description or defaulting to 60)
+  }
 }
 
 Design guidelines:
@@ -84,7 +95,17 @@ function parseAiEmbedJson(rawText) {
       author:      data.author || null,
       footer:      data.footer || null,
       fields:      Array.isArray(data.fields) ? data.fields.slice(0, 10) : [],
+      isPoll:      !!data.isPoll,
+      poll:        data.poll ? {
+        question: data.poll.question || data.title || 'Poll',
+        options:  Array.isArray(data.poll.options) ? data.poll.options.filter(o => typeof o === 'string' && o.trim().length > 0) : [],
+        durationMinutes: typeof data.poll.durationMinutes === 'number' ? data.poll.durationMinutes : 60
+      } : null
     };
+
+    if (embedData.isPoll && (!embedData.poll || embedData.poll.options.length < 2)) {
+      embedData.isPoll = false;
+    }
 
     if (!embedData.title && !embedData.description && embedData.fields.length === 0) {
       throw new Error('Embed must have at least a title, description, or fields.');
@@ -187,22 +208,37 @@ async function handleAiEmbed(interaction, db, saveDb, logToChannel, ID) {
     }
   }
 
+  // Calculate duration/expiration for preview
+  const expiresAt = Date.now() + (embedData.poll?.durationMinutes || 60) * 60 * 1000;
+
+  // Build preview poll components if applicable
+  const { makePollComponents } = require('./poll-manager');
+  let pollPreview = null;
+  if (embedData.isPoll) {
+    pollPreview = makePollComponents(embedData.poll.question, embedData.poll.options, {}, false, expiresAt);
+  }
+
   // 5. Send preview to user with Buttons
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ai_embed_send').setLabel('🚀 Send Embed').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('ai_embed_send').setLabel('🚀 Send Embed' + (embedData.isPoll ? ' & Poll' : '')).setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('ai_embed_cancel').setLabel('❌ Cancel').setStyle(ButtonStyle.Danger)
   );
 
+  const previewEmbeds = [previewEmbed];
+  if (embedData.isPoll) {
+    previewEmbeds.push(pollPreview.embed);
+  }
+
   const previewMsg = await interaction.editReply({
-    content: `### 🔍 AI Embed Preview\nThis is a preview of the generated embed. It will be sent to ${targetCh}.`,
-    embeds: [previewEmbed],
+    content: `### 🔍 AI Embed${embedData.isPoll ? ' & Poll' : ''} Preview\nThis is a preview of the generated content. It will be sent to ${targetCh}.`,
+    embeds: previewEmbeds,
     components: [row]
   });
 
   // 6. Wait for button click (Send or Cancel)
   const collector = previewMsg.createMessageComponentCollector({
     componentType: ComponentType.Button,
-    time:          60_000, // 1 minute to decide
+    time:          60_000,
   });
 
   collector.on('collect', async btnInteraction => {
@@ -226,30 +262,68 @@ async function handleAiEmbed(interaction, db, saveDb, logToChannel, ID) {
           }
         }
 
-        // Send to target channel
-        const sentMsg = await targetCh.send({
-          content:         sendContent,
-          embeds:          [previewEmbed],
-          allowedMentions: { parse: ['everyone', 'roles'] }
-        });
+        // Prepare sends
+        let sentMsg;
+        if (embedData.isPoll) {
+          sentMsg = await targetCh.send({
+            content:         sendContent,
+            embeds:          [previewEmbed, pollPreview.embed],
+            components:      pollPreview.components,
+            allowedMentions: { parse: ['everyone', 'roles'] }
+          });
+
+          // Save poll to database for persistence
+          const dbService = interaction.client.runtime.getService('DatabaseManager');
+          dbService.createPoll({
+            messageId: sentMsg.id,
+            guildId:   targetCh.guild.id,
+            channelId: targetCh.id,
+            question:  embedData.poll.question,
+            options:   embedData.poll.options,
+            expiresAt: expiresAt
+          });
+
+          // Schedule task to auto-close the poll
+          const scheduler = interaction.client.runtime.getService('TaskScheduler');
+          const delay = expiresAt - Date.now();
+          scheduler.schedule(`poll_close_${sentMsg.id}`, delay, async () => {
+            const { closePoll } = require('./poll-manager');
+            await closePoll(interaction.client, dbService, {
+              messageId: sentMsg.id,
+              guildId:   targetCh.guild.id,
+              channelId: targetCh.id,
+              question:  embedData.poll.question,
+              options:   embedData.poll.options,
+              votes:     {}
+            });
+          });
+        } else {
+          sentMsg = await targetCh.send({
+            content:         sendContent,
+            embeds:          [previewEmbed],
+            allowedMentions: { parse: ['everyone', 'roles'] }
+          });
+        }
 
         // Update preview response
         await interaction.editReply({
           content:    `✅ **Embed successfully sent!**\n[Jump to message](${sentMsg.url})`,
+          embeds:     [],
           components: []
         });
 
         // Log mod action
         const logEmbed = new EmbedBuilder()
-          .setTitle('📢 AI Embed Sent')
-          .setDescription(`**Created by:** ${interaction.user} (${interaction.user.tag})\n**Target Channel:** ${targetCh}\n**Title:** ${embedData.title || '*No title*'}`)
+          .setTitle(embedData.isPoll ? '📢 AI Poll Created' : '📢 AI Embed Sent')
+          .setDescription(`**Created by:** ${interaction.user} (${interaction.user.tag})\n**Target Channel:** ${targetCh}\n**Title/Question:** ${embedData.isPoll ? embedData.poll.question : (embedData.title || '*No title*')}`)
           .setColor(0x2ECC71)
           .setTimestamp();
         await logToChannel(interaction.guild, ID.MOD_LOG, logEmbed);
 
       } catch (err) {
         await interaction.editReply({
-          content:    `❌ **Failed to send embed:** ${err.message}`,
+          content:    `❌ **Failed to send:** ${err.message}`,
+          embeds:     [],
           components: []
         });
       }
@@ -268,6 +342,7 @@ async function handleAiEmbed(interaction, db, saveDb, logToChannel, ID) {
     if (reason === 'time') {
       interaction.editReply({
         content:    '⏳ **Preview timed out.** No action was taken.',
+        embeds:     [],
         components: []
       }).catch(() => {});
     }

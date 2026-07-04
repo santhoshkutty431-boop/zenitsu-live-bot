@@ -2092,6 +2092,13 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
   else if (interaction.isButton()) {
     const { customId } = interaction;
 
+    if (customId.startsWith('poll_vote_')) {
+      const { handlePollVote } = require('../../modules/poll-manager');
+      const dbService = runtime.getService('DatabaseManager');
+      await handlePollVote(interaction, dbService);
+      return;
+    }
+
     if (customId.startsWith('approve_action_') || customId.startsWith('reject_action_')) {
       const parts = customId.split('_');
       const action = parts[0];

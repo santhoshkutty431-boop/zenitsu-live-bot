@@ -266,6 +266,14 @@ runtime.bootstrap().then(() => {
 
     startAutoPunishScheduler(client, db, () => runtime.getService('DatabaseManager').saveGlobal(), logToChannel, ID);
     
+    // Initialize active polls manager
+    try {
+      const { initPolls } = require('./modules/poll-manager');
+      await initPolls(client, runtime);
+    } catch (err) {
+      log.error('Failed to initialize active polls', { error: err.message });
+    }
+
     // Set dynamic owner ID
     try {
       const app = await client.application.fetch();

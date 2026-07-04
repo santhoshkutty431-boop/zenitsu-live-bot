@@ -205,6 +205,16 @@ class DatabaseManager {
         timestamp INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_spam_sig_guild ON spam_signatures (guild_id);
+
+      CREATE TABLE IF NOT EXISTS active_polls (
+        message_id TEXT PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        options_json TEXT NOT NULL,
+        votes_json TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
     `);
   }
 
@@ -612,8 +622,23 @@ class DatabaseManager {
     try {
       const buffer = await download(url);
       if (buffer && buffer.length > 100) {
+        // Switch journal mode to DELETE to force checkpoint and clean deletion of WAL/SHM files
+        try {
+          this.sqlDb.pragma('journal_mode = DELETE');
+        } catch (e) {
+          this.logger.warn(`Failed to clean up WAL before sync: ${e.message}`);
+        }
+
         // Close active connection before overwriting
         this.sqlDb.close();
+
+        // Delete old WAL and SHM files if any are still left
+        try {
+          if (fs.existsSync(DB_PATH + '-wal')) fs.unlinkSync(DB_PATH + '-wal');
+          if (fs.existsSync(DB_PATH + '-shm')) fs.unlinkSync(DB_PATH + '-shm');
+        } catch (e) {
+          this.logger.warn(`Failed to delete WAL/SHM files on sync: ${e.message}`);
+        }
         
         fs.writeFileSync(DB_PATH, buffer);
         this.logger.info('SQLite binary database pulled successfully from HF.');
@@ -643,6 +668,56 @@ class DatabaseManager {
     } catch (err) {
       this.logger.error(`Cloud database sync failed: ${err.message}`);
     }
+  }
+
+  createPoll({ messageId, guildId, channelId, question, options, expiresAt }) {
+    const stmt = this.sqlDb.prepare(`
+      INSERT INTO active_polls (message_id, guild_id, channel_id, question, options_json, votes_json, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(messageId, guildId, channelId, question, JSON.stringify(options), JSON.stringify({}), expiresAt);
+    this.scheduleSync();
+  }
+
+  getPoll(messageId) {
+    const stmt = this.sqlDb.prepare('SELECT * FROM active_polls WHERE message_id = ?');
+    const row = stmt.get(messageId);
+    if (!row) return null;
+    return {
+      messageId: row.message_id,
+      guildId: row.guild_id,
+      channelId: row.channel_id,
+      question: row.question,
+      options: JSON.parse(row.options_json),
+      votes: JSON.parse(row.votes_json),
+      expiresAt: row.expires_at
+    };
+  }
+
+  updatePollVotes(messageId, votes) {
+    const stmt = this.sqlDb.prepare('UPDATE active_polls SET votes_json = ? WHERE message_id = ?');
+    stmt.run(JSON.stringify(votes), messageId);
+    this.scheduleSync();
+  }
+
+  deletePoll(messageId) {
+    const stmt = this.sqlDb.prepare('DELETE FROM active_polls WHERE message_id = ?');
+    stmt.run(messageId);
+    this.scheduleSync();
+  }
+
+  getActivePolls() {
+    const stmt = this.sqlDb.prepare('SELECT * FROM active_polls');
+    const rows = stmt.all();
+    return rows.map(row => ({
+      messageId: row.message_id,
+      guildId: row.guild_id,
+      channelId: row.channel_id,
+      question: row.question,
+      options: JSON.parse(row.options_json),
+      votes: JSON.parse(row.votes_json),
+      expiresAt: row.expires_at
+    }));
   }
 }
 
