@@ -50,6 +50,15 @@ const {
   generateAuditId,
   verifyPermissionSchema
 } = require('./modules/permission-engine');
+const CAPABILITY_LABELS = {
+  AI_CONFIG: '🤖 AI Configuration & Models',
+  SECURITY_CONFIG: '🛡️ Security & Anti-Raid Settings',
+  MODERATION_EXECUTE: '👮 Moderation Execution',
+  ROLE_ASSIGN: '🔑 Whitelisted Role Management',
+  EMBED_MANAGE: '📢 Custom Embeds & Announcements',
+  TICKET_CONFIG: '🎫 Support Ticket Panel Setup'
+};
+
 
 // Keep the self-ping logic to keep Render alive if RENDER_URL is defined
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
@@ -1550,24 +1559,15 @@ client.on('interactionCreate', async interaction => {
             { name: 'Action', value: isAlreadyWhitelisted ? 'Updated Whitelisted User' : 'Added Whitelisted User' },
             { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
             { name: 'Target User', value: `${user} (ID: \`${user.id}\`)` },
-            { name: 'Capabilities (New)', value: targetCapabilities.map(c => `• \`${c}\``).join('\n') },
-            { name: 'Capabilities (Prev)', value: previousState ? previousState.map(c => `• \`${c}\``).join('\n') : '`None (New Whitelist)`' },
+            { name: 'Capabilities (New)', value: targetCapabilities.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') },
+            { name: 'Capabilities (Prev)', value: previousState ? previousState.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : '*None (New Whitelist)*' },
             { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
           )
           .setColor(isAlreadyWhitelisted ? 0xF39C12 : 0x2ECC71)
           .setTimestamp();
         await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
-        const capabilityLabels = {
-          AI_CONFIG: 'AI Configuration & Model Management',
-          SECURITY_CONFIG: 'Security & Anti-Raid Settings',
-          MODERATION_EXECUTE: 'Moderation Execution (Kick/Ban/Purge)',
-          ROLE_ASSIGN: 'Whitelisted Role Management',
-          EMBED_MANAGE: 'Embed & Say Announcement Management',
-          TICKET_CONFIG: 'Ticket System Setup & Config'
-        };
-
-        const listStr = targetCapabilities.map(cap => `• ${capabilityLabels[cap] || cap}`).join('\n');
+        const listStr = targetCapabilities.map(cap => `• ${CAPABILITY_LABELS[cap] || cap}`).join('\n');
 
         const successEmbed = new EmbedBuilder()
           .setTitle('✅ User Successfully Whitelisted')
@@ -1631,7 +1631,7 @@ client.on('interactionCreate', async interaction => {
             { name: 'Action', value: 'Removed Whitelisted User' },
             { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
             { name: 'Target User', value: `${user} (ID: \`${user.id}\`)` },
-            { name: 'Capabilities (Revoked)', value: previousState.map(c => `• \`${c}\``).join('\n') },
+            { name: 'Capabilities (Revoked)', value: previousState.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') },
             { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
           )
           .setColor(0xE74C3C)
@@ -1665,8 +1665,11 @@ client.on('interactionCreate', async interaction => {
         const selectOptions = [];
 
         for (const id of allUserIds) {
-          const caps = guildUsers[id] || ['Legacy (All capabilities)'];
-          listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${caps.map(c => `\`${c}\``).join(', ')}`);
+          const caps = guildUsers[id] || [];
+          const capsFormatted = caps.length > 0
+            ? caps.map(c => CAPABILITY_LABELS[c] || c).join(', ')
+            : 'Legacy (All capabilities)';
+          listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${capsFormatted}`);
 
           const cachedUser = interaction.client.users.cache.get(id);
           const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
@@ -1735,7 +1738,7 @@ client.on('interactionCreate', async interaction => {
             { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
             { name: 'Target Role', value: `${role} (ID: \`${role.id}\`)` },
             { name: 'Assigned Tier', value: `\`${tier.toUpperCase()}\`` },
-            { name: 'Capabilities', value: capabilities.length ? `\`${capabilities.join(', ')}\`` : 'None' },
+            { name: 'Capabilities', value: capabilities.length ? capabilities.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
             { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
           )
           .setColor(0x2ECC71)
@@ -1748,7 +1751,7 @@ client.on('interactionCreate', async interaction => {
           .addFields(
             { name: '🛡️ Role', value: `${role} (\`${role.id}\`)`, inline: true },
             { name: '🔑 Assigned Tier', value: `\`${tier.toUpperCase()}\``, inline: true },
-            { name: '🔑 Capabilities', value: capabilities.length ? `\`${capabilities.join(', ')}\`` : 'None', inline: true },
+            { name: '🔑 Capabilities', value: capabilities.length ? capabilities.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None', inline: true },
             { name: '🛡️ Audit ID', value: `\`${auditId}\``, inline: true }
           )
           .setColor(0x2ECC71)
@@ -2829,8 +2832,11 @@ client.on('interactionCreate', async interaction => {
       const selectOptions = [];
 
       for (const id of allUserIds) {
-        const caps = guildUsers[id] || ['Legacy (All capabilities)'];
-        listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${caps.map(c => `\`${c}\``).join(', ')}`);
+        const caps = guildUsers[id] || [];
+        const capsFormatted = caps.length > 0
+          ? caps.map(c => CAPABILITY_LABELS[c] || c).join(', ')
+          : 'Legacy (All capabilities)';
+        listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${capsFormatted}`);
 
         const cachedUser = interaction.client.users.cache.get(id);
         const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
