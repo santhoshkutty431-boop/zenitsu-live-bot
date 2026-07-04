@@ -460,7 +460,7 @@ class DatabaseManager {
   }
 
   async syncFromHf() {
-    const url = `https://huggingface.co/api/spaces/${this.config.hfRepo}/raw/main/data/zenitsu.db`;
+    const url = `https://huggingface.co/spaces/${this.config.hfRepo}/raw/main/data/zenitsu.db`;
     const options = {
       headers: { 'Authorization': `Bearer ${this.config.hfToken}` }
     };
@@ -518,6 +518,10 @@ class DatabaseManager {
         this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
         this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
         this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
+        
+        // Reset cache to force reading from new DB
+        this._globalCache = null;
+        this._guildCache.clear();
       } else {
         this.logger.warn('SQLite database pull returned empty/pointer buffer. Starting fresh.');
       }
