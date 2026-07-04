@@ -17,7 +17,8 @@ const {
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  ChannelType
 } = require('discord.js');
 const { queryAI } = require('./ai-handler');
 
@@ -57,6 +58,7 @@ Design guidelines:
 - Format descriptions professionally using lists, bold headers, and clean spacing.
 - Only include fields if they structure the information better.
 - Ignore invalid image/thumbnail URLs in the description, or use placeholders if requested.
+- IMPORTANT CHANNEL MENTIONING RULE: If the user mentions any channel name that matches one in the list of available channels (provided below), you MUST use its exact mention tag (e.g., <#CHANNEL_ID>) in the description or fields instead of writing the plain text channel name. E.g., if "feedback" is listed as "<#123456>", replace "#feedback" or "feedback channel" with "<#123456>".
 
 User request: `;
 
@@ -104,8 +106,19 @@ async function handleAiEmbed(interaction, db, saveDb, logToChannel, ID) {
   // 1. Initial defer
   await interaction.deferReply({ ephemeral: true });
 
-  // 2. Query AI with special system prompt
-  const query = AI_EMBED_PROMPT + prompt;
+  // Resolve available channels in this guild to provide context to the AI
+  let channelsHelp = '';
+  if (interaction.guild) {
+    const textChannels = interaction.guild.channels.cache
+      .filter(ch => ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement || ch.type === ChannelType.GuildForum);
+    if (textChannels.size > 0) {
+      channelsHelp = '\nAvailable channels in this server (use the exact mention tags in the description/fields when those channels are mentioned by name):\n' +
+        textChannels.map(ch => `- "${ch.name}": <#${ch.id}>`).join('\n') + '\n';
+    }
+  }
+
+  // 2. Query AI with special system prompt and channel lists
+  const query = AI_EMBED_PROMPT + channelsHelp + '\nUser request: ' + prompt;
   const modelKey = db.aiDefaultModel || 'gemini';
 
   const result = await queryAI(interaction.user.id, query, modelKey, null, {
