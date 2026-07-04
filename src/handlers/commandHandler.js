@@ -1,5 +1,10 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const config = require('../../config');
+const { handleAiEmbed } = require('../../modules/ai-embed');
+const { queryAI } = require('../../modules/ai-handler');
+const { handleAiDraw } = require('../../modules/ai-features');
+const { logAiAnalytics } = require('../../modules/logger');
+const { generateAuditId, invalidatePermCache } = require('../../modules/permission-engine');
 
 // Capability label maps
 const CAPABILITY_LABELS = {
@@ -8,6 +13,9 @@ const CAPABILITY_LABELS = {
   'ROLE_ASSIGN': '🔐 Manage Roles & Whitelists',
   'MODERATION_EXECUTE': '👮 Execute Moderation Actions'
 };
+
+function calcLevel(xp) { return Math.floor(Math.sqrt(xp / 100)); }
+function xpForLevel(lvl) { return lvl * lvl * 100; }
 
 let runtimeInstance = null;
 const loadDb = () => {};
