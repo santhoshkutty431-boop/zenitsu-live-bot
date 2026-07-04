@@ -306,7 +306,7 @@ class MusicPlugin {
             return {
               title: info.name || info.title,
               url: info.url,
-              duration: Math.floor((info.duration || 0) / 1000),
+              duration: info.durationInSec || Math.floor((info.duration || info.durationInMs || 0) / 1000),
               source: 'soundcloud'
             };
           }
@@ -321,7 +321,7 @@ class MusicPlugin {
             return {
               title: scSearch[0].name || scSearch[0].title,
               url: scSearch[0].permalink || scSearch[0].url,
-              duration: Math.floor((scSearch[0].duration || 0) / 1000),
+              duration: scSearch[0].durationInSec || Math.floor((scSearch[0].duration || scSearch[0].durationInMs || 0) / 1000),
               source: 'soundcloud'
             };
           }
@@ -361,7 +361,7 @@ class MusicPlugin {
           return {
             title: scSearch[0].name || scSearch[0].title,
             url: scSearch[0].permalink || scSearch[0].url,
-            duration: Math.floor((scSearch[0].duration || 0) / 1000),
+            duration: scSearch[0].durationInSec || Math.floor((scSearch[0].duration || scSearch[0].durationInMs || 0) / 1000),
             source: 'soundcloud'
           };
         }
