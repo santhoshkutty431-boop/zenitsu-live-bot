@@ -12,53 +12,109 @@ class ModerationPlugin {
   async onLoad() {
     this.logger.info('Loading Moderation Plugin...');
 
-    // Register Moderation commands
+    // Register commands
     this.router.registerCommand('warn', (i) => this.handleWarn(i));
     this.router.registerCommand('kick', (i) => this.handleKick(i));
     this.router.registerCommand('ban', (i) => this.handleBan(i));
     this.router.registerCommand('purge', (i) => this.handlePurge(i));
+
+    // Register Tools in Cognition Engine
+    const cognition = this.runtime.getService('CognitionEngine');
+    if (cognition && cognition.toolSelector) {
+      cognition.toolSelector.registerTool('warnUser', {
+        name: 'warnUser',
+        description: 'Warns a user for rule violations',
+        handler: async (d) => this.directWarn(d.guild, d.userId, d.executorId, d.executorTag, d.reason)
+      });
+      cognition.toolSelector.registerTool('kickUser', {
+        name: 'kickUser',
+        description: 'Kicks a user from the server',
+        handler: async (d) => this.directKick(d.guild, d.userId, d.executorId, d.executorTag, d.reason)
+      });
+      cognition.toolSelector.registerTool('banUser', {
+        name: 'banUser',
+        description: 'Bans a user from the server',
+        handler: async (d) => this.directBan(d.guild, d.userId, d.executorId, d.executorTag, d.reason)
+      });
+      cognition.toolSelector.registerTool('purgeMessages', {
+        name: 'purgeMessages',
+        description: 'Deletes a count of messages from a channel',
+        handler: async (d) => this.directPurge(d.channel, d.count)
+      });
+    }
   }
 
   async onUnload() {
     this.logger.info('Unloading Moderation Plugin...');
   }
 
-  async handleWarn(interaction) {
-    const target = interaction.options.getUser('user');
-    const reason = interaction.options.getString('reason') || 'No reason provided';
+  async directWarn(guild, userId, executorId, executorTag, reason) {
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) throw new Error('User not found in this server.');
 
-    const caseData = await createCase(interaction.guild, {
-      userId: target.id,
-      userTag: target.tag,
-      executorId: interaction.user.id,
-      executorTag: interaction.user.tag,
+    const caseData = await createCase(guild, {
+      userId,
+      userTag: member.user.tag,
+      executorId,
+      executorTag,
       type: 'WARN',
       reason
     });
+    return caseData;
+  }
 
+  async directKick(guild, userId, executorId, executorTag, reason) {
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) throw new Error('User not found in this server.');
+    if (!member.kickable) throw new Error('I cannot kick this member. Role hierarchy restriction.');
+
+    await member.kick(reason);
+    const caseData = await createCase(guild, {
+      userId,
+      userTag: member.user.tag,
+      executorId,
+      executorTag,
+      type: 'KICK',
+      reason
+    });
+    return caseData;
+  }
+
+  async directBan(guild, userId, executorId, executorTag, reason) {
+    const member = await guild.members.fetch(userId).catch(() => null);
+    const tag = member ? member.user.tag : `User ID: ${userId}`;
+
+    await guild.members.ban(userId, { reason });
+    const caseData = await createCase(guild, {
+      userId,
+      userTag: tag,
+      executorId,
+      executorTag,
+      type: 'BAN',
+      reason
+    });
+    return caseData;
+  }
+
+  async directPurge(channel, count) {
+    if (count < 1 || count > 100) throw new Error('Purge count must be between 1 and 100.');
+    const deleted = await channel.bulkDelete(count, true);
+    return deleted.size;
+  }
+
+  // Command handlers
+  async handleWarn(interaction) {
+    const target = interaction.options.getUser('user');
+    const reason = interaction.options.getString('reason') || 'No reason provided';
+    const caseData = await this.directWarn(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
     const embed = formatCaseEmbed(caseData);
     await interaction.reply({ embeds: [embed] });
   }
 
   async handleKick(interaction) {
-    const target = interaction.options.getMember('user');
+    const target = interaction.options.getUser('user');
     const reason = interaction.options.getString('reason') || 'No reason provided';
-
-    if (!target.kickable) {
-      return interaction.reply({ content: '❌ I cannot kick this user. They may have a higher role than me.', ephemeral: true });
-    }
-
-    await target.kick(reason);
-
-    const caseData = await createCase(interaction.guild, {
-      userId: target.id,
-      userTag: target.user.tag,
-      executorId: interaction.user.id,
-      executorTag: interaction.user.tag,
-      type: 'KICK',
-      reason
-    });
-
+    const caseData = await this.directKick(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
     const embed = formatCaseEmbed(caseData);
     await interaction.reply({ embeds: [embed] });
   }
@@ -66,30 +122,15 @@ class ModerationPlugin {
   async handleBan(interaction) {
     const target = interaction.options.getUser('user');
     const reason = interaction.options.getString('reason') || 'No reason provided';
-
-    await interaction.guild.members.ban(target, { reason });
-
-    const caseData = await createCase(interaction.guild, {
-      userId: target.id,
-      userTag: target.tag,
-      executorId: interaction.user.id,
-      executorTag: interaction.user.tag,
-      type: 'BAN',
-      reason
-    });
-
+    const caseData = await this.directBan(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
     const embed = formatCaseEmbed(caseData);
     await interaction.reply({ embeds: [embed] });
   }
 
   async handlePurge(interaction) {
     const count = interaction.options.getInteger('count');
-    if (count < 1 || count > 100) {
-      return interaction.reply({ content: '❌ Purge count must be between 1 and 100.', ephemeral: true });
-    }
-
-    await interaction.channel.bulkDelete(count, true);
-    await interaction.reply({ content: `🧹 Successfully purged ${count} messages.`, ephemeral: true });
+    const deletedCount = await this.directPurge(interaction.channel, count);
+    await interaction.reply({ content: `🧹 Successfully purged ${deletedCount} messages.`, ephemeral: true });
   }
 }
 

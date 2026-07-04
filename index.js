@@ -1314,43 +1314,6 @@ client.on('interactionCreate', async interaction => {
       await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // /setup-panel
-    else if (cmd === 'setup-panel') {
-      // Row 1 — Ticket Categories (upgrade 21)
-      const ticketRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ticket_purchase').setLabel('🛒 Purchase').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('ticket_support').setLabel('🔧 Support').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('ticket_bug').setLabel('🐛 Bug Report').setStyle(ButtonStyle.Danger),
-      );
-      // Row 2 — Other panel buttons
-      const utilRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('report_submit_btn').setLabel('🚨 Report User').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('view_song_queue').setLabel('🎶 Song Queue').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('get_member_role').setLabel('✅ Get Member Role').setStyle(ButtonStyle.Primary),
-      );
-
-      const embed = new EmbedBuilder()
-        .setTitle('🖥️ ZENITSU LIVE — CONTROL PANEL')
-        .setDescription(
-          '**─── 🎫 OPEN A TICKET ───**\n' +
-          '🛒 **Purchase** — Buy a product / place an order\n' +
-          '🔧 **Support** — Get help with an existing product\n' +
-          '🐛 **Bug Report** — Report a bug or issue\n\n' +
-          '**─── OTHER ───**\n' +
-          '🚨 **Report User** — Report a rule-breaking member\n' +
-          '🎶 **Song Queue** — View active waifu song requests\n' +
-          '✅ **Get Member Role** — Unlock the full community'
-        )
-        .setColor(0xEDC231)
-        .setThumbnail(interaction.guild.iconURL())
-        .setFooter({ text: 'ZENITSU LIVE Automation v2.0' })
-        .setTimestamp();
-
-      const panelCh = interaction.guild.channels.cache.get(config.channelPanel) || interaction.channel;
-      await panelCh.send({ embeds: [embed], components: [ticketRow, utilRow] });
-      await interaction.reply({ content: `✅ Panel posted in <#${panelCh.id}>`, ephemeral: true });
-    }
-
     // /rank
     else if (cmd === 'rank') {
       const target = interaction.options.getUser('user') || interaction.user;
@@ -3052,6 +3015,63 @@ client.on('interactionCreate', async interaction => {
   else if (interaction.isButton()) {
     const { customId } = interaction;
 
+    if (customId.startsWith('approve_action_') || customId.startsWith('reject_action_')) {
+      const parts = customId.split('_');
+      const action = parts[0];
+      const auditId = parts[2];
+
+      const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
+      if (!isExecOwner) {
+        return interaction.reply({ content: '❌ Only the **Server Owner** can authorize this action.', ephemeral: true });
+      }
+
+      await interaction.deferUpdate();
+
+      db.pendingApprovals = db.pendingApprovals || {};
+      const pending = db.pendingApprovals[auditId];
+
+      if (!pending) {
+        return interaction.editReply({
+          content: '⚠️ This approval request is expired or invalid.',
+          embeds: [],
+          components: []
+        });
+      }
+
+      const color = action === 'approve' ? 0x2ECC71 : 0xE74C3C;
+      const statusText = action === 'approve' ? '✅ Approved & Executed' : '❌ Rejected';
+
+      if (action === 'approve') {
+        const executionEngine = runtime.getService('CognitionEngine').executionEngine;
+        await executionEngine.executePlan(pending.plan, pending.tools, {
+          userId: pending.userId,
+          guildId: pending.guildId,
+          guild: interaction.guild,
+          requiresApproval: false
+        });
+      }
+
+      delete db.pendingApprovals[auditId];
+      saveDb();
+
+      const embed = new EmbedBuilder()
+        .setTitle('🔒 Security Action Approval')
+        .setDescription(`This proposed action has been processed.`)
+        .addFields(
+          { name: 'Proposed Action', value: `\`${pending.plan.actionsProposed.join(', ')}\`` },
+          { name: 'Audit ID', value: `\`${auditId}\`` },
+          { name: 'Status', value: `**${statusText}** by ${interaction.user}` }
+        )
+        .setColor(color)
+        .setTimestamp();
+
+      await interaction.editReply({
+        embeds: [embed],
+        components: []
+      });
+      return;
+    }
+
     if (customId.startsWith('setlang_')) {
       const parts = customId.split('_');
       const lang = parts[1];
@@ -3111,7 +3131,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     // ── [21] TICKET CATEGORIES ─────────────────────────────────────────────────
-    else if (['ticket_purchase', 'ticket_support', 'ticket_bug'].includes(customId)) {
+    else if (['ticket_purchase', 'ticket_support', 'ticket_bug', 'ticket_ai'].includes(customId)) {
       await interaction.deferReply({ ephemeral: true });
 
       const existing = db.activeTickets[interaction.user.id];
@@ -3137,6 +3157,15 @@ client.on('interactionCreate', async interaction => {
           desc:  `Hello ${interaction.user}! Please describe the bug:\n\n**1.** Which product/feature?\n**2.** What is happening? (step by step)\n**3.** Does it happen every time?\n**4.** Screenshot or video if possible\n\n> Our team will investigate and fix this.`,
           ping:  `${interaction.user} | <@&${ID.ADMIN_ROLE}>`,
         },
+        ticket_ai: {
+          prefix: 'ai-support', emoji: '🤖', color: 0x00D4FF,
+          title: '🤖 Dedicated AI Support Room',
+          desc:  `Hello ${interaction.user}! Welcome to your private AI Support room.\n\n` +
+                 `Type any question directly in this channel to converse with **ZENITSU AI**.\n\n` +
+                 `> **Staff visibility**: Server administrators can view this channel to assist you if needed.`,
+          ping:  `${interaction.user}`,
+          isAi:  true
+        }
       };
 
       const t = typeMap[customId];
@@ -3168,7 +3197,15 @@ client.on('interactionCreate', async interaction => {
 
       if (!ticketCh) return interaction.editReply({ content: 'Could not create ticket. Check bot permissions.' });
 
-      db.activeTickets[interaction.user.id] = ticketCh.id; saveDb();
+      db.activeTickets[interaction.user.id] = ticketCh.id; 
+      if (t.isAi) {
+        db.aiTickets = db.aiTickets || {};
+        db.aiTickets[ticketCh.id] = {
+          userId: interaction.user.id,
+          createdAt: new Date().toISOString()
+        };
+      }
+      saveDb();
 
       const ticketEmbed = new EmbedBuilder()
         .setTitle(t.title)
@@ -3189,14 +3226,16 @@ client.on('interactionCreate', async interaction => {
           'AI सहायता के लिए अपनी भाषा चुनें:\n\n' +
           '• **English** — standard English response\n' +
           '• **Tamil (Tunglish)** — Tamil written in English letters (e.g. *Vanakkam*)\n' +
-          '• **Hindi (Hinglish)** — Hindi written in English letters (e.g. *Namaste*)'
+          '• **Hindi (Hinglish)** — Hindi written in English letters (e.g. *Namaste*)\n' +
+          '• **Auto-Detect** — automatically detect and match prompt language'
         )
         .setColor(0x00D4FF);
 
       const langRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('ticket_lang_english').setLabel('🇬🇧 English').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('ticket_lang_tunglish').setLabel('🌴 Tamil (Tunglish)').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('ticket_lang_hinglish').setLabel('🇮🇳 Hindi (Hinglish)').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('ticket_lang_hinglish').setLabel('🇮🇳 Hindi (Hinglish)').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('ticket_lang_auto').setLabel('🌐 Auto-Detect').setStyle(ButtonStyle.Secondary)
       );
 
       await ticketCh.send({ embeds: [langEmbed], components: [langRow] });
@@ -3287,7 +3326,8 @@ client.on('interactionCreate', async interaction => {
       const langMap = {
         ticket_lang_english:  { key: 'english',  label: '🇬🇧 English', response: 'Preference saved! Tell me how I can help you today.' },
         ticket_lang_tunglish: { key: 'tunglish', label: '🌴 Tamil (Tunglish)', response: 'Unga language Tamil (Tunglish) save aayiduchu! Ungaluku enna help venum nu sollunga.' },
-        ticket_lang_hinglish: { key: 'hinglish', label: '🇮🇳 Hindi (Hinglish)', response: 'Aapka language Hindi (Hinglish) save ho gaya hai! Bataiye main aapki kya madad kar sakta hoon?' }
+        ticket_lang_hinglish: { key: 'hinglish', label: '🇮🇳 Hindi (Hinglish)', response: 'Aapka language Hindi (Hinglish) save ho gaya hai! Bataiye main aapki kya madad kar sakta hoon?' },
+        ticket_lang_auto:     { key: 'auto',     label: '🌐 Auto-Detect', response: 'Language preference set to Auto-Detect. I will automatically match the language you type. How can I help you today?' }
       };
 
       const choice = langMap[customId];

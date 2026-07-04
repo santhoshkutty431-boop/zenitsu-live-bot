@@ -78,30 +78,37 @@ const FLAG_TO_LANG = {
 // ─── 1. AI TICKET AUTO-REPLY ────────────────────────────────────────────────
 
 async function handleAiTicketSupport(message, db, saveDb) {
-  // Only reply to the very first user message in a ticket
   const channel = message.channel;
-  if (!channel.name.startsWith('purchase-') && !channel.name.startsWith('support-') && !channel.name.startsWith('ticket-')) return;
+  const isAiTicket = channel.name.startsWith('ai-support-') || (db.aiTickets && db.aiTickets[channel.id]);
+  const isStandardTicket = channel.name.startsWith('purchase-') || channel.name.startsWith('support-') || channel.name.startsWith('ticket-');
 
-  // Only reply to messages sent by the ticket creator/owner
-  const ticketCreatorId = Object.keys(db.activeTickets || {}).find(
-    uid => db.activeTickets[uid] === channel.id
-  );
-  if (ticketCreatorId && message.author.id !== ticketCreatorId) return;
+  if (!isAiTicket && !isStandardTicket) return;
 
-  // Ignore staff/admin roles or permissions
-  if (message.member && (
+  // Ignore bot messages
+  if (message.author.bot) return;
+
+  // Resolve staff status
+  const isStaff = message.member && (
     message.member.permissions.has(PermissionFlagsBits.ManageMessages) ||
     message.member.permissions.has(PermissionFlagsBits.Administrator)
-  )) {
-    return;
+  );
+
+  // If staff sends a message in a ticket, ignore it (do not let AI respond to staff comments)
+  if (isStaff) return;
+
+  // If it's a standard ticket, only reply to the very first user message
+  if (isStandardTicket) {
+    const ticketCreatorId = Object.keys(db.activeTickets || {}).find(
+      uid => db.activeTickets[uid] === channel.id
+    );
+    if (ticketCreatorId && message.author.id !== ticketCreatorId) return;
+
+    if (!db.aiAnsweredTickets) db.aiAnsweredTickets = {};
+    if (db.aiAnsweredTickets[channel.id]) return;
+
+    db.aiAnsweredTickets[channel.id] = true;
+    saveDb();
   }
-
-  // Track if this ticket has already been answered by AI
-  if (!db.aiAnsweredTickets) db.aiAnsweredTickets = {};
-  if (db.aiAnsweredTickets[channel.id]) return; // already replied
-
-  db.aiAnsweredTickets[channel.id] = true;
-  saveDb();
 
   // Show typing indicator
   await channel.sendTyping().catch(() => {});
@@ -129,6 +136,22 @@ async function handleAiTicketSupport(message, db, saveDb) {
 - Address the user as ${message.author}.
 - Greet them casually (e.g. "Namaste @user!").
 - Reassure them at the end naturally (e.g. "Agar aapka problem solve nahi hua toh chinta na karein! Humare staff jald hi aakar aapki madad karenge.").`;
+  } else if (userLang === 'auto') {
+    langDirective = `
+- Detect the language/dialect of the prompt dynamically.
+- Respond in the EXACT same language/dialect as the prompt (e.g., if Tamil, use Tamil/Tunglish; if Hindi, use Hindi/Hinglish).
+- Maintain the casual and helpful human support persona.`;
+  }
+
+  // If dedicated AI ticket, fetch conversational history from SessionManager
+  let history = [];
+  const runtime = message.client.runtime;
+  const sessionService = runtime ? runtime.getService('SessionManager') : null;
+  if (isAiTicket && sessionService) {
+    history = sessionService.getHistory(message.author.id, {
+      guildId: message.guild.id,
+      channelId: message.channel.id
+    });
   }
 
   const query = `${TICKET_FAQ_PROMPT}\n\n[CRITICAL DIALECT & FORMATTING DIRECTIVES: ${langDirective}]\n\nUser Question: ${message.content}`;
@@ -143,21 +166,39 @@ async function handleAiTicketSupport(message, db, saveDb) {
   });
   if (result.error) return;
 
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: 'ZENITSU AI Ticket Support', iconURL: message.client.user.displayAvatarURL() })
-    .setDescription(result.response)
-    .setColor(0x00D4FF)
-    .setFooter({ text: 'ZENITSU LIVE Support' })
-    .setTimestamp();
+  // Save to conversational history if AI ticket
+  if (isAiTicket && sessionService) {
+    sessionService.addToHistory(message.author.id, 'user', message.content, {
+      guildId: message.guild.id,
+      channelId: message.channel.id
+    });
+    sessionService.addToHistory(message.author.id, 'assistant', result.response, {
+      guildId: message.guild.id,
+      channelId: message.channel.id
+    });
+  }
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('ticket_staff_need')
-      .setLabel('🙋 Need Staff')
-      .setStyle(ButtonStyle.Primary)
-  );
+  if (isAiTicket) {
+    // Public reply (normal text response, not embedded, not ephemeral!)
+    await channel.send({ content: `${message.author}, ${result.response}` });
+  } else {
+    // Embed reply for standard tickets (keeps them clean)
+    const embed = new EmbedBuilder()
+      .setAuthor({ name: 'ZENITSU AI Ticket Support', iconURL: message.client.user.displayAvatarURL() })
+      .setDescription(result.response)
+      .setColor(0x00D4FF)
+      .setFooter({ text: 'ZENITSU LIVE Support' })
+      .setTimestamp();
 
-  await channel.send({ embeds: [embed], components: [row] }).catch(() => {});
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('ticket_staff_need')
+        .setLabel('🙋 Need Staff')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await channel.send({ embeds: [embed], components: [row] }).catch(() => {});
+  }
 }
 
 // ─── 2. AI CONTEXT MODERATION ────────────────────────────────────────────────

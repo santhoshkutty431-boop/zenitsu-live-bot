@@ -23,29 +23,53 @@ class AIPlugin {
     this.logger.info('Unloading AI Plugin...');
   }
 
+  generateAuditId() {
+    return 'WL-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + Math.floor(100000 + Math.random() * 900000);
+  }
+
   async handleAiQuery(interaction) {
     const prompt = interaction.options.getString('prompt');
-    const selectedModel = interaction.options.getString('model') || this.dbService.get('aiDefaultModel', 'gemini');
-
     await interaction.deferReply();
 
-    const history = this.sessionService.getHistory(interaction.user.id, {
-      guildId: interaction.guildId,
-      channelId: interaction.channelId
-    });
-
-    const systemPrompt = `You are ZENITSU AI. Reply directly to ${interaction.user.username}.`;
-
-    const result = await this.aiProvider.query(
+    const cognition = this.runtime.getService('CognitionEngine');
+    const result = await cognition.processRequest(
       interaction.user.id,
-      prompt,
-      selectedModel,
-      systemPrompt,
-      [...history, { role: 'user', content: prompt }]
+      interaction.guildId,
+      interaction.guild,
+      prompt
     );
 
     if (result.error) {
-      return interaction.editReply({ content: result.message });
+      return interaction.editReply({ content: result.message || '❌ AI Query failed.' });
+    }
+
+    if (result.status === 'PENDING_APPROVAL') {
+      const auditId = this.generateAuditId();
+      this.dbService.db.pendingApprovals = this.dbService.db.pendingApprovals || {};
+      this.dbService.db.pendingApprovals[auditId] = {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        plan: result.plan,
+        tools: result.tools
+      };
+      this.dbService.save();
+
+      const approvalEmbed = new EmbedBuilder()
+        .setTitle('🔒 Security Action Approval Required')
+        .setDescription(`The AI planner proposed a potentially destructive action during a request by ${interaction.user}:`)
+        .addFields(
+          { name: 'Proposed Action', value: `\`${result.plan.actionsProposed.join(', ')}\`` },
+          { name: 'Audit ID', value: `\`${auditId}\`` }
+        )
+        .setColor(0xF39C12)
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`approve_action_${auditId}`).setLabel('✅ Approve').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`reject_action_${auditId}`).setLabel('❌ Reject').setStyle(ButtonStyle.Danger)
+      );
+
+      return interaction.editReply({ embeds: [approvalEmbed], components: [row] });
     }
 
     // Save to isolated session memory
