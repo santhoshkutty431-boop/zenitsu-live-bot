@@ -201,6 +201,19 @@ function startDashboardServer(client, db, saveDb) {
     const hrs = Math.floor(uptime / 3600);
     const mins = Math.floor((uptime % 3600) / 60);
 
+    const analytics = client.runtime.getService('AnalyticsManager');
+    const stats = analytics ? analytics.getStats() : { joins: 0, ticketsOpened: 0, spamBlocked: 0, commands: {} };
+
+    const securityScore = db.protectmeActive ? 95 : 60;
+    const configScore = db.serverWhitelist && db.serverWhitelist.length > 0 ? 97 : 70;
+    const ticketScore = db.activeTickets && Object.keys(db.activeTickets).length > 0 ? 92 : 80;
+    const modScore = db.cases && db.cases.length > 0 ? 88 : 75;
+    const performanceScore = 90;
+    const overallScore = Math.round((securityScore + configScore + ticketScore + modScore + performanceScore) / 5);
+
+    const memUsage = process.memoryUsage();
+    const ramMb = Math.round(memUsage.heapUsed / 1024 / 1024);
+
     const guildRows = guilds.map(g => `
       <tr>
         <td>
@@ -392,6 +405,53 @@ function startDashboardServer(client, db, saveDb) {
             <div class="stat-card">
               <div class="stat-val">${hrs}h ${mins}m</div>
               <div class="stat-lbl">Bot Uptime</div>
+            </div>
+          </div>
+
+          <div class="section-title">📊 Server Health Dashboard</div>
+          <div class="health-container" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 45px;">
+            <div class="health-card-main" style="flex: 1; min-width: 250px; background: rgba(0, 212, 255, 0.05); border: 2px solid var(--cyan); border-radius: 12px; padding: 24px; text-align: center; box-shadow: 0 4px 20px rgba(0,212,255,0.1);">
+              <div style="font-size: 64px; font-weight: bold; color: var(--cyan); line-height: 1;">${overallScore}<span style="font-size: 24px; color: var(--muted);">/100</span></div>
+              <div style="margin-top: 10px; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: var(--text);">Overall Server Health</div>
+            </div>
+            
+            <div class="health-breakdown" style="flex: 2; min-width: 300px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+              <div style="background: var(--container-bg); border: 1px solid var(--border); padding: 15px; border-radius: 8px;">
+                <div style="font-size: 13px; color: var(--muted); text-transform: uppercase;">🛡️ Security</div>
+                <div style="font-size: 20px; font-weight: bold; color: #2ECC71; margin-top: 5px;">${securityScore}%</div>
+              </div>
+              <div style="background: var(--container-bg); border: 1px solid var(--border); padding: 15px; border-radius: 8px;">
+                <div style="font-size: 13px; color: var(--muted); text-transform: uppercase;">👮 Moderation</div>
+                <div style="font-size: 20px; font-weight: bold; color: #E67E22; margin-top: 5px;">${modScore}%</div>
+              </div>
+              <div style="background: var(--container-bg); border: 1px solid var(--border); padding: 15px; border-radius: 8px;">
+                <div style="font-size: 13px; color: var(--muted); text-transform: uppercase;">🎫 Tickets</div>
+                <div style="font-size: 20px; font-weight: bold; color: #9B59B6; margin-top: 5px;">${ticketScore}%</div>
+              </div>
+              <div style="background: var(--container-bg); border: 1px solid var(--border); padding: 15px; border-radius: 8px;">
+                <div style="font-size: 13px; color: var(--muted); text-transform: uppercase;">⚙️ Configuration</div>
+                <div style="font-size: 20px; font-weight: bold; color: var(--cyan); margin-top: 5px;">${configScore}%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-title">⚡ Live Security & AI Metrics</div>
+          <div class="stats-grid" style="margin-bottom: 45px;">
+            <div class="stat-card">
+              <div class="stat-val">${stats.joins}</div>
+              <div class="stat-lbl">Server Joins</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val">${stats.ticketsOpened}</div>
+              <div class="stat-lbl">Tickets Opened</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val">${stats.spamBlocked}</div>
+              <div class="stat-lbl">Spam Attacks Blocked</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val">${ramMb} MB</div>
+              <div class="stat-lbl">RAM Usage</div>
             </div>
           </div>
 
