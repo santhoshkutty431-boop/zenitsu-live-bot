@@ -503,6 +503,30 @@ const commands = [
       .setName('list')
       .setDescription('View all active spam signatures for this server')),
 
+  new SlashCommandBuilder()
+    .setName('setup-logs')
+    .setDescription('Configure custom logging channels for this server')
+    .addChannelOption(option =>
+      option.setName('message-logs')
+        .setDescription('Channel for message edit/delete logs')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(false))
+    .addChannelOption(option =>
+      option.setName('voice-logs')
+        .setDescription('Channel for voice activity logs')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(false))
+    .addChannelOption(option =>
+      option.setName('server-logs')
+        .setDescription('Channel for server events (joins/leaves/role updates)')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(false))
+    .addChannelOption(option =>
+      option.setName('mod-logs')
+        .setDescription('Channel for moderation audit logs (kicks/bans/timeouts)')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(false)),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild));
@@ -548,6 +572,7 @@ const PERMISSION_GATES = {
   'reload':           PermissionFlagsBits.Administrator,
   'reindex':          PermissionFlagsBits.Administrator,
   'spam-signature':   PermissionFlagsBits.ManageGuild,
+  'setup-logs':       PermissionFlagsBits.ManageGuild,
 };
 
 for (const command of commands) {

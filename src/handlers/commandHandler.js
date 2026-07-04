@@ -1324,6 +1324,53 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       });
     }
 
+    // /setup-logs
+    else if (cmd === 'setup-logs') {
+      if (!isOwner(interaction.user.id) && !interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({ content: '❌ Only administrators with **Manage Server** permission can configure logging channels.', ephemeral: true });
+      }
+
+      const msgChan = interaction.options.getChannel('message-logs');
+      const voiceChan = interaction.options.getChannel('voice-logs');
+      const serverChan = interaction.options.getChannel('server-logs');
+      const modChan = interaction.options.getChannel('mod-logs');
+
+      db.logging = db.logging || {};
+
+      const changes = [];
+
+      if (msgChan !== null) {
+        db.logging.messageLogId = msgChan ? msgChan.id : '';
+        changes.push(`• **Message Logs**: ${msgChan ? `<#${msgChan.id}>` : '*Disabled*'}`);
+      }
+      if (voiceChan !== null) {
+        db.logging.voiceLogId = voiceChan ? voiceChan.id : '';
+        changes.push(`• **Voice Logs**: ${voiceChan ? `<#${voiceChan.id}>` : '*Disabled*'}`);
+      }
+      if (serverChan !== null) {
+        db.logging.serverLogsId = serverChan ? serverChan.id : '';
+        changes.push(`• **Server Logs**: ${serverChan ? `<#${serverChan.id}>` : '*Disabled*'}`);
+      }
+      if (modChan !== null) {
+        db.logging.modLogId = modChan ? modChan.id : '';
+        changes.push(`• **Mod Logs**: ${modChan ? `<#${modChan.id}>` : '*Disabled*'}`);
+      }
+
+      if (changes.length === 0) {
+        return interaction.reply({ content: '⚠️ Please specify at least one logging channel option to configure.', ephemeral: true });
+      }
+
+      saveDb();
+
+      const embed = new EmbedBuilder()
+        .setTitle('⚙️ Logging Channels Updated')
+        .setDescription(`Successfully updated logging channels for this server:\n\n${changes.join('\n')}`)
+        .setColor(0xEDC231)
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     // /whitelist-server
     else if (cmd === 'whitelist-server') {
       if (!isOwner(interaction.user.id) && !interaction.member?.roles?.cache?.has(ID.OWNER_ROLE))

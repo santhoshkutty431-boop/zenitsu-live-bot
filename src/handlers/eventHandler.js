@@ -62,8 +62,25 @@ function isOwner(userId) {
 }
 
 async function logToChannel(guild, channelId, embed) {
-  if (!channelId) return;
-  const ch = guild.channels.cache.get(channelId);
+  if (!guild) return;
+
+  let resolvedChannelId = channelId;
+
+  if (db && db.logging) {
+    const title = embed.data?.title || '';
+    if (title.includes('Message Deleted') || title.includes('Message Edited')) {
+      resolvedChannelId = db.logging.messageLogId || db.logging.serverLogsId || channelId;
+    } else if (title.includes('Voice')) {
+      resolvedChannelId = db.logging.voiceLogId || channelId;
+    } else if (title.includes('Incident') || title.includes('Audit') || title.includes('Banned') || title.includes('Kicked') || title.includes('Warning') || title.includes('Mute') || title.includes('Timeout') || title.includes('Whitelist Removed') || title.includes('User Successfully Whitelisted') || title.includes('Moderation') || title.includes('Roles Updated')) {
+      resolvedChannelId = db.logging.modLogId || db.logging.serverLogsId || channelId;
+    } else if (title.includes('Member') || title.includes('Role') || title.includes('Channel')) {
+      resolvedChannelId = db.logging.serverLogsId || channelId;
+    }
+  }
+
+  if (!resolvedChannelId) return;
+  const ch = guild.channels.cache.get(resolvedChannelId);
   if (ch) await ch.send({ embeds: [embed] }).catch(() => {});
 }
 async function logToReports(guild, embed) {
@@ -175,7 +192,7 @@ client.on('guildMemberAdd', async member => {
   await secHandleJoin(member, db, saveDb, logToChannel, ID);
 
   // Logger: join log
-  await logMemberJoin(member, ID);
+  await logMemberJoin(member, ID, db);
 
   // [2] Welcome DM
   const dmEmbed = new EmbedBuilder()
@@ -545,7 +562,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 client.on('roleUpdate', async (oldRole, newRole) => {
   try {
     // 1. Log the basic changes
-    await logRoleUpdate(oldRole, newRole, ID);
+    await logRoleUpdate(oldRole, newRole, ID, db);
 
     // 2. Sensitive permissions check
     const sensitivePerms = [
@@ -608,7 +625,7 @@ client.on('roleUpdate', async (oldRole, newRole) => {
 
 // ─── LOGGER: CHANNEL UPDATES ────────────────────────────────────────────────
 client.on('channelUpdate', async (oldCh, newCh) => {
-  if (newCh.guild) await logChannelUpdate(oldCh, newCh, ID);
+  if (newCh.guild) await logChannelUpdate(oldCh, newCh, ID, db);
 });
 
 // ─── ANTI-NUKE: AUDIT LOG MONITORING ────────────────────────────────────────
@@ -765,7 +782,7 @@ const CMD_TIERS = {
   // Admin permission required
   ADMIN:   ['ban', 'tempban', 'unban', 'role', 'setup-panel',
              'embed', 'ai-embed', 'clear-channel', 'security', 'ai-channel',
-             'whitelist-server', 'whitelist-role'],
+             'whitelist-server', 'whitelist-role', 'setup-logs'],
 
   // Bot owner only
   OWNER:   ['whitelist'],

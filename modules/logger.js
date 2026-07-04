@@ -10,7 +10,7 @@
 
 'use strict';
 
-const { EmbedBuilder, AuditLogEvent } = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 
 // ─── LOG CHANNEL RESOLVER ────────────────────────────────────────────────────
 
@@ -18,9 +18,26 @@ const { EmbedBuilder, AuditLogEvent } = require('discord.js');
  * Send an embed to a specific log channel by ID.
  * Silent fail if channel doesn't exist or bot lacks permissions.
  */
-async function sendLog(guild, channelId, embed) {
-  if (!channelId || !guild) return;
-  const ch = guild.channels.cache.get(channelId);
+async function sendLog(guild, channelId, embed, db) {
+  if (!guild) return;
+
+  let resolvedChannelId = channelId;
+
+  if (db && db.logging) {
+    const title = embed.data?.title || '';
+    if (title.includes('Message Deleted') || title.includes('Message Edited')) {
+      resolvedChannelId = db.logging.messageLogId || db.logging.serverLogsId || channelId;
+    } else if (title.includes('Voice')) {
+      resolvedChannelId = db.logging.voiceLogId || channelId;
+    } else if (title.includes('Incident') || title.includes('Audit') || title.includes('Banned') || title.includes('Kicked') || title.includes('Warning') || title.includes('Mute') || title.includes('Timeout') || title.includes('Whitelist Removed') || title.includes('User Successfully Whitelisted') || title.includes('Moderation') || title.includes('Roles Updated')) {
+      resolvedChannelId = db.logging.modLogId || db.logging.serverLogsId || channelId;
+    } else if (title.includes('Member') || title.includes('Role') || title.includes('Channel')) {
+      resolvedChannelId = db.logging.serverLogsId || channelId;
+    }
+  }
+
+  if (!resolvedChannelId) return;
+  const ch = guild.channels.cache.get(resolvedChannelId);
   if (ch?.isTextBased()) {
     await ch.send({ embeds: [embed] }).catch(() => {});
   }
@@ -28,7 +45,7 @@ async function sendLog(guild, channelId, embed) {
 
 // ─── JOIN / LEAVE ─────────────────────────────────────────────────────────────
 
-async function logMemberJoin(member, ID) {
+async function logMemberJoin(member, ID, db) {
   const guild = member.guild;
   const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000);
   const createdTs  = Math.floor(member.user.createdTimestamp / 1000);
@@ -46,10 +63,10 @@ async function logMemberJoin(member, ID) {
     .setFooter({ text: `User ID: ${member.id}` })
     .setTimestamp();
 
-  await sendLog(guild, ID.SERVER_LOGS, embed);
+  await sendLog(guild, ID.SERVER_LOGS, embed, db);
 }
 
-async function logMemberLeave(member, ID) {
+async function logMemberLeave(member, ID, db) {
   const guild    = member.guild;
   const joinedTs = member.joinedAt ? Math.floor(member.joinedAt.getTime() / 1000) : null;
   const roles    = member.roles.cache.filter(r => r.name !== '@everyone').map(r => r.name).join(', ') || 'None';
@@ -67,17 +84,14 @@ async function logMemberLeave(member, ID) {
     .setFooter({ text: `User ID: ${member.id}` })
     .setTimestamp();
 
-  await sendLog(guild, ID.SERVER_LOGS, embed);
+  await sendLog(guild, ID.SERVER_LOGS, embed, db);
 }
 
 // ─── MESSAGE EDIT / DELETE ───────────────────────────────────────────────────
 
-async function logMessageDelete(msg, ID) {
+async function logMessageDelete(msg, ID, db) {
   if (!msg.guild) return;
 
-  // If the message is not cached, msg.author will be null/undefined.
-  // If both author and content are empty, it's a deleted embed/attachment or a bot cleanup.
-  // We skip logging these to avoid spamming the log channels.
   if (!msg.author && !msg.content) {
     return;
   }
@@ -100,10 +114,10 @@ async function logMessageDelete(msg, ID) {
     .setFooter({ text: `User ID: ${authorId} | Msg ID: ${msg.id}` })
     .setTimestamp();
 
-  await sendLog(msg.guild, ID.MESSAGE_LOG || ID.SERVER_LOGS, embed);
+  await sendLog(msg.guild, ID.MESSAGE_LOG || ID.SERVER_LOGS, embed, db);
 }
 
-async function logMessageEdit(oldMsg, newMsg, ID) {
+async function logMessageEdit(oldMsg, newMsg, ID, db) {
   if (!newMsg.guild || newMsg.author?.bot) return;
   if (oldMsg.content === newMsg.content) return;
 
@@ -120,12 +134,12 @@ async function logMessageEdit(oldMsg, newMsg, ID) {
     .setFooter({ text: `User ID: ${newMsg.author.id} | Msg ID: ${newMsg.id}` })
     .setTimestamp();
 
-  await sendLog(newMsg.guild, ID.MESSAGE_LOG || ID.SERVER_LOGS, embed);
+  await sendLog(newMsg.guild, ID.MESSAGE_LOG || ID.SERVER_LOGS, embed, db);
 }
 
 // ─── VOICE STATE ─────────────────────────────────────────────────────────────
 
-async function logVoiceUpdate(oldState, newState, voiceJoins, ID) {
+async function logVoiceUpdate(oldState, newState, voiceJoins, ID, db) {
   const guild  = newState.guild || oldState.guild;
   const member = newState.member || oldState.member;
   if (!member || member.user.bot) return;
@@ -137,7 +151,7 @@ async function logVoiceUpdate(oldState, newState, voiceJoins, ID) {
   if (!oldState.channelId && newState.channelId) {
     voiceJoins.set(userId, { channelName: newState.channel?.name, startTime: Date.now() });
     const embed = new EmbedBuilder()
-      .setTitle('🎤 Voice Join')
+      .setTitle('🔊 Voice Join')
       .setColor(0x2ECC71)
       .addFields(
         { name: '👤 User',    value: `${member} (${userTag})`,         inline: true },
@@ -145,7 +159,7 @@ async function logVoiceUpdate(oldState, newState, voiceJoins, ID) {
       )
       .setFooter({ text: `User ID: ${userId}` })
       .setTimestamp();
-    await sendLog(guild, ID.VOICE_LOG, embed);
+    await sendLog(guild, ID.VOICE_LOG, embed, db);
   }
 
   // Left a voice channel
@@ -168,7 +182,7 @@ async function logVoiceUpdate(oldState, newState, voiceJoins, ID) {
       )
       .setFooter({ text: `User ID: ${userId}` })
       .setTimestamp();
-    await sendLog(guild, ID.VOICE_LOG, embed);
+    await sendLog(guild, ID.VOICE_LOG, embed, db);
   }
 
   // Moved between channels
@@ -186,22 +200,22 @@ async function logVoiceUpdate(oldState, newState, voiceJoins, ID) {
       )
       .setFooter({ text: `User ID: ${userId}` })
       .setTimestamp();
-    await sendLog(guild, ID.VOICE_LOG, embed);
+    await sendLog(guild, ID.VOICE_LOG, embed, db);
   }
 }
 
 // ─── MODERATION ACTION ───────────────────────────────────────────────────────
 
-async function logModAction(guild, caseData, ID) {
+async function logModAction(guild, caseData, ID, db) {
   const { formatCaseEmbed } = require('./case-manager');
   const embed = formatCaseEmbed(caseData);
   const securityLogId = ID.MOD_LOG;
-  await sendLog(guild, securityLogId, embed);
+  await sendLog(guild, securityLogId, embed, db);
 }
 
 // ─── ROLE / CHANNEL UPDATES ──────────────────────────────────────────────────
 
-async function logRoleUpdate(oldRole, newRole, ID) {
+async function logRoleUpdate(oldRole, newRole, ID, db) {
   const guild = newRole.guild;
   const changes = [];
   if (oldRole.name  !== newRole.name)  changes.push(`**Name:** \`${oldRole.name}\` → \`${newRole.name}\``);
@@ -219,10 +233,10 @@ async function logRoleUpdate(oldRole, newRole, ID) {
     )
     .setFooter({ text: `Role ID: ${newRole.id}` })
     .setTimestamp();
-  await sendLog(guild, ID.SERVER_LOGS, embed);
+  await sendLog(guild, ID.SERVER_LOGS, embed, db);
 }
 
-async function logChannelUpdate(oldCh, newCh, ID) {
+async function logChannelUpdate(oldCh, newCh, ID, db) {
   const guild = newCh.guild;
   const changes = [];
   if (oldCh.name  !== newCh.name)  changes.push(`**Name:** \`${oldCh.name}\` → \`${newCh.name}\``);
@@ -241,10 +255,10 @@ async function logChannelUpdate(oldCh, newCh, ID) {
     )
     .setFooter({ text: `Channel ID: ${newCh.id}` })
     .setTimestamp();
-  await sendLog(guild, ID.SERVER_LOGS, embed);
+  await sendLog(guild, ID.SERVER_LOGS, embed, db);
 }
 
-async function logGuildMemberRoleUpdate(oldMember, newMember, ID) {
+async function logGuildMemberRoleUpdate(oldMember, newMember, ID, db) {
   const addedRoles   = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
   const removedRoles = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
   if (addedRoles.size === 0 && removedRoles.size === 0) return;
@@ -261,20 +275,20 @@ async function logGuildMemberRoleUpdate(oldMember, newMember, ID) {
   if (addedRoles.size   > 0) embed.addFields({ name: '➕ Added',   value: addedRoles.map(r => r.name).join(', ') });
   if (removedRoles.size > 0) embed.addFields({ name: '➖ Removed', value: removedRoles.map(r => r.name).join(', ') });
 
-  await sendLog(newMember.guild, ID.SERVER_LOGS, embed);
+  await sendLog(newMember.guild, ID.SERVER_LOGS, embed, db);
 }
 
 // ─── SECURITY INCIDENT ───────────────────────────────────────────────────────
 
 async function logSecurityIncident(guild, title, description, fields, db, ID) {
-  const securityLogId = db.securityConfig?.securityLogId || ID.MOD_LOG;
+  const securityLogId = db.securityConfig?.securityLogId || db.logging?.modLogId || ID.MOD_LOG;
   const embed = new EmbedBuilder()
     .setTitle(`🚨 Security Incident — ${title}`)
     .setDescription(description)
     .setColor(0xFF0000)
     .setTimestamp();
   if (fields) embed.addFields(fields);
-  await sendLog(guild, securityLogId, embed);
+  await sendLog(guild, securityLogId, embed, db);
 }
 
 // ─── EXPORTS ─────────────────────────────────────────────────────────────────

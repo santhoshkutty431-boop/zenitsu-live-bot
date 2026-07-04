@@ -55,6 +55,7 @@ class PermissionEngine {
       'security': { tier: 'ADMIN', capability: 'SECURITY_CONFIG' },
       'ai-channel': { tier: 'ADMIN', capability: 'AI_CONFIG' },
       'ai-model': { tier: 'ADMIN', capability: 'AI_CONFIG' },
+      'setup-logs': { tier: 'ADMIN', capability: 'SECURITY_CONFIG' },
       'whitelist-role': { tier: 'WHITELISTED_USER', capability: 'ROLE_ASSIGN' },
 
       // Server Owner
