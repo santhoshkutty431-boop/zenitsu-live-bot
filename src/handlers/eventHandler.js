@@ -2,6 +2,22 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType,
 const fs = require('fs');
 const path = require('path');
 
+let runtimeInstance = null;
+const loadDb = () => {};
+const saveDb = async () => {
+  if (!runtimeInstance) return;
+  const store = global.asyncLocalStorage?.getStore();
+  const guildId = store?.guildId;
+  const dbMgr = runtimeInstance.getService('DatabaseManager');
+  if (dbMgr) {
+    if (guildId) {
+      dbMgr.saveGuildDb(guildId);
+    } else {
+      dbMgr.saveGlobal();
+    }
+  }
+};
+
 // ─── IN-MEMORY VOICE TRACKER (upgrade 10) ─────────────────────────────────────
 const voiceJoins = new Map(); // userId → { channelName, startTime }
 
@@ -112,44 +128,7 @@ function staffCheck(member) {
     [ID.ADMIN_ROLE, ID.MOD_ROLE, ID.SUPPORT_ROLE, ID.OWNER_ROLE].some(id => member.roles.cache.has(id));
 }
 
-// ─── READY ────────────────────────────────────────────────────────────────────
-client.once('ready', async () => {
-  console.log(`✅ Bot logged in as ${client.user.tag}`);
 
-  // Register live synchronization event listeners
-  const syncListeners = runtime.getService('SyncListeners');
-  if (syncListeners) {
-    syncListeners.register(client);
-  }
-
-  // Start auto-punishment expiry scheduler
-  startAutoPunishScheduler(client, db, saveDb, logToChannel, ID);
-  
-  // Resolve supreme bot owner dynamically
-  try {
-    const app = await client.application.fetch();
-    ownerId = app.owner.ownerId || app.owner.id;
-    setDynamicOwnerId(ownerId);
-    console.log(`👑 Supreme Bot Owner resolved: ${ownerId}`);
-  } catch (err) {
-    console.error('⚠️ Failed to fetch application owner:', err.message);
-  }
-
-
-
-  console.log(`   Server logs : ${ID.SERVER_LOGS || '(not set — run setup-upgrades.js first)'}`);
-  console.log(`   Voice log   : ${ID.VOICE_LOG   || '(not set)'}`);
-  console.log(`   Mod log     : ${ID.MOD_LOG      || '(not set)'}`);
-  client.user.setPresence({
-    status: 'online',
-    activities: [
-      {
-        name: '🛡️ Protecting Communities',
-        type: ActivityType.Watching,
-      },
-    ],
-  });
-});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // [UPGRADE 1 + 2] — AUTO-ROLE VIA JOIN GATE + WELCOME DM
@@ -160,7 +139,7 @@ const staffCheckFn = staffCheck;
 const getOrCreateRoleFn = getOrCreateRole;
 
 function registerEvents(client, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, staffCheck, isOwner, getOrCreateRole, secHandleJoin, secHandleMsg) {
-  
+  runtimeInstance = runtime;
   // Bind all event listeners to the client
 client.on('guildMemberAdd', async member => {
   console.log(`[JOIN] ${member.user.tag} joined`);
