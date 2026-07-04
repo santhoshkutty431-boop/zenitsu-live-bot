@@ -1165,42 +1165,49 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const prompt = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
-      const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
-        applicationId: interaction.client.application?.id || 'default',
-        guildId: interaction.guildId || 'dm',
-        channelId: interaction.channelId || 'none',
-        threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
-        shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
-      });
-
-      // Send private analytics log to staff channel
-      await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
-
-      if (result.error) {
-        return interaction.editReply({ 
-          content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+      try {
+        const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
+          applicationId: interaction.client.application?.id || 'default',
+          guildId: interaction.guildId || 'dm',
+          channelId: interaction.channelId || 'none',
+          threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
+          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
         });
+
+        // Send private analytics log to staff channel
+        await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
+
+        if (result.error) {
+          return interaction.editReply({ 
+            content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+          });
+        }
+
+        const aiEmbed = new EmbedBuilder()
+          .setAuthor({
+            name:    'ZENITSU AI',
+            iconURL: interaction.client.user.displayAvatarURL(),
+          })
+          .addFields(
+            { name: '💬 Your Question', value: prompt.slice(0, 1024) },
+            { name: '🤖 Answer',        value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` },
+          )
+          .setColor(0x00D4FF)
+          .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
+          .setTimestamp();
+
+        const actionRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+        );
+
+        await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+      } catch (err) {
+        console.error('Error in /ai command:', err);
+        await interaction.editReply({
+          content: `❌ AI query failed: \`${err.message || err}\`\nPlease try again later.`
+        }).catch(() => {});
       }
-
-      const aiEmbed = new EmbedBuilder()
-        .setAuthor({
-          name:    'ZENITSU AI',
-          iconURL: interaction.client.user.displayAvatarURL(),
-        })
-        .addFields(
-          { name: '💬 Your Question', value: prompt.slice(0, 1024) },
-          { name: '🤖 Answer',        value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` },
-        )
-        .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
-        .setTimestamp();
-
-      const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
-      );
-
-      await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
     }
 
     // /ai-lang
@@ -2563,36 +2570,43 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       let userLang = db.userLanguages[interaction.user.id] || 'english';
 
       const modelKey = db.aiDefaultModel || 'gemini';
-      const result = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
-        applicationId: interaction.client.application?.id || 'default',
-        guildId: interaction.guildId || 'dm',
-        channelId: interaction.channelId || 'none',
-        threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
-        shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
-      });
-
-      // Send analytics
-      await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
-
-      if (result.error) {
-        return interaction.editReply({ 
-          content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+      try {
+        const result = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
+          applicationId: interaction.client.application?.id || 'default',
+          guildId: interaction.guildId || 'dm',
+          channelId: interaction.channelId || 'none',
+          threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
+          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
         });
+
+        // Send analytics
+        await logAiAnalytics(interaction.user, prompt, result, interaction.guild);
+
+        if (result.error) {
+          return interaction.editReply({ 
+            content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+          });
+        }
+
+        const aiEmbed = new EmbedBuilder()
+          .setAuthor({ name: 'ZENITSU AI', iconURL: interaction.client.user.displayAvatarURL() })
+          .setDescription(result.response)
+          .setColor(0x00D4FF)
+          .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
+          .setTimestamp();
+
+        const actionRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`ai_channel_reset_${originalUserId}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`ai_channel_message_${originalUserId}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+        );
+
+        await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+      } catch (err) {
+        console.error('Error in ai_followup_modal:', err);
+        await interaction.editReply({
+          content: `❌ AI request failed: \`${err.message || err}\`\nPlease try again later.`
+        }).catch(() => {});
       }
-
-      const aiEmbed = new EmbedBuilder()
-        .setAuthor({ name: 'ZENITSU AI', iconURL: interaction.client.user.displayAvatarURL() })
-        .setDescription(result.response)
-        .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
-        .setTimestamp();
-
-      const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`ai_channel_reset_${originalUserId}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`ai_channel_message_${originalUserId}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
-      );
-
-      await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
     }
   }
 }
