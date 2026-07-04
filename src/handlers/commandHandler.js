@@ -1274,7 +1274,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const introEmbed = new EmbedBuilder()
         .setTitle('🤖 ZENITSU AI ACTIVE')
         .setDescription(
-          '**Type any question directly in this channel to get an instant response!**\n\n' +
+          '**Use the `/ai` command in this channel to get an instant response!**\n\n' +
           '🔹 **Memory Recall:** I remember the last 10 messages of our conversation.\n\n' +
           '🔹 **Reset Memory:** Use the `/ai-reset` command to clear your conversation history.\n\n' +
           '*Feel free to ask me anything about gaming, coding, the server, or general knowledge!*'
@@ -1291,7 +1291,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       await interaction.reply({
         embeds: [new EmbedBuilder()
           .setTitle('✅ AI Channel Set')
-          .setDescription(`${ch} is now the dedicated AI chat channel.\nMembers can type directly to chat with **ZENITSU AI**.`)
+          .setDescription(`${ch} is now the dedicated AI chat channel.\nMembers can use the \`/ai\` command to chat with **ZENITSU AI**.`)
           .setColor(0x2ECC71).setTimestamp()],
         ephemeral: true,
       });
