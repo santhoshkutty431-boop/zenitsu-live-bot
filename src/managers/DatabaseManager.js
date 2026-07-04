@@ -163,7 +163,29 @@ class DatabaseManager {
         value_json TEXT,
         PRIMARY KEY (guild_id, key)
       );
+      CREATE TABLE IF NOT EXISTS mod_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT,
+        actor_id TEXT,
+        target_id TEXT,
+        command TEXT,
+        params_json TEXT,
+        result TEXT,
+        timestamp INTEGER
+      );
     `);
+  }
+
+  recordAudit(guildId, actorId, targetId, command, params, result) {
+    try {
+      const stmt = this.sqlDb.prepare(`
+        INSERT INTO mod_audit (guild_id, actor_id, target_id, command, params_json, result, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(guildId || 'global', actorId, targetId || null, command, JSON.stringify(params || {}), result, Date.now());
+    } catch (err) {
+      this.logger.error(`Failed to record mod audit: ${err.message}`);
+    }
   }
 
   async onInit() {

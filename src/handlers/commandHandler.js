@@ -105,6 +105,31 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
+    // Record privileged moderation audit logs
+    const isPublic = ['help', 'request-song', 'queue', 'report-user', 'ai', 'ai-reset', 'ai-lang', 'draw', 'leaderboard', 'check-bypass'].includes(cmd);
+    const isMember = ['rank'].includes(cmd);
+    if (!isPublic && !isMember) {
+      const targetUser = interaction.options.getUser('user') || interaction.options.getUser('member') || interaction.options.getUser('target');
+      const targetId = targetUser ? targetUser.id : null;
+      
+      const params = {};
+      interaction.options.data.forEach(opt => {
+        params[opt.name] = opt.value;
+      });
+
+      const dbService = runtime.getService('DatabaseManager');
+      if (dbService) {
+        dbService.recordAudit(
+          interaction.guildId,
+          interaction.user.id,
+          targetId,
+          cmd,
+          params,
+          'SUCCESS'
+        );
+      }
+    }
+
     // Publish COMMAND_RUN event to EventBus
     runtime.eventBus.publish('COMMAND_RUN', { commandName: cmd });
 
