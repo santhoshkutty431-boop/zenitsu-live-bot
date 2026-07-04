@@ -52,11 +52,12 @@ class ModerationPlugin {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) throw new Error('User not found in this server.');
 
-    const caseData = await createCase(guild, {
+    const caseData = createCase(this.dbService.db, () => this.dbService.save(), {
+      guildId: guild.id,
       userId,
       userTag: member.user.tag,
-      executorId,
-      executorTag,
+      modId: executorId,
+      modTag: executorTag,
       type: 'WARN',
       reason
     });
@@ -69,11 +70,12 @@ class ModerationPlugin {
     if (!member.kickable) throw new Error('I cannot kick this member. Role hierarchy restriction.');
 
     await member.kick(reason);
-    const caseData = await createCase(guild, {
+    const caseData = createCase(this.dbService.db, () => this.dbService.save(), {
+      guildId: guild.id,
       userId,
       userTag: member.user.tag,
-      executorId,
-      executorTag,
+      modId: executorId,
+      modTag: executorTag,
       type: 'KICK',
       reason
     });
@@ -85,11 +87,12 @@ class ModerationPlugin {
     const tag = member ? member.user.tag : `User ID: ${userId}`;
 
     await guild.members.ban(userId, { reason });
-    const caseData = await createCase(guild, {
+    const caseData = createCase(this.dbService.db, () => this.dbService.save(), {
+      guildId: guild.id,
       userId,
       userTag: tag,
-      executorId,
-      executorTag,
+      modId: executorId,
+      modTag: executorTag,
       type: 'BAN',
       reason
     });

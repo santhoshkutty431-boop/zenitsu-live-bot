@@ -274,7 +274,6 @@ class KnowledgeEngine {
   async _embed(text) {
     if (process.env.OPENAI_API_KEY) {
       try {
-        const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
         const res = await fetch('https://api.openai.com/v1/embeddings', {
           method: 'POST',
           headers: {
