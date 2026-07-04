@@ -96,6 +96,42 @@ const client = new Client({
   ]
 });
 
+// Intercept client.on and client.once to automatically propagate guild context
+const { AsyncLocalStorage } = require('async_hooks');
+const asyncLocalStorage = global.asyncLocalStorage || new AsyncLocalStorage();
+
+const originalOn = client.on;
+client.on = function(event, listener) {
+  return originalOn.call(this, event, (...args) => {
+    let guildId = null;
+    const firstArg = args[0];
+    if (firstArg) {
+      if (firstArg.guild) guildId = firstArg.guild.id;
+      else if (firstArg.guildId) guildId = firstArg.guildId;
+      else if (firstArg.message) guildId = firstArg.message.guild?.id;
+    }
+    return asyncLocalStorage.run({ guildId }, () => {
+      return listener(...args);
+    });
+  });
+};
+
+const originalOnce = client.once;
+client.once = function(event, listener) {
+  return originalOnce.call(this, event, (...args) => {
+    let guildId = null;
+    const firstArg = args[0];
+    if (firstArg) {
+      if (firstArg.guild) guildId = firstArg.guild.id;
+      else if (firstArg.guildId) guildId = firstArg.guildId;
+      else if (firstArg.message) guildId = firstArg.message.guild?.id;
+    }
+    return asyncLocalStorage.run({ guildId }, () => {
+      return listener(...args);
+    });
+  });
+};
+
 // v4.0 CORE RUNTIME SETUP
 const RuntimeClass = require('./src/core/Runtime');
 const DatabaseManager = require('./src/managers/DatabaseManager');
@@ -108,6 +144,11 @@ const TaskScheduler = require('./src/managers/TaskScheduler');
 const HealthMonitor = require('./src/managers/HealthMonitor');
 const KnowledgeEngine = require('./src/managers/KnowledgeEngine');
 const CognitionEngine = require('./src/managers/CognitionEngine');
+const AnalyticsManager = require('./src/managers/AnalyticsManager');
+const WorkflowEngine = require('./src/managers/WorkflowEngine');
+const SetupWizard = require('./src/core/onboarding/SetupWizard');
+const OnboardingScanner = require('./src/core/onboarding/OnboardingScanner');
+const SyncListeners = require('./src/core/sync/SyncListeners');
 const PluginManager = require('./src/managers/PluginManager');
 
 const runtime = new RuntimeClass();
@@ -123,6 +164,11 @@ healthMonitor.setDiscordClient(client);
 runtime.registerService('HealthMonitor', healthMonitor);
 runtime.registerService('KnowledgeEngine', new KnowledgeEngine(runtime));
 runtime.registerService('CognitionEngine', new CognitionEngine(runtime));
+runtime.registerService('AnalyticsManager', new AnalyticsManager(runtime));
+runtime.registerService('WorkflowEngine', new WorkflowEngine(runtime));
+runtime.registerService('SetupWizard', new SetupWizard(runtime));
+runtime.registerService('OnboardingScanner', new OnboardingScanner(runtime));
+runtime.registerService('SyncListeners', new SyncListeners(runtime));
 runtime.registerService('PluginManager', new PluginManager(runtime));
 
 // Bootstrap the runtime
@@ -578,6 +624,12 @@ function staffCheck(member) {
 client.once('ready', async () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
 
+  // Register live synchronization event listeners
+  const syncListeners = runtime.getService('SyncListeners');
+  if (syncListeners) {
+    syncListeners.register(client);
+  }
+
   // Start auto-punishment expiry scheduler
   startAutoPunishScheduler(client, db, saveDb, logToChannel, ID);
   
@@ -613,6 +665,7 @@ client.once('ready', async () => {
 client.on('guildMemberAdd', async member => {
   console.log(`[JOIN] ${member.user.tag} joined`);
   loadDb(); // Sync with disk before security checks
+  runtime.eventBus.publish('MEMBER_JOIN', { member, guild: member.guild });
 
   // Security: anti-raid + account age check
   await secHandleJoin(member, db, saveDb, logToChannel, ID);
@@ -1290,6 +1343,9 @@ client.on('interactionCreate', async interaction => {
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
+
+    // Publish COMMAND_RUN event to EventBus
+    runtime.eventBus.publish('COMMAND_RUN', { commandName: cmd });
 
     // v4.0 Runtime command router delegation
     const commandRouter = runtime.getService('CommandRouter');
@@ -3507,6 +3563,12 @@ client.on('interactionCreate', async interaction => {
 // ─── START ─────────────────────────────────────────────────────────────────────
 client.on('guildCreate', async guild => {
   console.log(`📥 Joined a new server: ${guild.name} (ID: ${guild.id}) - Members: ${guild.memberCount}`);
+
+  // Run v5.2 Onboarding Scanner
+  const onboarding = runtime.getService('OnboardingScanner');
+  if (onboarding) {
+    onboarding.run(guild).catch(err => console.error('[guildCreate] Onboarding failed:', err));
+  }
 
   try {
     const owner = await guild.members.fetch(guild.ownerId).catch(() => null);

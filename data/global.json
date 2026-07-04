@@ -1,0 +1,11 @@
+{
+  "permissionSchemaVersion": 5.2,
+  "developerIds": [],
+  "serverWhitelist": [],
+  "featureFlags": {
+    "knowledgeEngine": true,
+    "liveSync": true,
+    "costControls": true
+  },
+  "songQueue": []
+}

@@ -457,6 +457,22 @@ const commands = [
         { name: '🟢 Lift Lockdown', value: 'off' }
       )),
 
+  new SlashCommandBuilder()
+    .setName('setup')
+    .setDescription("Configure Sentinel's knowledge channels and access settings.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('ask')
+    .setDescription('Ask Sentinel a question about this server.')
+    .addStringOption(opt =>
+      opt
+        .setName('question')
+        .setDescription('What would you like to know?')
+        .setRequired(true)
+        .setMaxLength(500)
+    ),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild)

@@ -7,5 +7,54 @@
       "registeredAt": "2026-06-30T17:06:41.693Z"
     }
   },
-  "protectmeActive": true
+  "protectmeActive": true,
+  "spamTimeoutMinutes": 1,
+  "xp": {
+    "1402209226482389135": {
+      "xp": 15,
+      "level": 0,
+      "lastMessage": 1782844093036
+    }
+  },
+  "roleWhitelist": [],
+  "deletedMessages": [],
+  "cases": [],
+  "caseCounter": 0,
+  "securityConfig": {
+    "antiRaidEnabled": true,
+    "joinRateLimit": 10,
+    "joinRateSeconds": 30,
+    "minAccountAgeDays": 7,
+    "quarantineEnabled": true,
+    "mentionSpamLimit": 6,
+    "messageFloodCount": 6,
+    "messageFloodWindow": 5000,
+    "repeatedMsgCount": 4,
+    "spamTimeoutMinutes": 5,
+    "blockInvites": true,
+    "blockScamLinks": true,
+    "blockExternalLinks": false,
+    "whitelistedDomains": [],
+    "antiNukeEnabled": true,
+    "nukeChannelThreshold": 3,
+    "nukeRoleThreshold": 3,
+    "nukeWebhookThreshold": 3,
+    "nukeBanThreshold": 5,
+    "nukeWindowSeconds": 60
+  },
+  "aiChannelId": null,
+  "aiDefaultModel": "gemini",
+  "serverWhitelist": [
+    "1460908819335876756"
+  ],
+  "ticketLanguages": {},
+  "userLanguages": {},
+  "guildWhitelists": {},
+  "permissionSchemaVersion": 4,
+  "warnings": {},
+  "commandRoleWhitelist": {
+    "admin": [],
+    "staff": [],
+    "member": []
+  }
 }
