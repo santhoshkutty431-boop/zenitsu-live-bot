@@ -34,7 +34,7 @@ const CACHE_MAX_SIZE = 500;
 function normalize(text) {
   return String(text || '')
     .toLowerCase()
-    .replace(/[​-‍﻿]/g, '') // zero-width chars
+    .replace(/[\u200b-\u200d\ufeff]/g, '') // zero-width chars
     .replace(/\s+/g, ' ')
     .trim();
 }
