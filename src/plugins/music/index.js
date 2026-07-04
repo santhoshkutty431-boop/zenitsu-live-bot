@@ -131,6 +131,15 @@ class MusicPlugin {
   async onLoad() {
     this.logger.info('Loading Music Plugin...');
 
+    try {
+      const ffmpegPath = require('ffmpeg-static');
+      if (ffmpegPath) {
+        process.env.FFMPEG_PATH = ffmpegPath;
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to set FFMPEG_PATH from music plugin: ${e.message}`);
+    }
+
     // Register Slash Commands
     this.router.registerCommand('play', (i) => this.handlePlay(i));
     this.router.registerCommand('nowplaying', (i) => this.handleNowPlaying(i));

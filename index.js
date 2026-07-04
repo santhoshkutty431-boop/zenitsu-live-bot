@@ -1,3 +1,12 @@
+try {
+  const ffmpegPath = require('ffmpeg-static');
+  if (ffmpegPath) {
+    process.env.FFMPEG_PATH = ffmpegPath;
+  }
+} catch (e) {
+  console.warn('[FFMPEG] Failed to load static ffmpeg binary:', e.message);
+}
+
 const { 
   Client, 
   GatewayIntentBits, 
