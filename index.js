@@ -1047,7 +1047,7 @@ client.on('messageCreate', async message => {
     // Send private analytics log to staff channel
     await logAiAnalytics(message.author, message.content, result, message.guild);
 
-    const { EmbedBuilder: EB } = require('discord.js');
+    const { EmbedBuilder: EB, ActionRowBuilder: ARB, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
 
     if (result.error) {
       // User-friendly error message that hides specific API details
@@ -1060,9 +1060,21 @@ client.on('messageCreate', async message => {
         .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
         .setDescription(result.response)
         .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • /ai-reset to clear memory' })
+        .setFooter({ text: 'ZENITSU AI • Click button below to reset memory' })
         .setTimestamp();
-      await message.reply({ embeds: [aiEmbed], allowedMentions: { repliedUser: false } }).catch(() => {});
+
+      const resetRow = new ARB().addComponents(
+        new BB()
+          .setCustomId('ai_channel_reset')
+          .setLabel('💬 Reset Memory')
+          .setStyle(BS.Danger)
+      );
+
+      await message.reply({
+        embeds: [aiEmbed],
+        components: [resetRow],
+        allowedMentions: { repliedUser: false }
+      }).catch(() => {});
     }
     return;
   }
