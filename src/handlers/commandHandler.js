@@ -10,8 +10,7 @@ const {
   CaseType, parseDuration, formatDuration
 } = require('../../modules/case-manager');
 const { DEFAULT_SECURITY_CONFIG } = require('../../modules/security');
-const { getLanguageSelectorEmbed, logToReports } = require('./eventHandler');
-const { logAiAnalytics } = require('../../modules/logger');
+const { getLanguageSelectorEmbed, logToReports, logAiAnalytics } = require('./eventHandler');
 const { generateAuditId, invalidatePermCache } = require('../../modules/permission-engine');
 
 // Capability label maps

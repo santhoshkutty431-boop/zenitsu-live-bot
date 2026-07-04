@@ -622,7 +622,10 @@ class DatabaseManager {
           if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
             const redirectUrl = res.headers.location;
             if (redirectUrl) {
-              const nextOptions = { ...currentOptions };
+              const nextOptions = {
+                ...currentOptions,
+                headers: currentOptions.headers ? { ...currentOptions.headers } : undefined
+              };
               if (nextOptions.headers && !redirectUrl.includes('huggingface.co')) {
                 delete nextOptions.headers['Authorization'];
               }
