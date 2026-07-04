@@ -258,6 +258,8 @@ const logToChannel = async (guild, channelNameOrId, embed) => {
   let channelId = null;
   const kind = resolveLogKind(channelNameOrId, ID);
 
+  const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
+
   // 1. Per-guild /setup-logs config
   if (kind) {
     try {
@@ -268,7 +270,7 @@ const logToChannel = async (guild, channelNameOrId, embed) => {
   }
 
   // 2. ID map / env var (main-server default)
-  if (!channelId && kind && ID[kind]) channelId = ID[kind];
+  if (!channelId && kind && ID[kind] && isMainServer) channelId = ID[kind];
 
   // 3. Raw channel ID passed by caller
   if (!channelId && typeof channelNameOrId === 'string' && /^\d+$/.test(channelNameOrId)) {
@@ -276,7 +278,6 @@ const logToChannel = async (guild, channelNameOrId, embed) => {
   }
 
   // 4. Name-based lookup on non-main servers (or as last resort)
-  const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
   if (!channelId && kind && LOG_KIND_TO_CHANNEL_NAME[kind]) {
     const targetName = LOG_KIND_TO_CHANNEL_NAME[kind];
     const cleanName = targetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
