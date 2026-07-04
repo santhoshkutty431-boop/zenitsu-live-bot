@@ -2100,7 +2100,7 @@ client.on('interactionCreate', async interaction => {
           '**Type any question directly in this channel to get an instant response!**\n\n' +
           '🔹 **Memory Recall:** I remember the last 10 messages of our conversation.\n\n' +
           '🔹 **Global Chat:** Use the `/ai` command in any other channel to chat.\n\n' +
-          '🔹 **Reset Memory:** Use the `/ai-reset` command to clear your conversation history.\n\n' +
+          '🔹 **Reset Memory:** Click the button below or use the `/ai-reset` command to clear your conversation history.\n\n' +
           '*Feel free to ask me anything about gaming, coding, the server, or general knowledge!*'
         )
         .setColor(0x00D4FF)
@@ -2108,7 +2108,18 @@ client.on('interactionCreate', async interaction => {
         .setFooter({ text: 'ZENITSU LIVE • Premium AI Assistant' })
         .setTimestamp();
 
-      await ch.send({ embeds: [introEmbed] }).catch(err => {
+      const introRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('ai_channel_reset')
+          .setLabel('💬 Reset Memory')
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId('ai_chat_dm')
+          .setLabel('🤖 Chat in DMs')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      await ch.send({ embeds: [introEmbed], components: [introRow] }).catch(err => {
         console.error(`Failed to post AI channel intro in ${ch.id}:`, err.message);
       });
 
@@ -2427,6 +2438,33 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x2ECC71);
 
       await interaction.editReply({ embeds: [updatedEmbed], components: [] });
+    }
+
+    // AI Channel Buttons
+    else if (customId === 'ai_channel_reset') {
+      await interaction.deferReply({ ephemeral: true });
+      const { clearHistory } = require('./modules/ai-handler');
+      clearHistory(interaction.user.id, {
+        applicationId: interaction.client.application?.id || 'default',
+        guildId: interaction.guildId || 'dm',
+        channelId: interaction.channelId || 'none'
+      });
+      await interaction.editReply({ content: '🧹 **Your conversation memory in this channel has been cleared!**' });
+    }
+
+    else if (customId === 'ai_chat_dm') {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const dmEmbed = new EmbedBuilder()
+          .setTitle('🤖 ZENITSU AI PRIVATE CHAT')
+          .setDescription('Hello! I am **ZENITSU AI**. Feel free to ask me any questions privately here!')
+          .setColor(0x00D4FF)
+          .setTimestamp();
+        await interaction.user.send({ embeds: [dmEmbed] });
+        await interaction.editReply({ content: '📬 **I have sent you a DM!** You can start a private chat with me there.' });
+      } catch (err) {
+        await interaction.editReply({ content: '❌ **Failed to send DM.** Please check if you have allowed direct messages from server members.' });
+      }
     }
 
     // Report button
