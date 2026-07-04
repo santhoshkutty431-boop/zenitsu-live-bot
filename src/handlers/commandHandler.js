@@ -2099,6 +2099,14 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       return;
     }
 
+    if (customId.startsWith('music_ctrl_')) {
+      const musicPlugin = runtime.getService('PluginManager').plugins.get('music');
+      if (musicPlugin && typeof musicPlugin.handleControllerButton === 'function') {
+        await musicPlugin.handleControllerButton(interaction);
+      }
+      return;
+    }
+
     if (customId.startsWith('approve_action_') || customId.startsWith('reject_action_')) {
       const parts = customId.split('_');
       const action = parts[0];

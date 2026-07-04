@@ -19,16 +19,36 @@ const commands = [
     .setDescription('Deploys the basic panel interface to the configured channel'),
 
   new SlashCommandBuilder()
-    .setName('request-song')
-    .setDescription('Request a waifu song')
+    .setName('play')
+    .setDescription('Plays a song or playlist from a name or URL')
     .addStringOption(option =>
       option.setName('song')
         .setDescription('Name or link of the song to request')
         .setRequired(true)),
 
   new SlashCommandBuilder()
+    .setName('nowplaying')
+    .setDescription('Shows the track currently playing'),
+
+  new SlashCommandBuilder()
+    .setName('play-now')
+    .setDescription('Immediately plays a track and interrupts the current one')
+    .addStringOption(option =>
+      option.setName('song')
+        .setDescription('Name or link of the song to request')
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('pause')
+    .setDescription('Pauses or resumes the current track'),
+
+  new SlashCommandBuilder()
     .setName('queue')
     .setDescription('View the current song requests queue'),
+
+  new SlashCommandBuilder()
+    .setName('setup-music')
+    .setDescription('Creates the setup channel for music controls and status'),
 
   new SlashCommandBuilder()
     .setName('protectme')

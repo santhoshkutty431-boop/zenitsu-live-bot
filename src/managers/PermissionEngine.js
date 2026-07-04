@@ -9,8 +9,12 @@ class PermissionEngine {
     this.COMMAND_REGISTRY = {
       // Public
       'help': { tier: 'PUBLIC', capability: null },
-      'request-song': { tier: 'PUBLIC', capability: null },
+      'play': { tier: 'PUBLIC', capability: null },
+      'nowplaying': { tier: 'PUBLIC', capability: null },
+      'play-now': { tier: 'PUBLIC', capability: null },
+      'pause': { tier: 'PUBLIC', capability: null },
       'queue': { tier: 'PUBLIC', capability: null },
+      'setup-music': { tier: 'ADMIN', capability: 'TICKET_CONFIG' },
       'report-user': { tier: 'PUBLIC', capability: null },
       'ai': { tier: 'PUBLIC', capability: null },
       'ai-reset': { tier: 'PUBLIC', capability: null },

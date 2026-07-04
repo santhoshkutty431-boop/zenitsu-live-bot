@@ -215,6 +215,19 @@ class DatabaseManager {
         votes_json TEXT NOT NULL,
         expires_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS music_players (
+        guild_id TEXT PRIMARY KEY,
+        current_song TEXT,
+        is_paused INTEGER DEFAULT 0,
+        loop_mode TEXT DEFAULT 'off',
+        volume INTEGER DEFAULT 100,
+        position_sec INTEGER DEFAULT 0,
+        duration_sec INTEGER DEFAULT 0,
+        queue_json TEXT NOT NULL,
+        setup_channel_id TEXT,
+        setup_message_id TEXT
+      );
     `);
   }
 
@@ -718,6 +731,69 @@ class DatabaseManager {
       votes: JSON.parse(row.votes_json),
       expiresAt: row.expires_at
     }));
+  }
+
+  getMusicPlayer(guildId) {
+    const stmt = this.sqlDb.prepare('SELECT * FROM music_players WHERE guild_id = ?');
+    const row = stmt.get(guildId);
+    if (!row) return null;
+    return {
+      guildId: row.guild_id,
+      currentSong: row.current_song,
+      isPaused: !!row.is_paused,
+      loopMode: row.loop_mode,
+      volume: row.volume,
+      positionSec: row.position_sec,
+      durationSec: row.duration_sec,
+      queue: JSON.parse(row.queue_json),
+      setupChannelId: row.setup_channel_id,
+      setupMessageId: row.setup_message_id
+    };
+  }
+
+  saveMusicPlayer(p) {
+    const stmt = this.sqlDb.prepare(`
+      INSERT OR REPLACE INTO music_players (
+        guild_id, current_song, is_paused, loop_mode, volume, 
+        position_sec, duration_sec, queue_json, setup_channel_id, setup_message_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      p.guildId,
+      p.currentSong || null,
+      p.isPaused ? 1 : 0,
+      p.loopMode || 'off',
+      p.volume !== undefined ? p.volume : 100,
+      p.positionSec || 0,
+      p.durationSec || 0,
+      JSON.stringify(p.queue || []),
+      p.setupChannelId || null,
+      p.setupMessageId || null
+    );
+    this.scheduleSync();
+  }
+
+  getAllMusicPlayers() {
+    const stmt = this.sqlDb.prepare('SELECT * FROM music_players');
+    const rows = stmt.all();
+    return rows.map(row => ({
+      guildId: row.guild_id,
+      currentSong: row.current_song,
+      isPaused: !!row.is_paused,
+      loopMode: row.loop_mode,
+      volume: row.volume,
+      positionSec: row.position_sec,
+      durationSec: row.duration_sec,
+      queue: JSON.parse(row.queue_json),
+      setupChannelId: row.setup_channel_id,
+      setupMessageId: row.setup_message_id
+    }));
+  }
+
+  deleteMusicPlayer(guildId) {
+    const stmt = this.sqlDb.prepare('DELETE FROM music_players WHERE guild_id = ?');
+    stmt.run(guildId);
+    this.scheduleSync();
   }
 }
 
