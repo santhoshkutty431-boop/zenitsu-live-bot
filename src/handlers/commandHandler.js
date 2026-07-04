@@ -33,10 +33,9 @@ const saveDb = () => {
   const guildId = store?.guildId;
   const dbMgr = runtimeInstance.getService('DatabaseManager');
   if (dbMgr) {
+    dbMgr.saveGlobal();
     if (guildId) {
       dbMgr.saveGuildDb(guildId);
-    } else {
-      dbMgr.saveGlobal();
     }
   }
 };
