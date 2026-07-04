@@ -1077,6 +1077,15 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
     // /ai
     else if (cmd === 'ai') {
+      const dbService = runtime.getService('DatabaseManager');
+      const allowed = dbService.checkAndRecordQuery(interaction.guildId, interaction.user.id);
+      if (!allowed) {
+        return interaction.reply({
+          content: "⏳ You've reached your hourly AI query limit. Try again later.",
+          ephemeral: true
+        });
+      }
+
       if (db.aiChannelId && interaction.channelId !== db.aiChannelId) {
         return interaction.reply({
           content: `❌ AI chat is restricted. Please use the dedicated AI channel: <#${db.aiChannelId}>`,
@@ -1326,6 +1335,14 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
     // /draw
     else if (cmd === 'draw') {
+      const dbService = runtime.getService('DatabaseManager');
+      const allowed = dbService.checkAndRecordQuery(interaction.guildId, interaction.user.id);
+      if (!allowed) {
+        return interaction.reply({
+          content: "⏳ You've reached your hourly AI query limit. Try again later.",
+          ephemeral: true
+        });
+      }
       await handleAiDraw(interaction);
     }
 

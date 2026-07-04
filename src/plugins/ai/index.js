@@ -28,6 +28,14 @@ class AIPlugin {
   }
 
   async handleAiQuery(interaction) {
+    const allowed = this.dbService.checkAndRecordQuery(interaction.guildId, interaction.user.id);
+    if (!allowed) {
+      return interaction.reply({
+        content: "⏳ You've reached your hourly AI query limit. Try again later.",
+        ephemeral: true
+      });
+    }
+
     const prompt = interaction.options.getString('prompt');
     await interaction.deferReply();
 
