@@ -247,6 +247,17 @@ runtime.bootstrap().then(() => {
   client.once('clientReady', async () => {
     log.info(`Bot logged in as ${client.user.tag}`);
 
+    // Seed semantic spam defaults (idempotent, safe to call every boot).
+    try {
+      const semanticSpam = require('./modules/semantic-spam');
+      await semanticSpam.seedDefaults({
+        dbService: runtime.getService('DatabaseManager'),
+        logger: log
+      });
+    } catch (err) {
+      log.warn('Semantic spam seed failed', { error: err.message });
+    }
+
     // Register live synchronization event listeners
     const syncListeners = runtime.getService('SyncListeners');
     if (syncListeners) {

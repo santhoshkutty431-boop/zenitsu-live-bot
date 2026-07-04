@@ -68,7 +68,8 @@ const COMMAND_REGISTRY = {
   'whitelist-server': { tier: 'BOT_DEVELOPER', capability: null },
   'lockdown': { tier: 'BOT_DEVELOPER', capability: null },
   'reload': { tier: 'BOT_DEVELOPER', capability: null },
-  'reindex': { tier: 'BOT_DEVELOPER', capability: null }
+  'reindex': { tier: 'BOT_DEVELOPER', capability: null },
+  'spam-signature': { tier: 'ADMIN', capability: 'SECURITY_CONFIG' }
 };
 
 function setDynamicOwnerId(id) {

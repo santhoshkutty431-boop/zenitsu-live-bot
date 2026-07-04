@@ -19,6 +19,7 @@ const {
   handleAiReactionTranslate
 } = require('../../modules/ai-features');
 const { handleAuditLogEntry, handleMessageSecurity } = require('../../modules/security');
+const semanticSpam = require('../../modules/semantic-spam');
 
 let runtimeInstance = null;
 // Module-level shared state set by registerEvents(), used by module-scope helpers below
@@ -650,6 +651,39 @@ client.on('messageCreate', async message => {
   if (db.protectmeActive && !staffCheck(message.member)) {
     const { violated } = await handleMessageSecurity(message, db, saveDb, logToChannel, ID);
     if (violated) return;
+
+    // ── Semantic anti-spam (embedding similarity vs. known scam patterns) ──
+    // Only runs when protectmeActive; skipped for staff. Best-effort — never blocks.
+    try {
+      const dbService = runtimeInstance?.getService('DatabaseManager');
+      if (dbService && typeof dbService.listSpamSignatures === 'function') {
+        const verdict = await semanticSpam.checkMessage(message, {
+          dbService, staffCheck, logger: runtimeInstance.logger
+        });
+        if (verdict?.hit) {
+          await message.delete().catch(() => {});
+          const timeoutMs = (db.spamTimeoutMinutes || 1) * 60_000;
+          await message.member.timeout(timeoutMs, `[Semantic Spam] Matched "${verdict.label}"`).catch(() => {});
+
+          const alert = new EmbedBuilder()
+            .setTitle('🛡️ Semantic Spam Blocked')
+            .setDescription(`Detected a variant of a known scam pattern in <#${message.channelId}>.`)
+            .addFields(
+              { name: 'User',      value: `${message.author} (\`${message.author.id}\`)`, inline: true },
+              { name: 'Pattern',   value: `\`${verdict.label}\``, inline: true },
+              { name: 'Similarity', value: `${verdict.score.toFixed(3)} (threshold ${verdict.threshold})`, inline: true },
+              { name: 'Action',    value: `Deleted + ${(db.spamTimeoutMinutes || 1)}min timeout`, inline: false },
+              { name: 'Content',   value: '```\n' + message.content.slice(0, 900).replace(/```/g, "'''") + '\n```' }
+            )
+            .setColor(0xE74C3C)
+            .setTimestamp();
+          await logToChannel(message.guild, ID.MOD_LOG || ID.SERVER_LOGS, alert);
+          return;
+        }
+      }
+    } catch (err) {
+      runtimeInstance?.logger?.warn(`Semantic spam check failed: ${err.message}`);
+    }
   }
 
 

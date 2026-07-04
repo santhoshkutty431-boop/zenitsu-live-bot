@@ -193,7 +193,59 @@ class DatabaseManager {
       );
       CREATE INDEX IF NOT EXISTS idx_ai_usage_guild_ts ON ai_usage (guild_id, timestamp);
       CREATE INDEX IF NOT EXISTS idx_ai_usage_user_ts  ON ai_usage (user_id,  timestamp);
+
+      CREATE TABLE IF NOT EXISTS spam_signatures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,      -- '_global' for shipped defaults, otherwise guild ID
+        label TEXT NOT NULL,          -- human-readable ("nitro scam", "steam gift", etc.)
+        sample_text TEXT NOT NULL,    -- the original phrase used to generate the vector
+        vector_json TEXT NOT NULL,    -- JSON array of embedding floats
+        threshold REAL DEFAULT 0.82,  -- cosine-similarity threshold (0.72 default in VectorStore, spam signatures need higher confidence)
+        added_by TEXT,
+        timestamp INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_spam_sig_guild ON spam_signatures (guild_id);
     `);
+  }
+
+  // ─── Spam signature helpers ──────────────────────────────────────────────
+
+  addSpamSignature({ guildId, label, sampleText, vector, threshold, addedBy }) {
+    const stmt = this.sqlDb.prepare(`
+      INSERT INTO spam_signatures (guild_id, label, sample_text, vector_json, threshold, added_by, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const info = stmt.run(
+      guildId || '_global',
+      label,
+      sampleText,
+      JSON.stringify(vector),
+      Number(threshold) || 0.82,
+      addedBy || 'system',
+      Date.now()
+    );
+    return info.lastInsertRowid;
+  }
+
+  removeSpamSignature(guildId, id) {
+    const stmt = this.sqlDb.prepare('DELETE FROM spam_signatures WHERE id = ? AND guild_id = ?');
+    return stmt.run(id, guildId).changes;
+  }
+
+  listSpamSignatures(guildId) {
+    // Return this guild's signatures plus the global defaults.
+    return this.sqlDb.prepare(`
+      SELECT id, guild_id, label, sample_text, vector_json, threshold, added_by, timestamp
+      FROM spam_signatures
+      WHERE guild_id = ? OR guild_id = '_global'
+      ORDER BY guild_id = '_global' ASC, id ASC
+    `).all(guildId);
+  }
+
+  countSpamSignatures(guildId) {
+    return this.sqlDb.prepare(`
+      SELECT COUNT(*) AS n FROM spam_signatures WHERE guild_id = ? OR guild_id = '_global'
+    `).get(guildId).n;
   }
 
   recordAiUsage({ guildId, userId, provider, model, tokensIn, tokensOut, latencyMs, success }) {
@@ -571,7 +623,11 @@ class DatabaseManager {
         this.sqlDb.pragma('journal_mode = WAL');
         this.sqlDb.pragma('synchronous = NORMAL');
         this.sqlDb.pragma('foreign_keys = ON');
-        
+
+        // The DB pulled from HF might not have newer tables (mod_audit,
+        // ai_usage, spam_signatures). Re-run the idempotent schema init.
+        this._initTables();
+
         this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
         this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
         this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');

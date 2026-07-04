@@ -1549,6 +1549,71 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
     }
 
+    else if (cmd === 'spam-signature') {
+      const semanticSpam = require('../../modules/semantic-spam');
+      const sub = interaction.options.getSubcommand();
+      const dbMgr = runtime.getService('DatabaseManager');
+      const guildId = interaction.guildId;
+
+      if (sub === 'add') {
+        const label = interaction.options.getString('label');
+        const sample = interaction.options.getString('sample');
+        const threshold = interaction.options.getNumber('threshold') ?? 0.82;
+
+        await interaction.deferReply({ ephemeral: true });
+        const result = await semanticSpam.addSignature({
+          dbService: dbMgr,
+          guildId, label, sampleText: sample, threshold,
+          addedBy: interaction.user.id
+        });
+
+        if (!result.ok) {
+          return interaction.editReply({ content: `❌ ${result.error}` });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle('🛡️ Spam Signature Added')
+          .addFields(
+            { name: 'ID',        value: `\`#${result.id}\``, inline: true },
+            { name: 'Label',     value: `\`${label}\``, inline: true },
+            { name: 'Threshold', value: `\`${threshold}\``, inline: true },
+            { name: 'Sample',    value: '```\n' + sample.slice(0, 900) + '\n```' }
+          )
+          .setColor(0x2ECC71)
+          .setFooter({ text: 'Any similar message will now be auto-deleted + timeout.' })
+          .setTimestamp();
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+      if (sub === 'remove') {
+        const id = interaction.options.getInteger('id');
+        const removed = dbMgr.removeSpamSignature(guildId, id);
+        if (!removed) {
+          return interaction.reply({ content: `❌ No signature #${id} found for this server. (Global defaults can't be removed per-guild.)`, ephemeral: true });
+        }
+        return interaction.reply({ content: `✅ Removed signature #${id}.`, ephemeral: true });
+      }
+
+      if (sub === 'list') {
+        const sigs = dbMgr.listSpamSignatures(guildId);
+        if (!sigs.length) {
+          return interaction.reply({ content: '📝 No spam signatures active for this server.', ephemeral: true });
+        }
+        const lines = sigs.map(s => {
+          const scope = s.guild_id === '_global' ? '🌐 Global' : '🏠 Guild';
+          const sample = s.sample_text.length > 60 ? s.sample_text.slice(0, 60) + '…' : s.sample_text;
+          return `\`#${s.id}\` ${scope} — **${s.label}** (thr ${s.threshold})\n  └ *${sample}*`;
+        }).join('\n\n');
+        const embed = new EmbedBuilder()
+          .setTitle(`🛡️ Active Spam Signatures (${sigs.length})`)
+          .setDescription(lines.slice(0, 4000))
+          .setColor(0x00D4FF)
+          .setFooter({ text: 'Global signatures are shipped with the bot and cannot be removed per-guild.' })
+          .setTimestamp();
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+    }
+
     else if (cmd === 'reindex') {
       // Dev-only: rebuild the knowledge base for this guild by re-indexing
       // every approved channel's message history. Useful after config changes.

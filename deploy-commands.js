@@ -486,6 +486,23 @@ const commands = [
     .setName('reindex')
     .setDescription('[Dev] Rebuild the knowledge index for this server (RAG memory)'),
 
+  new SlashCommandBuilder()
+    .setName('spam-signature')
+    .setDescription('Manage semantic spam signatures for this server')
+    .addSubcommand(sc => sc
+      .setName('add')
+      .setDescription('Teach the bot a new scam pattern')
+      .addStringOption(o => o.setName('label').setDescription('Short label (e.g. "nitro scam")').setRequired(true))
+      .addStringOption(o => o.setName('sample').setDescription('A real example of the scam text').setRequired(true))
+      .addNumberOption(o => o.setName('threshold').setDescription('Similarity threshold 0.7–0.95 (default 0.82)').setRequired(false).setMinValue(0.7).setMaxValue(0.95)))
+    .addSubcommand(sc => sc
+      .setName('remove')
+      .setDescription('Delete a signature by ID')
+      .addIntegerOption(o => o.setName('id').setDescription('Signature ID from /spam-signature list').setRequired(true)))
+    .addSubcommand(sc => sc
+      .setName('list')
+      .setDescription('View all active spam signatures for this server')),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild));
@@ -530,6 +547,7 @@ const PERMISSION_GATES = {
   'protectme':        PermissionFlagsBits.ModerateMembers,
   'reload':           PermissionFlagsBits.Administrator,
   'reindex':          PermissionFlagsBits.Administrator,
+  'spam-signature':   PermissionFlagsBits.ManageGuild,
 };
 
 for (const command of commands) {
