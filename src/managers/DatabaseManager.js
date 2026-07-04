@@ -140,38 +140,47 @@ class DatabaseManager {
 
   uploadToHf(content) {
     return new Promise((resolve, reject) => {
-      const boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';
-      const filename = 'database.json';
-      const payload = 
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
-        `Content-Type: application/json\r\n\r\n` +
-        `${content}\r\n` +
-        `--${boundary}--\r\n`;
+      const commitPayload = {
+        actions: [
+          {
+            action: 'add',
+            path: 'database.json',
+            content: Buffer.from(content).toString('base64')
+          }
+        ],
+        summary: 'Update database.json state',
+        parentCommit: undefined
+      };
+
+      const payloadString = JSON.stringify(commitPayload);
 
       const options = {
         hostname: 'huggingface.co',
         port: 443,
-        path: `/api/spaces/${this.config.hfRepo}/upload/main/${filename}`,
+        path: `/api/spaces/${this.config.hfRepo}/commit/main`,
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.hfToken}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': Buffer.byteLength(payload)
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payloadString)
         }
       };
 
       const req = https.request(options, (res) => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          this.logger.debug('HF Database upload completed.');
-          resolve();
-        } else {
-          reject(new Error(`Hugging Face upload responded with code ${res.statusCode}`));
-        }
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200 || res.statusCode === 201) {
+            this.logger.debug('HF Database upload completed successfully.');
+            resolve();
+          } else {
+            reject(new Error(`Hugging Face upload responded with code ${res.statusCode} - ${body}`));
+          }
+        });
       });
 
       req.on('error', reject);
-      req.write(payload);
+      req.write(payloadString);
       req.end();
     });
   }
