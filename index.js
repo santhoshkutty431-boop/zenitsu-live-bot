@@ -1999,7 +1999,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ ...payload, ephemeral: true });
       }
 
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
 
       const prompt = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
@@ -2030,15 +2030,10 @@ client.on('interactionCreate', async interaction => {
           { name: '🤖 Answer',        value: result.response.slice(0, 1024) },
         )
         .setColor(0x00D4FF)
-        .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
+        .setFooter({ text: 'ZENITSU AI • Memory Active' })
         .setTimestamp();
 
-      const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
-      );
-
-      await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+      await interaction.editReply({ embeds: [aiEmbed] });
     }
 
     // /ai-lang
@@ -2115,7 +2110,7 @@ client.on('interactionCreate', async interaction => {
         .setDescription(
           '**Type any question directly in this channel to get an instant response!**\n\n' +
           '🔹 **Memory Recall:** I remember the last 10 messages of our conversation.\n\n' +
-          '🔹 **Reset Memory:** Click the button below or use the `/ai-reset` command to clear your conversation history.\n\n' +
+          '🔹 **Reset Memory:** Use the `/ai-reset` command to clear your conversation history.\n\n' +
           '*Feel free to ask me anything about gaming, coding, the server, or general knowledge!*'
         )
         .setColor(0x00D4FF)
@@ -2123,14 +2118,7 @@ client.on('interactionCreate', async interaction => {
         .setFooter({ text: 'ZENITSU LIVE • Premium AI Assistant' })
         .setTimestamp();
 
-      const introRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('ai_channel_reset')
-          .setLabel('💬 Reset Memory')
-          .setStyle(ButtonStyle.Danger)
-      );
-
-      await ch.send({ embeds: [introEmbed], components: [introRow] }).catch(err => {
+      await ch.send({ embeds: [introEmbed] }).catch(err => {
         console.error(`Failed to post AI channel intro in ${ch.id}:`, err.message);
       });
 
