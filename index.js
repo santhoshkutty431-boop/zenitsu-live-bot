@@ -220,6 +220,7 @@ const logToChannel = async (guild, channelName, embed) => {
 
 // Bootstrap the runtime
 runtime.bootstrap().then(() => {
+  client.runtime = runtime;
   console.log('✅ ZENITSU LIVE v4.0 Runtime Bootstrapped.');
 
   // Bind events and command handlers
