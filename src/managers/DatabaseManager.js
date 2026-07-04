@@ -451,41 +451,65 @@ class DatabaseManager {
       headers: { 'Authorization': `Bearer ${this.config.hfToken}` }
     };
 
-    return new Promise((resolve, reject) => {
-      https.get(url, options, (res) => {
-        if (res.statusCode !== 200) {
-          this.logger.warn('No SQLite database found on HF Space, starting fresh.');
-          return resolve();
-        }
-
-        const dataChunks = [];
-        res.on('data', chunk => dataChunks.push(chunk));
-        res.on('end', () => {
-          try {
-            const buffer = Buffer.concat(dataChunks);
-            // Close active connection before overwriting
-            this.sqlDb.close();
-            
-            fs.writeFileSync(DB_PATH, buffer);
-            this.logger.info('SQLite binary database pulled successfully from HF.');
-            
-            // Re-open SQLite connection
-            this.sqlDb = new Database(DB_PATH);
-            this.sqlDb.pragma('journal_mode = WAL');
-            
-            this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
-            this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
-            this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
-            this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
-            this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
-            
-            resolve();
-          } catch (e) {
-            reject(e);
+    const download = (targetUrl) => {
+      return new Promise((resolve, reject) => {
+        https.get(targetUrl, options, (res) => {
+          if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+            const redirectUrl = res.headers.location;
+            if (redirectUrl) {
+              const nextOptions = { ...options };
+              if (!redirectUrl.includes('huggingface.co')) {
+                delete nextOptions.headers['Authorization'];
+              }
+              return https.get(redirectUrl, nextOptions, (redirRes) => {
+                if (redirRes.statusCode !== 200) {
+                  return resolve(null);
+                }
+                const dataChunks = [];
+                redirRes.on('data', chunk => dataChunks.push(chunk));
+                redirRes.on('end', () => resolve(Buffer.concat(dataChunks)));
+              }).on('error', reject);
+            }
           }
-        });
-      }).on('error', reject);
-    });
+
+          if (res.statusCode !== 200) {
+            this.logger.warn(`No SQLite database found on HF Space (Status ${res.statusCode}), starting fresh.`);
+            return resolve(null);
+          }
+
+          const dataChunks = [];
+          res.on('data', chunk => dataChunks.push(chunk));
+          res.on('end', () => {
+            resolve(Buffer.concat(dataChunks));
+          });
+        }).on('error', reject);
+      });
+    };
+
+    try {
+      const buffer = await download(url);
+      if (buffer && buffer.length > 100) {
+        // Close active connection before overwriting
+        this.sqlDb.close();
+        
+        fs.writeFileSync(DB_PATH, buffer);
+        this.logger.info('SQLite binary database pulled successfully from HF.');
+        
+        // Re-open SQLite connection and prepare statements
+        this.sqlDb = new Database(DB_PATH);
+        this.sqlDb.pragma('journal_mode = WAL');
+        
+        this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
+        this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
+        this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
+        this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
+        this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
+      } else {
+        this.logger.warn('SQLite database pull returned empty/pointer buffer. Starting fresh.');
+      }
+    } catch (err) {
+      this.logger.error(`Cloud database sync failed: ${err.message}`);
+    }
   }
 }
 
