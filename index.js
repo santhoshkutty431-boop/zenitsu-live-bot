@@ -1058,7 +1058,7 @@ client.on('messageCreate', async message => {
     } else {
       const aiEmbed = new EB()
         .setAuthor({ name: 'ZENITSU AI', iconURL: message.client.user.displayAvatarURL() })
-        .setDescription(result.response)
+        .setDescription(`<@${message.author.id}>\n\n${result.response}`)
         .setColor(0x00D4FF)
         .setFooter({ text: 'ZENITSU AI • Dedicated AI Channel' })
         .setTimestamp();
@@ -2027,7 +2027,7 @@ client.on('interactionCreate', async interaction => {
         })
         .addFields(
           { name: '💬 Your Question', value: prompt.slice(0, 1024) },
-          { name: '🤖 Answer',        value: result.response.slice(0, 1024) },
+          { name: '🤖 Answer',        value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` },
         )
         .setColor(0x00D4FF)
         .setFooter({ text: 'ZENITSU AI • Memory Active' })
