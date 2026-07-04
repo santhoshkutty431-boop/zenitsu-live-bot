@@ -159,8 +159,10 @@ class MusicPlugin {
     this.router.registerCommand('setup-music', (i) => this.handleSetup(i));
 
     // Register Message Request Listener for Setup Channel
+    // NOTE: keep a ref so onUnload can remove it — otherwise /reload music
+    // stacks a new listener on top of the old one, firing everything twice.
     if (this.runtime.client) {
-      this.runtime.client.on('messageCreate', async (message) => {
+      this._messageCreateHandler = async (message) => {
         try {
           if (message.author.bot || !message.guild) return;
 
@@ -211,7 +213,8 @@ class MusicPlugin {
         } catch (err) {
           this.logger.error(`Error in music message request handler: ${err.message}`);
         }
-      });
+      };
+      this.runtime.client.on('messageCreate', this._messageCreateHandler);
     }
 
     // Start 5-second tick clock for progress bars only
@@ -222,6 +225,13 @@ class MusicPlugin {
     this.logger.info('Unloading Music Plugin...');
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
+    // Detach the messageCreate listener so subsequent /reload music doesn't
+    // stack duplicate handlers (each would fire on every message).
+    if (this._messageCreateHandler && this.runtime.client) {
+      this.runtime.client.off('messageCreate', this._messageCreateHandler);
+      this._messageCreateHandler = null;
     }
     // Clean up active connections
     for (const [guildId, player] of this.activePlayers.entries()) {
@@ -400,17 +410,31 @@ class MusicPlugin {
         this.handleTrackEnd(guildId);
       });
 
-      connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      // Discord voice servers hiccup routinely — 5s was too aggressive and
+      // was almost certainly the cause of the "bot disconnects mid-song" bug.
+      // Give it 20s to recover, and only if the underlying WebSocket has
+      // actually closed (code 4014) treat it as a real disconnect.
+      connection.on(VoiceConnectionStatus.Disconnected, async (_oldState, newState) => {
         try {
+          if (newState.reason === 4014) {
+            // Kicked from voice / channel deleted — no point retrying
+            this.cleanupPlayer(guildId);
+            return;
+          }
           await Promise.race([
-            entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-            entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+            entersState(connection, VoiceConnectionStatus.Signalling, 20_000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 20_000),
           ]);
-          // Reconnected!
-        } catch (error) {
-          // Connection disconnected permanently
+          // Reconnected — connection continues playing
+        } catch {
+          this.logger.warn(`Voice connection permanently lost in guild ${guildId} — cleaning up.`);
           this.cleanupPlayer(guildId);
         }
+      });
+
+      // Explicit destroyed handler so orphaned entries don't accumulate.
+      connection.on(VoiceConnectionStatus.Destroyed, () => {
+        this.activePlayers.delete(guildId);
       });
     }
 
@@ -700,9 +724,18 @@ class MusicPlugin {
 
     await interaction.deferReply({ ephemeral: true });
 
-    // Determine category
-    const config = this.dbService.getGuildKey(interaction.guildId, 'categoryTickets') || {};
-    let parentCategory = interaction.guild.channels.cache.get(config.categoryTickets);
+    // Determine category. Prefer the guild's saved "categoryTickets" value
+    // if present; otherwise fall back to finding a SUPPORT-named category.
+    let parentCategory = null;
+    try {
+      const gdb = this.dbService.getGuildDb(interaction.guildId);
+      const savedCategoryId = gdb?.categoryTickets;
+      if (savedCategoryId) {
+        parentCategory = interaction.guild.channels.cache.get(savedCategoryId) || null;
+      }
+    } catch (e) {
+      this.logger.warn(`Could not read categoryTickets for guild ${interaction.guildId}: ${e.message}`);
+    }
     if (!parentCategory) {
       parentCategory = interaction.guild.channels.cache.find(c => c.name.includes('SUPPORT') && c.type === ChannelType.GuildCategory);
     }

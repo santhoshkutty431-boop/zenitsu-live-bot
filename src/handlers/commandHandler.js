@@ -13,12 +13,15 @@ const { DEFAULT_SECURITY_CONFIG } = require('../../modules/security');
 const { getLanguageSelectorEmbed, logToReports, logAiAnalytics } = require('./eventHandler');
 const { generateAuditId, invalidatePermCache } = require('../../modules/permission-engine');
 
-// Capability label maps
+// Capability label maps — must cover every capability advertised in
+// /whitelist add so users don't see raw enum names in embeds.
 const CAPABILITY_LABELS = {
-  'AI_CONFIG': '🤖 Manage AI Settings',
-  'SECURITY_CONFIG': '🛡️ Manage Security Settings',
-  'ROLE_ASSIGN': '🔐 Manage Roles & Whitelists',
-  'MODERATION_EXECUTE': '👮 Execute Moderation Actions'
+  'AI_CONFIG':          '🤖 Manage AI Settings',
+  'SECURITY_CONFIG':    '🛡️ Manage Security Settings',
+  'ROLE_ASSIGN':        '🔐 Manage Roles & Whitelists',
+  'MODERATION_EXECUTE': '👮 Execute Moderation Actions',
+  'EMBED_MANAGE':       '📢 Manage Embeds & Announcements',
+  'TICKET_CONFIG':      '🎫 Configure Ticket System'
 };
 
 function calcLevel(xp) { return Math.floor(Math.sqrt(xp / 100)); }
