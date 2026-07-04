@@ -51,7 +51,7 @@ const DEFAULT_GUILD = {
     embeddingBudgetPerHour: 500,
   },
   rateLimits: {
-    queriesPerUserPerHour: 10,
+    queriesPerUserPerHour: 60,
     userQueryLog: {},
   },
 
