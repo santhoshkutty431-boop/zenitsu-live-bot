@@ -4,3 +4,7 @@ __pycache__/
 *.tmp
 *.bak
 audit-data.json
+data/
+logs/
+*.log
+database.json

@@ -1,17 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const Database = require('better-sqlite3');
 const { AsyncLocalStorage } = require('async_hooks');
 
 const DATA_DIR = path.resolve(__dirname, '../../data');
-const GLOBAL_PATH = path.join(DATA_DIR, 'global.json');
-const GUILDS_DIR = path.join(DATA_DIR, 'guilds');
+const DB_PATH = path.join(DATA_DIR, 'zenitsu.db');
 
 const asyncLocalStorage = new AsyncLocalStorage();
 global.asyncLocalStorage = asyncLocalStorage; // Expose globally for index.js wrapper
 
 const DEFAULT_GLOBAL = {
-  permissionSchemaVersion: 5.2,
+  permissionSchemaVersion: 5.3,
   developerIds: [],
   serverWhitelist: [],
   featureFlags: {
@@ -19,9 +19,7 @@ const DEFAULT_GLOBAL = {
     liveSync: true,
     costControls: true,
   },
-  // Legacy keys at global level
   songQueue: [],
-  serverWhitelist: [],
 };
 
 const DEFAULT_GUILD = {
@@ -78,38 +76,32 @@ const DEFAULT_GUILD = {
   permissionSchemaVersion: 4
 };
 
-function ensureDirs() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(GUILDS_DIR)) fs.mkdirSync(GUILDS_DIR, { recursive: true });
-}
-
-function readJson(filePath) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function writeJson(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-}
-
-function guildPath(guildId) {
-  return path.join(GUILDS_DIR, `${guildId}.json`);
-}
-
 class DatabaseManager {
   constructor(runtime) {
     this.runtime = runtime;
     this.logger = runtime ? runtime.logger : console;
     this.config = runtime ? runtime.config.getSystemConfig() : {};
     
-    ensureDirs();
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+
+    this.sqlDb = new Database(DB_PATH);
+    this.sqlDb.pragma('journal_mode = WAL'); // Enable WAL mode for high concurrency
+    
+    this._initTables();
+
+    // Prepared statements
+    this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
+    this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
+    
+    this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
+    this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
+    this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
+
     this._globalCache = null;
     this._guildCache = new Map();
 
-    this.dirtyFiles = new Set();
     this.syncTimer = null;
     this.writeQueue = Promise.resolve();
 
@@ -159,30 +151,69 @@ class DatabaseManager {
     });
   }
 
+  _initTables() {
+    this.sqlDb.exec(`
+      CREATE TABLE IF NOT EXISTS global_config (
+        key TEXT PRIMARY KEY,
+        value_json TEXT
+      );
+      CREATE TABLE IF NOT EXISTS guild_config (
+        guild_id TEXT,
+        key TEXT,
+        value_json TEXT,
+        PRIMARY KEY (guild_id, key)
+      );
+    `);
+  }
+
   async onInit() {
-    this.logger.info('Initializing Database Manager (v5.2 isolated storage)...');
-    await this.loadAll();
+    this.logger.info('Initializing SQLite Database Manager...');
+    if (this.config.hfToken) {
+      this.logger.info('HF_TOKEN detected. Pulling cloud database file...');
+      try {
+        await this.syncFromHf();
+      } catch (err) {
+        this.logger.error(`Cloud database sync failed: ${err.message}`);
+      }
+    }
   }
 
   async onShutdown() {
-    this.logger.info('Shutting down Database Manager, doing final cloud save...');
+    this.logger.info('Shutting down SQLite Database Manager, doing final cloud save...');
     await this.flushToHf();
+    this.sqlDb.close();
   }
 
   // ─── Global ─────────────────────────────────────────────────────────────────
 
   getGlobal() {
     if (!this._globalCache) {
-      const stored = readJson(GLOBAL_PATH);
-      this._globalCache = Object.assign({}, DEFAULT_GLOBAL, stored ?? {});
-      if (!stored) this.saveGlobal();
+      this._globalCache = {};
+      const keys = Object.keys(DEFAULT_GLOBAL);
+      for (const key of keys) {
+        const row = this.getGlobalStmt.get(key);
+        if (row) {
+          try {
+            this._globalCache[key] = JSON.parse(row.value_json);
+          } catch {
+            this._globalCache[key] = DEFAULT_GLOBAL[key];
+          }
+        } else {
+          this._globalCache[key] = DEFAULT_GLOBAL[key];
+        }
+      }
     }
     return this._globalCache;
   }
 
   saveGlobal() {
-    writeJson(GLOBAL_PATH, this._globalCache);
-    this.dirtyFiles.add('global.json');
+    if (!this._globalCache) return;
+    const transaction = this.sqlDb.transaction(() => {
+      for (const [key, val] of Object.entries(this._globalCache)) {
+        this.setGlobalStmt.run(key, JSON.stringify(val));
+      }
+    });
+    transaction();
     this.scheduleSync();
   }
 
@@ -195,16 +226,17 @@ class DatabaseManager {
       return this._guildCache.get(guildId);
     }
 
-    const filePath = guildPath(guildId);
-    const stored = readJson(filePath);
-
-    const db = this._deepMerge(
-      JSON.parse(JSON.stringify(DEFAULT_GUILD)),
-      stored ?? {}
-    );
-
-    if (!stored) {
-      writeJson(filePath, db);
+    const db = JSON.parse(JSON.stringify(DEFAULT_GUILD));
+    const rows = this.getGuildStmt.all(guildId);
+    
+    if (rows && rows.length > 0) {
+      for (const row of rows) {
+        try {
+          db[row.key] = JSON.parse(row.value_json);
+        } catch {
+          // Keep default
+        }
+      }
     }
 
     this._guildCache.set(guildId, db);
@@ -213,29 +245,31 @@ class DatabaseManager {
 
   saveGuildDb(guildId) {
     if (!this._guildCache.has(guildId)) return;
-    const filePath = guildPath(guildId);
-    writeJson(filePath, this._guildCache.get(guildId));
-    this.dirtyFiles.add(`guilds/${guildId}.json`);
+    const cache = this._guildCache.get(guildId);
+
+    const transaction = this.sqlDb.transaction(() => {
+      for (const [key, val] of Object.entries(cache)) {
+        this.setGuildKeyStmt.run(guildId, key, JSON.stringify(val));
+      }
+    });
+    transaction();
     this.scheduleSync();
   }
 
   deleteGuildDb(guildId) {
-    const filePath = guildPath(guildId);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    this.deleteGuildStmt.run(guildId);
     this._guildCache.delete(guildId);
-    this.dirtyFiles.add(`guilds/${guildId}.json`);
     this.scheduleSync();
   }
 
   guildExists(guildId) {
-    return fs.existsSync(guildPath(guildId));
+    const row = this.sqlDb.prepare('SELECT 1 FROM guild_config WHERE guild_id = ? LIMIT 1').get(guildId);
+    return Boolean(row);
   }
 
   listGuildIds() {
-    if (!fs.existsSync(GUILDS_DIR)) return [];
-    return fs.readdirSync(GUILDS_DIR)
-      .filter(f => f.endsWith('.json'))
-      .map(f => path.basename(f, '.json'));
+    const rows = this.sqlDb.prepare('SELECT DISTINCT guild_id FROM guild_config').all();
+    return rows.map(r => r.guild_id);
   }
 
   updateGuild(guildId, mutatorFn) {
@@ -312,20 +346,7 @@ class DatabaseManager {
     return this.db[key];
   }
 
-  // ─── Cloud Sync ─────────────────────────────────────────────────────────────
-
-  async loadAll() {
-    this.getGlobal(); // Initialize global cache
-
-    if (this.config.hfToken) {
-      this.logger.info('HF_TOKEN detected. Downloading cloud assets...');
-      try {
-        await this.syncFromHf();
-      } catch (err) {
-        this.logger.error(`Cloud database sync failed: ${err.message}`);
-      }
-    }
-  }
+  // ─── Cloud Sync (Binary Replication of zenitsu.db) ──────────────────────────
 
   scheduleSync() {
     if (!this.config.hfToken) return;
@@ -333,41 +354,30 @@ class DatabaseManager {
     this.syncTimer = setTimeout(async () => {
       this.syncTimer = null;
       await this.flushToHf();
-    }, 15000); // Auto sync every 15s
+    }, 15000); // Debounce uploads every 15 seconds
   }
 
   async flushToHf() {
-    if (!this.config.hfToken || !this.dirtyFiles.size) return;
+    if (!this.config.hfToken) return;
 
     this.writeQueue = this.writeQueue.then(async () => {
-      const filesToSync = Array.from(this.dirtyFiles);
-      this.dirtyFiles.clear();
-
-      const actions = [];
-      for (const relPath of filesToSync) {
-        const absPath = path.join(DATA_DIR, relPath);
-        if (fs.existsSync(absPath)) {
-          const content = fs.readFileSync(absPath);
-          actions.push({
-            action: 'add',
-            path: `data/${relPath}`,
-            content: content.toString('base64')
-          });
-        } else {
-          actions.push({
-            action: 'delete',
-            path: `data/${relPath}`
-          });
-        }
-      }
-
       try {
-        await this.commitToHf(actions);
-        this.logger.debug(`HF Cloud sync completed for: ${filesToSync.join(', ')}`);
+        if (!fs.existsSync(DB_PATH)) return;
+
+        // Perform safe checkpoints to commit WAL to binary first
+        this.sqlDb.pragma('wal_checkpoint(TRUNCATE)');
+
+        const content = fs.readFileSync(DB_PATH);
+        const action = {
+          action: 'add',
+          path: 'data/zenitsu.db',
+          content: content.toString('base64')
+        };
+
+        await this.commitToHf([action]);
+        this.logger.debug('SQLite Database synced to Hugging Face Cloud.');
       } catch (err) {
-        this.logger.error(`HF sync failed: ${err.message}`);
-        // Re-add to retry
-        filesToSync.forEach(f => this.dirtyFiles.add(f));
+        this.logger.error(`SQLite HF sync failed: ${err.message}`);
       }
     });
     return this.writeQueue;
@@ -377,7 +387,7 @@ class DatabaseManager {
     return new Promise((resolve, reject) => {
       const commitPayload = {
         actions,
-        summary: 'Update isolated database files',
+        summary: 'Sync SQLite binary database',
         parentCommit: undefined
       };
 
@@ -414,74 +424,46 @@ class DatabaseManager {
   }
 
   async syncFromHf() {
-    // 1. Get file list under data/
-    const listUrl = `https://huggingface.co/api/spaces/${this.config.hfRepo}/tree/main/data?recursive=true`;
+    const url = `https://huggingface.co/api/spaces/${this.config.hfRepo}/raw/main/data/zenitsu.db`;
     const options = {
       headers: { 'Authorization': `Bearer ${this.config.hfToken}` }
     };
 
-    const files = await new Promise((resolve, reject) => {
-      https.get(listUrl, options, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
+    return new Promise((resolve, reject) => {
+      https.get(url, options, (res) => {
+        if (res.statusCode !== 200) {
+          this.logger.warn('No SQLite database found on HF Space, starting fresh.');
+          return resolve();
+        }
+
+        const dataChunks = [];
+        res.on('data', chunk => dataChunks.push(chunk));
         res.on('end', () => {
           try {
-            if (res.statusCode !== 200) return resolve([]);
-            const list = JSON.parse(data);
-            resolve(list.filter(item => item.type === 'file').map(item => item.path));
-          } catch {
-            resolve([]);
+            const buffer = Buffer.concat(dataChunks);
+            // Close active connection before overwriting
+            this.sqlDb.close();
+            
+            fs.writeFileSync(DB_PATH, buffer);
+            this.logger.info('SQLite binary database pulled successfully from HF.');
+            
+            // Re-open SQLite connection
+            this.sqlDb = new Database(DB_PATH);
+            this.sqlDb.pragma('journal_mode = WAL');
+            
+            this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
+            this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
+            this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
+            this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
+            this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
+            
+            resolve();
+          } catch (e) {
+            reject(e);
           }
         });
-      }).on('error', () => resolve([]));
-    });
-
-    // 2. Download each file
-    for (const hfPath of files) {
-      if (!hfPath.startsWith('data/')) continue;
-      const relPath = hfPath.substring(5); // strip data/
-      const localPath = path.join(DATA_DIR, relPath);
-
-      try {
-        const fileContent = await this.downloadRawFile(hfPath);
-        if (fileContent) {
-          ensureDirs();
-          const dir = path.dirname(localPath);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(localPath, fileContent, 'utf8');
-        }
-      } catch (err) {
-        this.logger.error(`Failed to download cloud file ${hfPath}: ${err.message}`);
-      }
-    }
-  }
-
-  downloadRawFile(hfPath) {
-    return new Promise((resolve, reject) => {
-      const url = `https://huggingface.co/api/spaces/${this.config.hfRepo}/raw/main/${hfPath}`;
-      const options = {
-        headers: { 'Authorization': `Bearer ${this.config.hfToken}` }
-      };
-
-      https.get(url, options, (res) => {
-        if (res.statusCode !== 200) return resolve(null);
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data));
       }).on('error', reject);
     });
-  }
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  _deepMerge(target, source) {
-    for (const key of Object.keys(source)) {
-      if (source[key] instanceof Object && key in target) {
-        Object.assign(source[key], this._deepMerge(target[key], source[key]));
-      }
-    }
-    Object.assign(target || {}, source);
-    return target;
   }
 }
 

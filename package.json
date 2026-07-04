@@ -9,9 +9,10 @@
     "deploy": "node deploy-commands.js"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "cookie-parser": "^1.4.6",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "cookie-parser": "^1.4.6"
+    "express": "^4.19.2"
   }
 }
