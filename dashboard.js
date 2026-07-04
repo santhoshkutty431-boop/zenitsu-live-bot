@@ -26,12 +26,56 @@ function startDashboardServer(client, db, saveDb) {
   app.use(express.json());
   app.use(cookieParser(COOKIE_SECRET));
 
-  // Middleware to check authentication
+  // Middleware to check authentication and guild permissions
   function checkAuth(req, res, next) {
-    if (req.signedCookies.authenticated === 'true') {
-      next();
+    if (!dashboardEnabled) {
+      return res.status(200).send('Zenitsu Live Bot is running.');
+    }
+
+    if (process.env.CLIENT_SECRET) {
+      const user = req.signedCookies.authenticated_user;
+      if (!user) {
+        return res.redirect('/login');
+      }
+
+      // Check developer status
+      const PermissionEngine = client.runtime.getService('PermissionEngine');
+      const isDeveloper = PermissionEngine ? PermissionEngine.isDeveloper(user.id) : false;
+      if (isDeveloper) {
+        return next();
+      }
+
+      // Check guild access if guildId parameter is present
+      const guildId = req.params.guildId || req.body.guildId;
+      if (guildId) {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) {
+          return res.status(404).send('<h1>Server not found.</h1><a href="/">Back to Home</a>');
+        }
+
+        const userGuild = user.guilds.find(ug => ug.id === guildId);
+        if (!userGuild) {
+          return res.status(403).send('<h1>Access Denied: You are not in this server.</h1><a href="/">Back to Home</a>');
+        }
+
+        const isOwner = userGuild.owner;
+        const hasManageGuild = (BigInt(userGuild.permissions) & 0x20n) === 0x20n;
+        const hasAdmin = (BigInt(userGuild.permissions) & 0x8n) === 0x8n;
+        
+        if (isOwner || hasManageGuild || hasAdmin) {
+          return next();
+        } else {
+          return res.status(403).send('<h1>Access Denied: You must have Manage Server or Administrator permissions to manage this server.</h1><a href="/">Back to Home</a>');
+        }
+      }
+      return next();
     } else {
-      res.redirect('/login');
+      // Fallback passcode authentication
+      if (req.signedCookies.authenticated === 'true') {
+        next();
+      } else {
+        res.redirect('/login');
+      }
     }
   }
 
@@ -54,7 +98,15 @@ function startDashboardServer(client, db, saveDb) {
   // Login page
   app.get('/login', (req, res) => {
     if (!dashboardEnabled) {
-      return res.status(503).send('Dashboard disabled: DASHBOARD_PASSCODE is not configured.');
+      return res.status(503).send('Dashboard disabled.');
+    }
+    if (process.env.CLIENT_SECRET) {
+      if (req.signedCookies.authenticated_user) {
+        return res.redirect('/');
+      }
+      const redirectUri = process.env.REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/callback`;
+      const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=identify%20guilds`;
+      return res.redirect(oauthUrl);
     }
     if (req.signedCookies.authenticated === 'true') {
       return res.redirect('/');
@@ -183,18 +235,106 @@ function startDashboardServer(client, db, saveDb) {
   // Logout
   app.get('/logout', (req, res) => {
     res.clearCookie('authenticated');
+    res.clearCookie('authenticated_user');
     res.redirect('/login');
+  });
+
+  // Discord OAuth2 Callback Route
+  app.get('/api/auth/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+      return res.redirect('/login?error=1');
+    }
+
+    const redirectUri = process.env.REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/callback`;
+
+    try {
+      // Exchange code for token
+      const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: client.user.id,
+          client_secret: process.env.CLIENT_SECRET,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri
+        })
+      });
+      const tokens = await tokenRes.json();
+      if (!tokens.access_token) {
+        throw new Error('Failed to retrieve access token.');
+      }
+
+      // Fetch user profile
+      const userRes = await fetch('https://discord.com/api/users/@me', {
+        headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+      });
+      const user = await userRes.json();
+
+      // Fetch user guilds
+      const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
+        headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+      });
+      const guilds = await guildsRes.json();
+
+      if (!Array.isArray(guilds)) {
+        throw new Error('Guilds response is not an array.');
+      }
+
+      // Store in signed cookie
+      res.cookie('authenticated_user', {
+        id: user.id,
+        username: `${user.username}#${user.discriminator || '0'}`,
+        guilds: guilds.map(g => ({
+          id: g.id,
+          owner: g.owner,
+          permissions: g.permissions
+        }))
+      }, {
+        signed: true,
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: isProduction,
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+
+      res.redirect('/');
+    } catch (err) {
+      console.error('[OAuth2 Login Error]:', err.message);
+      res.redirect('/login?error=1');
+    }
   });
 
   // Main Dashboard
   app.get('/', checkAuth, (req, res) => {
-    const guilds = client.guilds.cache.map(g => ({
+    let guilds = client.guilds.cache.map(g => ({
       id: g.id,
       name: g.name,
       memberCount: g.memberCount,
       icon: g.iconURL() || 'https://cdn.discordapp.com/embed/avatars/0.png',
       ownerId: g.ownerId
     }));
+
+    if (process.env.CLIENT_SECRET) {
+      const user = req.signedCookies.authenticated_user;
+      if (user) {
+        const PermissionEngine = client.runtime.getService('PermissionEngine');
+        const isDeveloper = PermissionEngine ? PermissionEngine.isDeveloper(user.id) : false;
+        
+        if (!isDeveloper) {
+          guilds = guilds.filter(g => {
+            const userGuild = user.guilds.find(ug => ug.id === g.id);
+            if (!userGuild) return false;
+            
+            const isOwner = userGuild.owner;
+            const hasManageGuild = (BigInt(userGuild.permissions) & 0x20n) === 0x20n;
+            const hasAdmin = (BigInt(userGuild.permissions) & 0x8n) === 0x8n;
+            return isOwner || hasManageGuild || hasAdmin;
+          });
+        }
+      }
+    }
 
     const totalMembers = guilds.reduce((acc, g) => acc + g.memberCount, 0);
     const uptime = Math.floor(client.uptime / 1000); // seconds
