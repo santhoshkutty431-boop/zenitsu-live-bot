@@ -28,20 +28,27 @@ C:\Users\Admin\.gemini\antigravity\scratch\ZenitsuLiveBot
 Upload these files to your GitHub repo (drag & drop in browser):
 ```
 ✅ index.js
+✅ dashboard.js
 ✅ config.js
 ✅ deploy-commands.js
 ✅ package.json
 ✅ package-lock.json
 ✅ Dockerfile
 ✅ .dockerignore
-✅ database.json
+✅ modules/
+✅ src/
+✅ commands/
+✅ dashboard/
 ```
 
 ❌ DO NOT upload:
 ```
 .env                ← contains your secret token
 node_modules/       ← too large
-audit-data.json     ← not needed
+data/               ← runtime SQLite database (auto-generated)
+logs/               ← runtime log files
+audit-data.json     ← legacy, not used anymore
+database.json       ← legacy, replaced by SQLite in data/zenitsu.db
 ```
 
 ---

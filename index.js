@@ -150,17 +150,10 @@ runtime.registerService('OnboardingScanner', new OnboardingScanner(runtime));
 runtime.registerService('SyncListeners', new SyncListeners(runtime));
 runtime.registerService('PluginManager', new PluginManager(runtime));
 
-// Setup Database Proxy
-const db = new Proxy({}, {
-  get: (target, prop) => runtime.getService('DatabaseManager').db[prop],
-  set: (target, prop, value) => {
-    runtime.getService('DatabaseManager').db[prop] = value;
-    return true;
-  },
-  has: (target, prop) => prop in runtime.getService('DatabaseManager').db,
-  ownKeys: (target) => Reflect.ownKeys(runtime.getService('DatabaseManager').db),
-  getOwnPropertyDescriptor: (target, prop) => Reflect.getOwnPropertyDescriptor(runtime.getService('DatabaseManager').db, prop)
-});
+// Direct reference to the DatabaseManager's proxied db object.
+// (The DatabaseManager itself already provides guild/global auto-routing via
+// its own Proxy — no need for a second layer of indirection.)
+const db = runtime.getService('DatabaseManager').db;
 
 // Structured logger (Pino) — shared across index.js
 const log = runtime.logger;
