@@ -410,10 +410,13 @@ runtime.bootstrap().then(() => {
   const isKoyeb = !!(process.env.KOYEB || process.env.KOYEB_APP_NAME || process.env.KOYEB_SERVICE_NAME);
   const isRender = !!process.env.RENDER;
   const isPrimary = process.env.IS_PRIMARY_INSTANCE === 'true';
-  const shouldSkipLogin = process.env.SPACE_ID || isKoyeb || (isRender && !isPrimary);
+  const renderServiceId = process.env.RENDER_SERVICE_ID;
+  const isCorrectRenderService = !isRender || (renderServiceId === 'srv-d920leegvqtc73935vgg');
+  
+  const shouldSkipLogin = process.env.SPACE_ID || isKoyeb || (isRender && !isPrimary) || !isCorrectRenderService;
 
   if (shouldSkipLogin) {
-    log.info('🤖 Skipping Discord Bot login to prevent duplicate instances (Running on non-primary instance, Koyeb, or HF Space).');
+    log.info('🤖 Skipping Discord Bot login to prevent duplicate instances (Running on non-primary/duplicate instance, Koyeb, or HF Space).');
   } else {
     client.login(config.token).catch(err => {
       log.error('Discord client login failed', { error: err.message });
