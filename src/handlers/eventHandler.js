@@ -865,6 +865,13 @@ client.on('guildCreate', async guild => {
                    '• Use `/whoami` to inspect your active permissions tier.' 
           },
           { 
+            name: '🛠️ Core Setup Commands', 
+            value: '• Use `/setup-panel` to deploy your interactive support ticket panel.\n' +
+                   '• Use `/setup-music` to create a voice channel and interactive music controls.\n' +
+                   '• Use `/setup-logs` to configure where deleted message, voice, moderation, and server logs are sent.\n' +
+                   '• Use `/security status` to view active guards, and `/security toggle-antiraid` or `/security toggle-antinuke` to toggle protections.' 
+          },
+          { 
             name: '🔐 Enterprise Permissions & Whitelisting', 
             value: 'The bot uses a secure 5-tier permission hierarchy. Normal administrators cannot configure the bot unless explicitly whitelisted.\n' +
                    '• Run `/whitelist add user:@User` to grant a trusted administrator specific capabilities (e.g. `AI_CONFIG`, `SECURITY_CONFIG`).\n' +
