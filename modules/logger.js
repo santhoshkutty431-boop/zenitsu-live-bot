@@ -67,6 +67,7 @@ async function sendLog(guild, channelId, embed, db) {
       ch = await guild.channels.fetch(resolvedChannelId).catch(() => null);
     }
     if (!ch) {
+      await guild.channels.fetch().catch(() => {});
       const title = embed.data?.title || '';
       let targetName = 'server-logs';
       if (title.includes('Message Deleted') || title.includes('Message Edited')) {
