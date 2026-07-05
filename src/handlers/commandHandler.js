@@ -12,6 +12,9 @@ const {
 const { DEFAULT_SECURITY_CONFIG } = require('../../modules/security');
 const { getLanguageSelectorEmbed, logToReports, logAiAnalytics } = require('./eventHandler');
 const { generateAuditId, invalidatePermCache } = require('../../modules/permission-engine');
+const devAi = require('../../modules/dev-ai');
+// Short-lived store for DEV-AI plans awaiting owner confirmation (destructive).
+const pendingDevAiPlans = new Map(); // id -> { plan, prompt, actorId, ts }
 
 // Capability label maps — must cover every capability advertised in
 // /whitelist add so users don't see raw enum names in embeds.
@@ -21,7 +24,8 @@ const CAPABILITY_LABELS = {
   'ROLE_ASSIGN':        '🔐 Manage Roles & Whitelists',
   'MODERATION_EXECUTE': '👮 Execute Moderation Actions',
   'EMBED_MANAGE':       '📢 Manage Embeds & Announcements',
-  'TICKET_CONFIG':      '🎫 Configure Ticket System'
+  'TICKET_CONFIG':      '🎫 Configure Ticket System',
+  'AI_EXECUTE':         '🧠 DEV-AI — Do Anything via Prompt'
 };
 
 const TIER_DESCRIPTIONS = {
@@ -1469,6 +1473,59 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
     }
 
+    // /dev-ai — natural-language server agent (owner + AI_EXECUTE whitelist)
+    else if (cmd === 'dev-ai') {
+      await interaction.deferReply({ ephemeral: true });
+      const promptText = interaction.options.getString('prompt');
+
+      // 1. Ask the LLM for a structured plan
+      const { plan, error } = await devAi.planActions(runtime, interaction.user.id, promptText);
+      if (error) {
+        return interaction.editReply({ content: `❌ ${error}` }).catch(() => {});
+      }
+      if (!plan.actions.length) {
+        return interaction.editReply({
+          content: `🤔 I couldn't map that to an action.\n> ${plan.summary || 'No actionable request found.'}`
+        }).catch(() => {});
+      }
+
+      const execCtx = { db, saveDb, actorId: interaction.user.id, actorTag: interaction.user.tag };
+
+      // 2. Destructive plans need explicit confirmation
+      if (devAi.planIsDestructive(plan)) {
+        const id = generateAuditId();
+        pendingDevAiPlans.set(id, { plan, prompt: promptText, actorId: interaction.user.id, ts: Date.now() });
+        // Auto-expire after 2 minutes
+        setTimeout(() => pendingDevAiPlans.delete(id), 120000);
+
+        const embed = new EmbedBuilder()
+          .setTitle('🔒 DEV-AI — Confirm Destructive Actions')
+          .setDescription(`**Request:** ${promptText}\n\n**Plan:**\n${devAi.summarizePlan(plan)}\n\n⚠️ This includes destructive actions. Confirm to run.`)
+          .setColor(0xF39C12)
+          .setFooter({ text: `Plan ${id}` })
+          .setTimestamp();
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`devai_confirm_${id}`).setLabel('✅ Confirm & Run').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`devai_reject_${id}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+        );
+        return interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
+      }
+
+      // 3. Safe plan — execute immediately
+      const results = [];
+      for (const action of plan.actions) {
+        try { results.push('✅ ' + await devAi.executeAction(interaction.guild, action, execCtx)); }
+        catch (e) { results.push(`❌ ${action.tool}: ${e.message}`); }
+      }
+      const embed = new EmbedBuilder()
+        .setTitle('🧠 DEV-AI — Done')
+        .setDescription(`**Request:** ${promptText}\n${plan.summary ? `> ${plan.summary}\n` : ''}\n${results.join('\n')}`)
+        .setColor(0x2ECC71)
+        .setTimestamp();
+      await interaction.editReply({ embeds: [embed] }).catch(() => {});
+      await logToChannel(interaction.guild, ID.MOD_LOG, embed).catch(() => {});
+    }
+
     else if (cmd === 'owner-help') {
       const pages = [
         new EmbedBuilder()
@@ -2136,6 +2193,40 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       return;
     }
 
+    // DEV-AI destructive-plan confirmation
+    if (customId.startsWith('devai_confirm_') || customId.startsWith('devai_reject_')) {
+      const id = customId.replace('devai_confirm_', '').replace('devai_reject_', '');
+      const entry = pendingDevAiPlans.get(id);
+      if (!entry) {
+        return interaction.update({ content: '⌛ This plan expired or was already handled.', embeds: [], components: [] }).catch(() => {});
+      }
+      // Only the person who requested it can confirm
+      if (interaction.user.id !== entry.actorId) {
+        return interaction.reply({ content: '❌ Only the requester can confirm this plan.', ephemeral: true }).catch(() => {});
+      }
+      pendingDevAiPlans.delete(id);
+
+      if (customId.startsWith('devai_reject_')) {
+        return interaction.update({ content: '❌ Cancelled. No actions were taken.', embeds: [], components: [] }).catch(() => {});
+      }
+
+      await interaction.update({ content: '⏳ Running…', embeds: [], components: [] }).catch(() => {});
+      const execCtx = { db, saveDb, actorId: interaction.user.id, actorTag: interaction.user.tag };
+      const results = [];
+      for (const action of entry.plan.actions) {
+        try { results.push('✅ ' + await devAi.executeAction(interaction.guild, action, execCtx)); }
+        catch (e) { results.push(`❌ ${action.tool}: ${e.message}`); }
+      }
+      const embed = new EmbedBuilder()
+        .setTitle('🧠 DEV-AI — Executed')
+        .setDescription(`**Request:** ${entry.prompt}\n\n${results.join('\n')}`)
+        .setColor(0x2ECC71)
+        .setTimestamp();
+      await interaction.editReply({ content: '', embeds: [embed], components: [] }).catch(() => {});
+      await logToChannel(interaction.guild, ID.MOD_LOG, embed).catch(() => {});
+      return;
+    }
+
     if (customId.startsWith('approve_action_') || customId.startsWith('reject_action_')) {
       const parts = customId.split('_');
       const action = parts[0];
@@ -2742,7 +2833,8 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
     { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE' },
     { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
     { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
-    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' }
+    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
+    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' }
   ];
 
   const selectOptions = systemCapabilities.map(c => ({
@@ -2860,7 +2952,8 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE' },
     { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
     { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
-    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' }
+    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
+    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' }
   ];
 
   const capOptions = systemCapabilities.map(c => ({

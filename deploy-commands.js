@@ -476,6 +476,14 @@ const commands = [
     .setDescription('[Dev] Rebuild the knowledge index for this server (RAG memory)'),
 
   new SlashCommandBuilder()
+    .setName('dev-ai')
+    .setDescription('[Owner/Whitelisted] Do anything in the server with a plain-English prompt')
+    .addStringOption(o => o
+      .setName('prompt')
+      .setDescription('e.g. "make #media photos only and slowmode 10s"')
+      .setRequired(true)),
+
+  new SlashCommandBuilder()
     .setName('spam-signature')
     .setDescription('Manage semantic spam signatures for this server')
     .addSubcommand(sc => sc
@@ -565,6 +573,7 @@ const PERMISSION_GATES = {
   'protectme':        PermissionFlagsBits.ModerateMembers,
   'reload':           PermissionFlagsBits.Administrator,
   'reindex':          PermissionFlagsBits.Administrator,
+  'dev-ai':           PermissionFlagsBits.Administrator,
   'spam-signature':   PermissionFlagsBits.ManageGuild,
   'setup-logs':       PermissionFlagsBits.ManageGuild,
   'system-health':     PermissionFlagsBits.Administrator,

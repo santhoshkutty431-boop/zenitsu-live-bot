@@ -69,7 +69,10 @@ const COMMAND_REGISTRY = {
   'lockdown': { tier: 'BOT_DEVELOPER', capability: null },
   'reload': { tier: 'BOT_DEVELOPER', capability: null },
   'reindex': { tier: 'BOT_DEVELOPER', capability: null },
-  'spam-signature': { tier: 'ADMIN', capability: 'SECURITY_CONFIG' }
+  'spam-signature': { tier: 'ADMIN', capability: 'SECURITY_CONFIG' },
+  // Owner bypasses; otherwise ONLY users the owner whitelisted with the
+  // AI_EXECUTE capability. Discord admins without that capability are denied.
+  'dev-ai': { tier: 'ADMIN', capability: 'AI_EXECUTE' }
 };
 
 function setDynamicOwnerId(id) {
