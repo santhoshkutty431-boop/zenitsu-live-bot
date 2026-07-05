@@ -741,6 +741,7 @@ Writer:            ${writerStatus}
       await this.writeQueue;
       
       this.writeQueue = (async () => {
+        const snapshotPath = path.join(DATA_DIR, `.push-snapshot-${Date.now()}.db`);
         try {
           if (!fs.existsSync(DB_PATH)) return;
 
@@ -750,10 +751,22 @@ Writer:            ${writerStatus}
           // Automatic Backup
           this._createLocalBackup();
 
-          // Perform safe checkpoints to commit WAL to binary first
-          this.sqlDb.pragma('wal_checkpoint(TRUNCATE)');
+          // CRITICAL: produce the file to push via VACUUM INTO rather than
+          // checkpoint + readFileSync(DB_PATH).
+          //
+          // On Render's container filesystem, wal_checkpoint(TRUNCATE) does
+          // NOT reliably flush the -wal file into the main zenitsu.db, so the
+          // main file stayed frozen (64KB, version 100) and every push shipped
+          // a stale database — silently reverting whitelists/settings on the
+          // next restart. VACUUM INTO reads the LIVE database state (including
+          // all WAL-pending writes) straight through the SQLite engine and
+          // writes a complete, consistent, self-contained snapshot, so the
+          // pushed file always reflects reality regardless of checkpoint/FS
+          // quirks.
+          fs.rmSync(snapshotPath, { force: true });
+          this.sqlDb.exec(`VACUUM INTO '${snapshotPath.replace(/'/g, "''")}'`);
 
-          const content = fs.readFileSync(DB_PATH);
+          const content = fs.readFileSync(snapshotPath);
           const action = {
             action: 'add',
             path: 'data/zenitsu.db',
@@ -762,9 +775,11 @@ Writer:            ${writerStatus}
 
           await this.commitToHf([action]);
           this.lastSuccessfulSync = new Date().toISOString();
-          this.logger.debug('SQLite Database synced to Hugging Face Cloud.');
+          this.logger.info(`SQLite DB synced to Hugging Face Cloud (${content.length} bytes).`);
         } catch (err) {
           this.logger.error(`SQLite HF sync failed: ${err.message}`);
+        } finally {
+          fs.rmSync(snapshotPath, { force: true });
         }
       })();
       await this.writeQueue;
