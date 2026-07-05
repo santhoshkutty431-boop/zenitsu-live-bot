@@ -24,6 +24,26 @@ const CAPABILITY_LABELS = {
   'TICKET_CONFIG':      '🎫 Configure Ticket System'
 };
 
+const TIER_DESCRIPTIONS = {
+  ADMIN: '• **Execute Moderation:** `/warn`, `/kick`, `/mute`, `/timeout`, `/ban`, `/tempban`, `/unban`, `/purge`, `/lock`, `/unlock`, `/slowmode`\n' +
+         '• **Configure Bot Settings:** `/setup-panel`, `/embed`, `/security`, `/ai-channel`, `/ai-model`, `/setup-logs`, `/setup-music`\n' +
+         '• **Manage Roles & Whitelists:** `/whitelist-role` (Admin/Developer only)',
+  STAFF: '• **Execute Moderation:** `/warn`, `/kick`, `/mute`, `/timeout`, `/unwarn`, `/unmute`, `/untimeout`, `/note`, `/cases`, `/case`\n' +
+         '• **Control Channels:** `/purge`, `/lock`, `/unlock`, `/slowmode`, `/nick`\n' +
+         '• **Utility Commands:** `/say`, `/protectme`',
+  MEMBER: '• **Commands:** `/rank` and all public commands (like `/ai`, `/play`, `/report-user`, `/leaderboard`, `/whoami`)'
+};
+
+const CAPABILITY_DESCRIPTIONS = {
+  'AI_CONFIG': '🤖 **Manage AI Settings** (Allows `/ai-channel`, `/ai-model`)',
+  'SECURITY_CONFIG': '🛡️ **Manage Security Settings** (Allows `/security`, `/setup-logs`)',
+  'ROLE_ASSIGN': '🔐 **Manage Roles & Whitelists** (Allows `/role`, `/whitelist-role`)',
+  'MODERATION_EXECUTE': '👮 **Execute Moderation Actions** (Allows `/warn`, `/kick`, `/mute`, `/timeout`, `/ban`, `/tempban`, `/unban`, `/purge`, `/lock`, `/unlock`, `/slowmode`)',
+  'EMBED_MANAGE': '📢 **Manage Embeds & Announcements** (Allows `/say`, `/embed`, `/ai-embed`, `/clear-channel`)',
+  'TICKET_CONFIG': '🎫 **Configure Ticket System** (Allows `/setup-panel`, `/setup-music`)'
+};
+
+
 function calcLevel(xp) { return Math.floor(Math.sqrt(xp / 100)); }
 function xpForLevel(lvl) { return lvl * lvl * 100; }
 
@@ -1608,6 +1628,22 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           db.roleWhitelist.push(targetUser.id);
         }
         saveDb();
+
+        // Notify the user via DM
+        try {
+          const dmEmbed = new EmbedBuilder()
+            .setTitle('🔐 You Have Been Whitelisted')
+            .setDescription(`You have been personally whitelisted in **${interaction.guild.name}**!`)
+            .addFields(
+              { name: '👤 User', value: `${targetUser.tag}`, inline: true },
+              { name: '📋 Default Permissions', value: 'None yet. Ask an Administrator or the Server Owner to configure your custom capabilities.' }
+            )
+            .setColor(0x2ECC71)
+            .setTimestamp();
+          await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
+        } catch (err) {
+          console.error('Failed to DM whitelisted user:', err);
+        }
       }
 
       const { embeds, components } = getWhitelistedUserPanel(interaction, db, targetUser.id);
@@ -1652,12 +1688,14 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         try {
           const members = await interaction.guild.members.fetch();
           const roleMembers = members.filter(m => m.roles.cache.has(targetRole.id));
+          const tierDesc = TIER_DESCRIPTIONS[defaultTier.toUpperCase()] || 'No permissions defined.';
           const dmEmbed = new EmbedBuilder()
             .setTitle('🔐 You Have Been Whitelisted')
             .setDescription(`You have been granted command permissions in **${interaction.guild.name}** because you hold the **${targetRole.name}** role!`)
             .addFields(
               { name: '🛡️ Role', value: `${targetRole.name}`, inline: true },
-              { name: '🔑 Command Tier', value: `\`${defaultTier.toUpperCase()}\``, inline: true }
+              { name: '🔑 Command Tier', value: `\`${defaultTier.toUpperCase()}\``, inline: true },
+              { name: '📋 What You Can Do', value: tierDesc }
             )
             .setColor(0x2ECC71)
             .setTimestamp();
@@ -1707,6 +1745,28 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       saveDb();
       invalidatePermCache(guildId, targetUserId);
+
+      // Notify the user via DM
+      try {
+        const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
+        if (targetUser) {
+          const capsDesc = selectedCaps.length 
+            ? selectedCaps.map(c => CAPABILITY_DESCRIPTIONS[c] || `• ${c}`).join('\n') 
+            : 'No capabilities assigned.';
+
+          const dmEmbed = new EmbedBuilder()
+            .setTitle('🔐 Whitelist Capabilities Updated')
+            .setDescription(`Your personal whitelist capabilities in **${interaction.guild.name}** have been updated!`)
+            .addFields(
+              { name: '📋 Your New Capabilities', value: capsDesc }
+            )
+            .setColor(0xE67E22)
+            .setTimestamp();
+          await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('Failed to DM user on capability update:', err);
+      }
 
       const auditId = generateAuditId();
       const auditLogEmbed = new EmbedBuilder()
@@ -1766,6 +1826,33 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         saveDb();
         invalidatePermCache(guildId);
 
+        // Notify all current role members of the updated tier via DM
+        try {
+          const members = await interaction.guild.members.fetch();
+          const roleMembers = members.filter(m => m.roles.cache.has(roleId));
+          const targetRole = interaction.guild.roles.cache.get(roleId);
+          const roleName = targetRole ? targetRole.name : 'Unknown Role';
+          const tierDesc = TIER_DESCRIPTIONS[newTier.toUpperCase()] || 'No permissions defined.';
+          
+          const dmEmbed = new EmbedBuilder()
+            .setTitle('🔐 Whitelist Tier Updated')
+            .setDescription(`Your whitelisting tier for **${interaction.guild.name}** has been updated!`)
+            .addFields(
+              { name: '🛡️ Role', value: `${roleName}`, inline: true },
+              { name: '🔑 New Command Tier', value: `\`${newTier.toUpperCase()}\``, inline: true },
+              { name: '📋 What You Can Do Now', value: tierDesc }
+            )
+            .setColor(0x3498DB)
+            .setTimestamp();
+
+          for (const [memberId, member] of roleMembers) {
+            if (member.user.bot) continue;
+            await member.send({ embeds: [dmEmbed] }).catch(() => {});
+          }
+        } catch (err) {
+          console.error('Failed to DM role members on tier update:', err);
+        }
+
         const auditId = generateAuditId();
         const auditLogEmbed = new EmbedBuilder()
           .setTitle('🔐 Permission Audit Log')
@@ -1804,6 +1891,34 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       saveDb();
       invalidatePermCache(guildId);
+
+      // Notify all current role members of updated custom capabilities via DM
+      try {
+        const members = await interaction.guild.members.fetch();
+        const roleMembers = members.filter(m => m.roles.cache.has(roleId));
+        const targetRole = interaction.guild.roles.cache.get(roleId);
+        const roleName = targetRole ? targetRole.name : 'Unknown Role';
+        const capsDesc = selectedCaps.length 
+          ? selectedCaps.map(c => CAPABILITY_DESCRIPTIONS[c] || `• ${c}`).join('\n') 
+          : 'No custom capabilities assigned.';
+
+        const dmEmbed = new EmbedBuilder()
+          .setTitle('🔐 Custom Capabilities Updated')
+          .setDescription(`The custom capabilities for your role **${roleName}** in **${interaction.guild.name}** have been updated!`)
+          .addFields(
+            { name: '🛡️ Role', value: `${roleName}`, inline: true },
+            { name: '📋 Updated Capabilities', value: capsDesc }
+          )
+          .setColor(0xE67E22)
+          .setTimestamp();
+
+        for (const [memberId, member] of roleMembers) {
+          if (member.user.bot) continue;
+          await member.send({ embeds: [dmEmbed] }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('Failed to DM role members on capability update:', err);
+      }
 
       const auditId = generateAuditId();
       const auditLogEmbed = new EmbedBuilder()

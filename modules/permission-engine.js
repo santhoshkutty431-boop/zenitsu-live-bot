@@ -224,6 +224,8 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
   // Whitelisted Roles check
   db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
   const roleWhitelist = db.commandRoleWhitelist;
+  db.roleCapabilities = db.roleCapabilities || {};
+  const roleCapabilities = db.roleCapabilities;
 
   if (member) {
     const hasAdminRole = roleWhitelist.admin && roleWhitelist.admin.some(roleId => member.roles.cache.has(roleId));
@@ -232,10 +234,18 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
 
     const isDiscordAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
 
+    // Collect capabilities from all roles of the member
+    const memberRoleCaps = [];
+    member.roles.cache.forEach(role => {
+      if (roleCapabilities[role.id]) {
+        memberRoleCaps.push(...roleCapabilities[role.id]);
+      }
+    });
+
     // Whitelisted Role checks
     if (requiredTier === 'ADMIN') {
       if (hasAdminRole || isDiscordAdmin) {
-        if (!requiredCap) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (!requiredCap || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
         if (isWhitelistedUser && userCaps.includes(requiredCap)) {
           return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
         }
@@ -245,12 +255,10 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
 
     if (requiredTier === 'STAFF') {
       if (hasAdminRole || hasStaffRole || isDiscordAdmin) {
-        if (!requiredCap) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (!requiredCap || requiredCap === 'MODERATION_EXECUTE' || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
         if (isWhitelistedUser && userCaps.includes(requiredCap)) {
           return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
         }
-        // Staff check fallback
-        if (requiredCap === 'MODERATION_EXECUTE') return { allowed: true, tier: 'WHITELISTED_ROLE' };
         return { allowed: false, requiredTier, reason: 'MISSING_CAPABILITY', capability: requiredCap };
       }
     }
