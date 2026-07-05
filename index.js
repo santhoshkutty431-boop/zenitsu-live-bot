@@ -1,3 +1,8 @@
+if (process.env.KOYEB_APP_NAME || process.env.KOYEB_SERVICE_NAME || process.env.KOYEB) {
+  console.log('Detected Koyeb deployment. This bot has been migrated to Render. Exiting immediately to prevent duplicate bot instance conflicts...');
+  process.exit(0);
+}
+
 try {
   const ffmpegPath = require('ffmpeg-static');
   if (ffmpegPath) {
