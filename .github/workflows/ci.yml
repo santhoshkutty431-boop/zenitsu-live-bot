@@ -32,3 +32,6 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Smoke test (every command has a handler + DB routing works)
+        run: node scripts/smoke-test.js

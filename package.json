@@ -9,7 +9,8 @@
     "deploy": "node deploy-commands.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "check": "node --check index.js && node --check dashboard.js && node --check deploy-commands.js"
+    "check": "node --check index.js && node --check dashboard.js && node --check deploy-commands.js",
+    "smoke": "node scripts/smoke-test.js"
   },
   "devDependencies": {
     "eslint": "^8.57.0"
