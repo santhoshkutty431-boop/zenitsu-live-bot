@@ -264,7 +264,7 @@ class KnowledgeEngine {
   async searchKnowledge(query, guildId, userId) {
     const client = this.runtime.getService('HealthMonitor')?.discordClient;
     const member = (client && client.guilds && client.guilds.cache)
-      ? client.guilds.cache.get(guildId)?.members.cache.get(userId)
+      ? client.guilds.cache.get(guildId)?.members?.cache.get(userId)
       : null;
     if (member) {
       const allowedChannelIds = this._resolveAllowedChannels(guildId, member);

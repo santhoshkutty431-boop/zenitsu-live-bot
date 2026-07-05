@@ -892,4 +892,4 @@ client.on('guildCreate', async guild => {
 });
 }
 
-module.exports = { registerEvents, getLanguageSelectorEmbed, logToReports, logAiAnalytics };
+module.exports = { registerEvents, getLanguageSelectorEmbed, logToReports, logAiAnalytics, logToChannel };

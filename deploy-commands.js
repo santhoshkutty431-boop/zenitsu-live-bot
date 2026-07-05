@@ -618,22 +618,17 @@ const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_t
       return;
     }
 
-    // Clean up guild commands first if GUILD_ID is provided
+    // Deploy guild-specific commands for instant update
     if (config.guildId) {
-      console.log(`Clearing old guild-specific commands for guild: ${config.guildId}`);
-      await rest.put(
+      console.log(`Deploying commands directly to guild: ${config.guildId}`);
+      const data = await rest.put(
         Routes.applicationGuildCommands(config.clientId, config.guildId),
-        { body: [] },
-      ).catch(err => console.log('Note: No guild commands to clean up or failed:', err.message));
+        { body: commandsJson },
+      );
+      console.log(`Successfully reloaded ${data.length} guild-specific application (/) commands.`);
+    } else {
+      console.log('No guildId configured, skipping guild deploy.');
     }
-
-    // Deploy global commands
-    const data = await rest.put(
-      Routes.applicationCommands(config.clientId),
-      { body: commandsJson },
-    );
-
-    console.log(`Successfully reloaded ${data.length} global application (/) commands.`);
   } catch (error) {
     console.error(error);
   }

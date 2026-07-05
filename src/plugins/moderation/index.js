@@ -1,5 +1,6 @@
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { createCase, formatCaseEmbed } = require('../../../modules/case-manager');
+const { logToChannel } = require('../../handlers/eventHandler');
 
 class ModerationPlugin {
   constructor(runtime) {
@@ -107,33 +108,58 @@ class ModerationPlugin {
 
   // Command handlers
   async handleWarn(interaction) {
-    const target = interaction.options.getUser('user');
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-    const caseData = await this.directWarn(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
-    const embed = formatCaseEmbed(caseData);
-    await interaction.reply({ embeds: [embed] });
+    try {
+      const target = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      const caseData = await this.directWarn(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
+      const embed = formatCaseEmbed(caseData);
+      await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', embed);
+      await interaction.reply({ embeds: [embed] });
+    } catch (err) {
+      await interaction.reply({ content: `❌ Failed to warn user: ${err.message}`, ephemeral: true }).catch(() => {});
+    }
   }
 
   async handleKick(interaction) {
-    const target = interaction.options.getUser('user');
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-    const caseData = await this.directKick(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
-    const embed = formatCaseEmbed(caseData);
-    await interaction.reply({ embeds: [embed] });
+    try {
+      const target = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      const caseData = await this.directKick(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
+      const embed = formatCaseEmbed(caseData);
+      await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', embed);
+      await interaction.reply({ embeds: [embed] });
+    } catch (err) {
+      await interaction.reply({ content: `❌ Failed to kick member: ${err.message}`, ephemeral: true }).catch(() => {});
+    }
   }
 
   async handleBan(interaction) {
-    const target = interaction.options.getUser('user');
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-    const caseData = await this.directBan(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
-    const embed = formatCaseEmbed(caseData);
-    await interaction.reply({ embeds: [embed] });
+    try {
+      const target = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      const caseData = await this.directBan(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
+      const embed = formatCaseEmbed(caseData);
+      await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', embed);
+      await interaction.reply({ embeds: [embed] });
+    } catch (err) {
+      await interaction.reply({ content: `❌ Failed to ban user: ${err.message}`, ephemeral: true }).catch(() => {});
+    }
   }
 
   async handlePurge(interaction) {
-    const count = interaction.options.getInteger('count');
-    const deletedCount = await this.directPurge(interaction.channel, count);
-    await interaction.reply({ content: `🧹 Successfully purged ${deletedCount} messages.`, ephemeral: true });
+    try {
+      const count = interaction.options.getInteger('amount') || 50;
+      const deletedCount = await this.directPurge(interaction.channel, count);
+      const logEmbed = new EmbedBuilder()
+        .setTitle('🗑️ Messages Purged')
+        .setDescription(`**Channel:** ${interaction.channel}\n**Count:** ${deletedCount}\n**By:** ${interaction.user}`)
+        .setColor(0xE74C3C)
+        .setTimestamp();
+      await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', logEmbed);
+      await interaction.reply({ content: `🧹 Successfully purged ${deletedCount} messages.`, ephemeral: true });
+    } catch (err) {
+      await interaction.reply({ content: `❌ Failed to purge messages: ${err.message}`, ephemeral: true }).catch(() => {});
+    }
   }
 }
 

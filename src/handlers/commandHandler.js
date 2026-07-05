@@ -328,14 +328,28 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const target = interaction.options.getMember('user');
       const role   = interaction.options.getRole('role');
       if (!target) return interaction.reply({ content: 'Member not found.', ephemeral: true });
-      if (sub === 'add')    await target.roles.add(role).catch(() => {});
-      if (sub === 'remove') await target.roles.remove(role).catch(() => {});
-      const embed = new EmbedBuilder()
-        .setTitle(sub === 'add' ? '➕ Role Added' : '➖ Role Removed')
-        .setDescription(`**User:** ${target}\n**Role:** ${role}\n**By:** ${interaction.user}`)
-        .setColor(sub === 'add' ? 0x2ECC71 : 0xFF0000).setTimestamp();
-      await logToReports(interaction.guild, embed);
-      await interaction.reply({ embeds: [embed] });
+
+      try {
+        if (sub === 'add') {
+          await target.roles.add(role);
+          const embed = new EmbedBuilder()
+            .setTitle('➕ Role Added')
+            .setDescription(`**User:** ${target}\n**Role:** ${role}\n**By:** ${interaction.user}`)
+            .setColor(0x2ECC71).setTimestamp();
+          await logToReports(interaction.guild, embed);
+          await interaction.reply({ embeds: [embed] });
+        } else if (sub === 'remove') {
+          await target.roles.remove(role);
+          const embed = new EmbedBuilder()
+            .setTitle('➖ Role Removed')
+            .setDescription(`**User:** ${target}\n**Role:** ${role}\n**By:** ${interaction.user}`)
+            .setColor(0xFF0000).setTimestamp();
+          await logToReports(interaction.guild, embed);
+          await interaction.reply({ embeds: [embed] });
+        }
+      } catch (err) {
+        await interaction.reply({ content: `❌ Failed to modify roles: ${err.message}`, ephemeral: true });
+      }
     }
 
     // /check-bypass
@@ -992,14 +1006,22 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const seconds = interaction.options.getInteger('seconds');
       const ch      = interaction.options.getChannel('channel') || interaction.channel;
-      await ch.setRateLimitPerUser(seconds, `Set by ${interaction.user.tag}`);
-      const caseData = createCase(db, saveDb, {
-        type: CaseType.SLOWMODE, guildId: interaction.guild.id,
-        userId: interaction.user.id, userTag: interaction.user.tag,
-        modId: interaction.user.id, modTag: interaction.user.tag,
-        reason: `Slowmode set to ${seconds}s in #${ch.name}`,
-      });
-      await interaction.reply({ content: `✅ Slowmode in ${ch} set to **${seconds}s** (Case: \`${caseData.caseId}\`).`, ephemeral: true });
+      if (!ch || typeof ch.setRateLimitPerUser !== 'function') {
+        return interaction.reply({ content: '❌ Slowmode can only be configured on text channels.', ephemeral: true });
+      }
+
+      try {
+        await ch.setRateLimitPerUser(seconds, `Set by ${interaction.user.tag}`);
+        const caseData = createCase(db, saveDb, {
+          type: CaseType.SLOWMODE, guildId: interaction.guild.id,
+          userId: interaction.user.id, userTag: interaction.user.tag,
+          modId: interaction.user.id, modTag: interaction.user.tag,
+          reason: `Slowmode set to ${seconds}s in #${ch.name}`,
+        });
+        await interaction.reply({ content: `✅ Slowmode in ${ch} set to **${seconds}s** (Case: \`${caseData.caseId}\`).`, ephemeral: true });
+      } catch (err) {
+        await interaction.reply({ content: `❌ Failed to configure slowmode: ${err.message}`, ephemeral: true });
+      }
     }
 
     // /nick
@@ -1012,14 +1034,18 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       if (!target) return interaction.reply({ content: '❌ Member not found.', ephemeral: true });
 
       const oldNick = target.nickname || target.user.username;
-      await target.setNickname(nickname, `Changed by ${interaction.user.tag}`);
-      const caseData = createCase(db, saveDb, {
-        type: CaseType.NICK, guildId: interaction.guild.id,
-        userId: target.id, userTag: target.user.tag,
-        modId: interaction.user.id, modTag: interaction.user.tag,
-        reason: `Nickname: "${oldNick}" → "${nickname || 'reset'}"`,
-      });
-      await interaction.reply({ content: `✅ Nickname changed for ${target}: \`${oldNick}\` → \`${nickname || 'reset'}\` (Case: \`${caseData.caseId}\`)`, ephemeral: true });
+      try {
+        await target.setNickname(nickname, `Changed by ${interaction.user.tag}`);
+        const caseData = createCase(db, saveDb, {
+          type: CaseType.NICK, guildId: interaction.guild.id,
+          userId: target.id, userTag: target.user.tag,
+          modId: interaction.user.id, modTag: interaction.user.tag,
+          reason: `Nickname: "${oldNick}" → "${nickname || 'reset'}"`,
+        });
+        await interaction.reply({ content: `✅ Nickname changed for ${target}: \`${oldNick}\` → \`${nickname || 'reset'}\` (Case: \`${caseData.caseId}\`)`, ephemeral: true });
+      } catch (err) {
+        await interaction.reply({ content: `❌ Failed to change nickname: ${err.message}`, ephemeral: true });
+      }
     }
 
     // /unwarn
