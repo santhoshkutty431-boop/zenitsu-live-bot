@@ -21,6 +21,14 @@
 
 const https = require('https');
 
+// ─── PROVIDER CIRCUIT BREAKER ────────────────────────────────────────────────
+// Providers that fail with quota/billing errors get skipped for a while so
+// every AI feature (moderation, tickets, translate, draw, embed) doesn't
+// re-fail against a dead provider on each call.
+const PROVIDER_COOLDOWNS = new Map(); // modelKey -> retry-after timestamp
+const QUOTA_ERROR_RX = /quota|billing|rate.?limit|429|insufficient/i;
+const QUOTA_COOLDOWN_MS = 10 * 60 * 1000;
+
 // ─── SYSTEM PERSONA ──────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are ZENITSU AI, the official premium assistant of the ZENITSU LIVE Discord server.
@@ -387,6 +395,13 @@ async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, con
       const model = MODELS[currentKey];
       if (!model) continue;
 
+      // Circuit breaker: skip providers that recently failed with quota errors
+      const cooldownUntil = PROVIDER_COOLDOWNS.get(currentKey);
+      if (cooldownUntil && Date.now() < cooldownUntil) {
+        attemptErrorLogs.push(`${model.label}: on quota cooldown (${Math.ceil((cooldownUntil - Date.now()) / 1000)}s left)`);
+        continue;
+      }
+
       // Check if API key exists
       if (!process.env[model.envKey]) {
         attemptErrorLogs.push(`${model.label}: API Key not set.`);
@@ -407,6 +422,10 @@ async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, con
         break; // Successfully got response, stop failover loop
       } catch (err) {
         attemptErrorLogs.push(`${model.label} error: ${err.message}`);
+        if (QUOTA_ERROR_RX.test(err.message)) {
+          PROVIDER_COOLDOWNS.set(currentKey, Date.now() + QUOTA_COOLDOWN_MS);
+          console.warn(`[AI] Provider ${currentKey} placed on ${QUOTA_COOLDOWN_MS / 60000}min quota cooldown.`);
+        }
         recordUsage({ userId, context, model, prompt, response: '', latencyMs: Date.now() - t0, success: false });
       }
     }

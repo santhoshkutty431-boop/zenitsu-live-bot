@@ -27,6 +27,10 @@ const MODELS = {
   }
 };
 
+// Errors that mean "this provider is dead for a while, don't hammer it"
+const QUOTA_ERROR_RX = /quota|billing|rate.?limit|429|insufficient/i;
+const QUOTA_COOLDOWN_MS = 10 * 60 * 1000; // skip quota-dead providers for 10 min
+
 class AIProviderManager {
   constructor(runtime) {
     this.runtime = runtime;
@@ -34,6 +38,10 @@ class AIProviderManager {
     this.rateLimits = new Map();
     this.rateLimitMax = 5;
     this.rateLimitWindow = 60000;
+    // Circuit breaker: modelKey -> timestamp until which the provider is skipped.
+    // Without this, every /ai call retries a quota-dead provider (e.g. a Gemini
+    // key with limit:0), adding latency and spamming error logs on every query.
+    this.providerCooldowns = new Map();
   }
 
   async onInit() {
@@ -83,6 +91,14 @@ class AIProviderManager {
       const model = MODELS[key];
       if (!model) continue;
 
+      // Circuit breaker: skip providers on quota cooldown
+      const cooldownUntil = this.providerCooldowns.get(key);
+      if (cooldownUntil && Date.now() < cooldownUntil) {
+        this.logger.debug(`Skipping ${key}: on quota cooldown for another ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s`);
+        lastError = lastError || new Error(`${key} on quota cooldown`);
+        continue;
+      }
+
       const apiKey = process.env[model.envKey];
       if (!apiKey) {
         this.logger.warn(`API key missing for ${key} (${model.envKey}), checking next fallback...`);
@@ -119,6 +135,12 @@ class AIProviderManager {
       } catch (err) {
         this.logger.error(`AI query failed for model ${key}: ${err.message}`);
         lastError = err;
+        // Quota/billing failure → put the provider on cooldown so subsequent
+        // queries go straight to a working fallback instead of re-failing here.
+        if (QUOTA_ERROR_RX.test(err.message)) {
+          this.providerCooldowns.set(key, Date.now() + QUOTA_COOLDOWN_MS);
+          this.logger.warn(`Provider ${key} placed on ${QUOTA_COOLDOWN_MS / 60000}min quota cooldown.`);
+        }
         // Publish failure event
         await this.runtime.eventBus.publish('AI_QUERY_FAILED', {
           userId,
