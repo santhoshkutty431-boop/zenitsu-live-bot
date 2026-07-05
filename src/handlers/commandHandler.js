@@ -1434,6 +1434,61 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
     }
 
+    // /system-health
+    else if (cmd === 'system-health') {
+      if (!isDeveloper(interaction.user.id)) {
+        return interaction.reply({ content: '❌ Only bot developers can run this command.', ephemeral: true });
+      }
+
+      try {
+        const dbService = runtime.getService('DatabaseManager');
+        const deployment = process.env.SPACE_ID ? 'HuggingFace' : (process.env.RENDER ? 'Render' : 'Local/Other');
+        const dbMode = process.env.DB_MODE || 'READ_ONLY';
+        const isPrimary = process.env.IS_PRIMARY_INSTANCE === 'true' ? 'YES' : 'NO';
+        const writerStatus = dbService.isDatabaseWriter() ? 'YES' : 'NO';
+        
+        const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+        const syncEnabled = dbService.config.hfToken && dbService.isDatabaseWriter() && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+        const cloudSyncStatus = syncEnabled ? '🟢 Enabled' : '🔴 Disabled';
+        const gitPushEnabled = syncEnabled ? '🟢 Enabled' : '🔴 Disabled';
+        
+        const dbVersionInfo = dbService._getDbVersionInfo();
+        const lastSync = dbService.lastSuccessfulSync ? `\`${dbService.lastSuccessfulSync}\`` : '*Never*';
+        const lastBackup = dbService.lastSuccessfulBackup ? `\`${dbService.lastSuccessfulBackup}\`` : '*Never*';
+        const pendingWrites = dbService.syncTimer ? '1 (Debounced)' : '0';
+        const queueSize = dbService.isSyncing ? '1 (Uploading)' : '0';
+        
+        let syncHealth = '🟢 Healthy';
+        if (dbService.isDatabaseWriter() && !dbService.lastSuccessfulSync && syncEnabled) {
+          syncHealth = '🟡 Awaiting Sync';
+        }
+
+        const healthEmbed = new EmbedBuilder()
+          .setTitle('🏥 System Synchronization Health Report')
+          .addFields(
+            { name: '💻 Deployment Host', value: `\`${deployment}\``, inline: true },
+            { name: '💾 Database Mode', value: `\`${dbMode}\``, inline: true },
+            { name: '👑 Primary Instance', value: `\`${isPrimary}\``, inline: true },
+            { name: '✍️ Active Writer', value: `\`${writerStatus}\``, inline: true },
+            { name: '🌐 Cloud Sync Status', value: cloudSyncStatus, inline: true },
+            { name: '📁 Git Push Status', value: gitPushEnabled, inline: true },
+            { name: '🔢 Database Version', value: `\`${dbVersionInfo.version}\``, inline: true },
+            { name: '⏰ Last Cloud Sync', value: lastSync, inline: true },
+            { name: '💾 Last Local Backup', value: lastBackup, inline: true },
+            { name: '⏳ Pending Writes', value: `\`${pendingWrites}\``, inline: true },
+            { name: '⛓️ Upload Queue Size', value: `\`${queueSize}\``, inline: true },
+            { name: '🏥 Synchronization Health', value: syncHealth, inline: true }
+          )
+          .setColor(0x2ECC71)
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [healthEmbed], ephemeral: true });
+      } catch (err) {
+        console.error('Error executing system-health command:', err);
+        await interaction.reply({ content: `❌ System health diagnostics failed: \`${err.message}\``, ephemeral: true }).catch(() => {});
+      }
+    }
+
     // /whoami
     else if (cmd === 'whoami') {
       const guildId = interaction.guildId;

@@ -106,6 +106,9 @@ class DatabaseManager {
 
     this.syncTimer = null;
     this.writeQueue = Promise.resolve();
+    this.lastSuccessfulSync = null;
+    this.lastSuccessfulBackup = null;
+    this.isSyncing = false;
 
     // Set up Proxy for backward compatibility
     this.db = new Proxy({}, {
@@ -240,6 +243,7 @@ class DatabaseManager {
   // ─── Spam signature helpers ──────────────────────────────────────────────
 
   addSpamSignature({ guildId, label, sampleText, vector, threshold, addedBy }) {
+    if (!this._assertWritePermission('addSpamSignature')) return null;
     const stmt = this.sqlDb.prepare(`
       INSERT INTO spam_signatures (guild_id, label, sample_text, vector_json, threshold, added_by, timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -257,6 +261,7 @@ class DatabaseManager {
   }
 
   removeSpamSignature(guildId, id) {
+    if (!this._assertWritePermission('removeSpamSignature')) return 0;
     const stmt = this.sqlDb.prepare('DELETE FROM spam_signatures WHERE id = ? AND guild_id = ?');
     return stmt.run(id, guildId).changes;
   }
@@ -278,6 +283,7 @@ class DatabaseManager {
   }
 
   recordAiUsage({ guildId, userId, provider, model, tokensIn, tokensOut, latencyMs, success }) {
+    if (!this._assertWritePermission('recordAiUsage')) return;
     try {
       const stmt = this.sqlDb.prepare(`
         INSERT INTO ai_usage (guild_id, user_id, provider, model, tokens_in, tokens_out, latency_ms, success, timestamp)
@@ -319,6 +325,7 @@ class DatabaseManager {
   }
 
   recordAudit(guildId, actorId, targetId, command, params, result) {
+    if (!this._assertWritePermission('recordAudit')) return;
     try {
       const stmt = this.sqlDb.prepare(`
         INSERT INTO mod_audit (guild_id, actor_id, target_id, command, params_json, result, timestamp)
@@ -330,26 +337,164 @@ class DatabaseManager {
     }
   }
 
-  async onInit() {
-    this.logger.info('Initializing SQLite Database Manager...');
-    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
-    const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+  _logWriteResult(caller, status, reason = null) {
+    const deployment = process.env.SPACE_ID ? 'HuggingFace' : (process.env.RENDER ? 'Render' : 'Local/Other');
+    const dbMode = process.env.DB_MODE || 'READ_ONLY';
+    const store = asyncLocalStorage.getStore();
+    const guildId = store?.guildId || 'Global/None';
 
-    if (isSyncEnabled) {
-      this.logger.info('HF_TOKEN detected in cloud environment. Pulling cloud database file...');
+    if (status === 'SUCCESS') {
+      this.logger.info(`
+=========================================
+📝 DATABASE WRITE SUCCESS
+Instance:          ${deployment}
+Guild ID:          ${guildId}
+Caller:            ${caller}
+Database Mode:     ${dbMode}
+Result:            SUCCESS
+=========================================
+      `);
+    } else {
+      this.logger.warn(`
+=========================================
+⚠️ DATABASE WRITE BLOCKED
+Instance:          ${deployment}
+Guild ID:          ${guildId}
+Caller:            ${caller}
+Database Mode:     ${dbMode}
+Reason:            ${reason}
+=========================================
+      `);
+    }
+  }
+
+  isDatabaseWriter() {
+    // Fail-safe: Default DB_MODE to READ_ONLY if not explicitly specified.
+    // Both DB_MODE === 'READ_WRITE' and IS_PRIMARY_INSTANCE === 'true' are required.
+    const dbMode = process.env.DB_MODE || 'READ_ONLY';
+    const isPrimary = process.env.IS_PRIMARY_INSTANCE === 'true';
+    return dbMode === 'READ_WRITE' && isPrimary;
+  }
+
+  _assertWritePermission(callerName = 'Database Operation') {
+    if (!this.isDatabaseWriter()) {
+      const err = new Error('Database Write Blocked');
+      this._logWriteResult(callerName, 'BLOCKED', 'Read-only deployment mode or not primary instance');
+      this.logger.warn(`Stack Trace:\n${err.stack}`);
+      return false;
+    }
+    this._logWriteResult(callerName, 'SUCCESS');
+    return true;
+  }
+
+  _incrementDbVersion() {
+    try {
+      const current = this._getDbVersionInfo();
+      current.version = (current.version || 0) + 1;
+      current.updatedAt = new Date().toISOString();
+      this.setGlobalStmt.run('dbVersionInfo', JSON.stringify(current));
+      this._globalCache = this._globalCache || {};
+      this._globalCache['dbVersionInfo'] = current;
+    } catch (err) {
+      this.logger.error(`Failed to increment database version: ${err.message}`);
+    }
+  }
+
+  _getDbVersionInfo() {
+    try {
+      const row = this.sqlDb.prepare("SELECT value_json FROM global_config WHERE key = 'dbVersionInfo'").get();
+      if (row) {
+        return JSON.parse(row.value_json);
+      }
+    } catch {}
+    return { version: 0, updatedAt: new Date().toISOString() };
+  }
+
+  _createLocalBackup() {
+    try {
+      const backupDir = path.join(DATA_DIR, 'backups');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:T]/g, '-').split('.')[0];
+      const backupPath = path.join(backupDir, `${timestamp}.db`);
+      
+      this.sqlDb.pragma('wal_checkpoint(TRUNCATE)');
+      fs.copyFileSync(DB_PATH, backupPath);
+      
+      this.lastSuccessfulBackup = new Date().toISOString();
+      this.logger.info(`Database backup created: backups/${timestamp}.db`);
+      
+      // Rotate backups (keep last 10)
+      const files = fs.readdirSync(backupDir)
+        .filter(f => f.endsWith('.db'))
+        .map(f => ({ name: f, time: fs.statSync(path.join(backupDir, f)).mtime.getTime() }))
+        .sort((a, b) => b.time - a.time);
+        
+      if (files.length > 10) {
+        for (let i = 10; i < files.length; i++) {
+          fs.unlinkSync(path.join(backupDir, files[i].name));
+        }
+      }
+      return backupPath;
+    } catch (err) {
+      this.logger.error(`Database backup failed: ${err.message}`);
+      return null;
+    }
+  }
+
+  async onInit() {
+    const deployment = process.env.SPACE_ID ? 'HuggingFace' : (process.env.RENDER ? 'Render' : 'Local/Other');
+    const dbMode = process.env.DB_MODE || 'READ_ONLY';
+    const isPrimary = process.env.IS_PRIMARY_INSTANCE === 'true' ? 'YES' : 'NO';
+    const writerStatus = this.isDatabaseWriter() ? 'YES' : 'NO';
+    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const syncEnabled = this.config.hfToken && this.isDatabaseWriter() && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+    const cloudSyncStatus = syncEnabled ? 'Enabled' : 'Disabled';
+    const gitPushEnabled = syncEnabled ? 'Enabled' : 'Disabled';
+    const currentVersionInfo = this._getDbVersionInfo();
+
+    this.logger.info(`
+=========================================
+🤖 ZENITSU LIVE Database Initialization 🤖
+=========================================
+Deployment:        ${deployment}
+Database Mode:     ${dbMode}
+Primary Instance:  ${isPrimary}
+Writer Status:     ${writerStatus}
+Cloud Sync:        ${cloudSyncStatus}
+Git Push:          ${gitPushEnabled}
+Database Version:  ${currentVersionInfo.version}
+Last Updated:      ${currentVersionInfo.updatedAt}
+Writer:            ${writerStatus}
+=========================================
+    `);
+
+    const pullEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
+    if (pullEnabled) {
+      this.logger.info('HF_TOKEN detected. Pulling cloud database file...');
       try {
         await this.syncFromHf();
       } catch (err) {
         this.logger.error(`Cloud database sync failed: ${err.message}`);
       }
-    } else if (this.config.hfToken) {
-      this.logger.info('HF_TOKEN detected but running locally. Cloud sync disabled to prevent database conflicts.');
     }
   }
 
   async onShutdown() {
-    this.logger.info('Shutting down SQLite Database Manager, doing final cloud save...');
-    await this.flushToHf();
+    this.logger.info('Shutting down SQLite Database Manager...');
+    if (this.isDatabaseWriter()) {
+      this.logger.info('Doing final cloud save...');
+      try {
+        await this.flushToHf();
+      } catch (err) {
+        this.logger.error(`Final cloud save failed: ${err.message}`);
+      }
+    } else {
+      this.logger.info('Read-only mode: skipping final cloud save.');
+    }
     this.sqlDb.close();
   }
 
@@ -376,6 +521,7 @@ class DatabaseManager {
   }
 
   saveGlobal() {
+    if (!this._assertWritePermission('saveGlobal')) return;
     if (!this._globalCache) return;
     const transaction = this.sqlDb.transaction(() => {
       for (const [key, val] of Object.entries(this._globalCache)) {
@@ -387,6 +533,9 @@ class DatabaseManager {
   }
 
   save() {
+    // Note: save() just delegates to saveGuildDb or saveGlobal, which both assert permission.
+    // However, we can assert permission here as well to fail fast.
+    if (!this._assertWritePermission('save')) return;
     const store = asyncLocalStorage.getStore();
     const guildId = store?.guildId;
     if (guildId) {
@@ -423,6 +572,7 @@ class DatabaseManager {
   }
 
   saveGuildDb(guildId) {
+    if (!this._assertWritePermission('saveGuildDb')) return;
     if (!this._guildCache.has(guildId)) return;
     const cache = this._guildCache.get(guildId);
 
@@ -436,6 +586,7 @@ class DatabaseManager {
   }
 
   deleteGuildDb(guildId) {
+    if (!this._assertWritePermission('deleteGuildDb')) return;
     this.deleteGuildStmt.run(guildId);
     this._guildCache.delete(guildId);
     this.scheduleSync();
@@ -540,11 +691,8 @@ class DatabaseManager {
   // ─── Cloud Sync (Binary Replication of zenitsu.db) ──────────────────────────
 
   scheduleSync() {
-    if (process.env.SPACE_ID) {
-      this.logger.debug('Running on Hugging Face Space. Cloud write/sync disabled to prevent database conflicts.');
-      return;
-    }
-    const isCloud = !!(process.env.RENDER);
+    if (!this._assertWritePermission('scheduleSync')) return;
+    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
     const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     if (!isSyncEnabled) return;
     if (this.syncTimer) return;
@@ -555,34 +703,50 @@ class DatabaseManager {
   }
 
   async flushToHf() {
-    if (process.env.SPACE_ID) {
-      this.logger.debug('Running on Hugging Face Space. Cloud write/sync disabled to prevent database conflicts.');
+    if (!this._assertWritePermission('flushToHf')) return;
+    if (this.isSyncing) {
+      this.logger.debug('Sync lock active: skipping concurrent cloud push.');
       return;
     }
-    const isCloud = !!(process.env.RENDER);
+    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
     const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     if (!isSyncEnabled) return;
 
-    this.writeQueue = this.writeQueue.then(async () => {
-      try {
-        if (!fs.existsSync(DB_PATH)) return;
+    this.isSyncing = true;
+    try {
+      await this.writeQueue;
+      
+      this.writeQueue = (async () => {
+        try {
+          if (!fs.existsSync(DB_PATH)) return;
 
-        // Perform safe checkpoints to commit WAL to binary first
-        this.sqlDb.pragma('wal_checkpoint(TRUNCATE)');
+          // Database Version Protection
+          this._incrementDbVersion();
 
-        const content = fs.readFileSync(DB_PATH);
-        const action = {
-          action: 'add',
-          path: 'data/zenitsu.db',
-          content: content.toString('base64')
-        };
+          // Automatic Backup
+          this._createLocalBackup();
 
-        await this.commitToHf([action]);
-        this.logger.debug('SQLite Database synced to Hugging Face Cloud.');
-      } catch (err) {
-        this.logger.error(`SQLite HF sync failed: ${err.message}`);
-      }
-    });
+          // Perform safe checkpoints to commit WAL to binary first
+          this.sqlDb.pragma('wal_checkpoint(TRUNCATE)');
+
+          const content = fs.readFileSync(DB_PATH);
+          const action = {
+            action: 'add',
+            path: 'data/zenitsu.db',
+            content: content.toString('base64')
+          };
+
+          await this.commitToHf([action]);
+          this.lastSuccessfulSync = new Date().toISOString();
+          this.logger.debug('SQLite Database synced to Hugging Face Cloud.');
+        } catch (err) {
+          this.logger.error(`SQLite HF sync failed: ${err.message}`);
+        }
+      })();
+      await this.writeQueue;
+    } finally {
+      this.isSyncing = false;
+    }
     return this.writeQueue;
   }
 
@@ -671,6 +835,35 @@ class DatabaseManager {
     try {
       const buffer = await download(url);
       if (buffer && buffer.length > 100) {
+        // Version protection check: Reject cloud DB if its version is older than local DB
+        if (fs.existsSync(DB_PATH)) {
+          const tempPath = DB_PATH + '_temp';
+          fs.writeFileSync(tempPath, buffer);
+          let tempDb;
+          try {
+            tempDb = new Database(tempPath);
+            const row = tempDb.prepare("SELECT value_json FROM global_config WHERE key = 'dbVersionInfo'").get();
+            const tempVersion = row ? JSON.parse(row.value_json) : { version: 0 };
+            
+            const localVersion = this._getDbVersionInfo();
+            if (tempVersion.version < localVersion.version) {
+              this.logger.warn(`Rejected cloud database pull. Cloud version (${tempVersion.version}) is older than local version (${localVersion.version}).`);
+              tempDb.close();
+              fs.unlinkSync(tempPath);
+              return;
+            }
+          } catch (err) {
+            this.logger.error(`Failed to verify downloaded database version: ${err.message}`);
+          } finally {
+            if (tempDb) {
+              try { tempDb.close(); } catch {}
+            }
+            try {
+              if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+            } catch {}
+          }
+        }
+
         // Switch journal mode to DELETE to force checkpoint and clean deletion of WAL/SHM files
         try {
           this.sqlDb.pragma('journal_mode = DELETE');
@@ -720,6 +913,7 @@ class DatabaseManager {
   }
 
   createPoll({ messageId, guildId, channelId, question, options, expiresAt }) {
+    if (!this._assertWritePermission('createPoll')) return;
     const stmt = this.sqlDb.prepare(`
       INSERT INTO active_polls (message_id, guild_id, channel_id, question, options_json, votes_json, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -744,12 +938,14 @@ class DatabaseManager {
   }
 
   updatePollVotes(messageId, votes) {
+    if (!this._assertWritePermission('updatePollVotes')) return;
     const stmt = this.sqlDb.prepare('UPDATE active_polls SET votes_json = ? WHERE message_id = ?');
     stmt.run(JSON.stringify(votes), messageId);
     this.scheduleSync();
   }
 
   deletePoll(messageId) {
+    if (!this._assertWritePermission('deletePoll')) return;
     const stmt = this.sqlDb.prepare('DELETE FROM active_polls WHERE message_id = ?');
     stmt.run(messageId);
     this.scheduleSync();
@@ -789,6 +985,7 @@ class DatabaseManager {
   }
 
   saveMusicPlayer(p) {
+    if (!this._assertWritePermission('saveMusicPlayer')) return;
     const stmt = this.sqlDb.prepare(`
       INSERT OR REPLACE INTO music_players (
         guild_id, current_song, is_paused, loop_mode, volume, 
@@ -830,6 +1027,7 @@ class DatabaseManager {
   }
 
   deleteMusicPlayer(guildId) {
+    if (!this._assertWritePermission('deleteMusicPlayer')) return;
     const stmt = this.sqlDb.prepare('DELETE FROM music_players WHERE guild_id = ?');
     stmt.run(guildId);
     this.scheduleSync();

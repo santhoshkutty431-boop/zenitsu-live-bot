@@ -551,6 +551,10 @@ const commands = [
         .addChannelTypes(ChannelType.GuildText)
         .setRequired(false)),
 
+  new SlashCommandBuilder()
+    .setName('system-health')
+    .setDescription('Report the database and synchronization system health (Dev only)'),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild));
@@ -597,6 +601,7 @@ const PERMISSION_GATES = {
   'reindex':          PermissionFlagsBits.Administrator,
   'spam-signature':   PermissionFlagsBits.ManageGuild,
   'setup-logs':       PermissionFlagsBits.ManageGuild,
+  'system-health':     PermissionFlagsBits.Administrator,
 };
 
 for (const command of commands) {
