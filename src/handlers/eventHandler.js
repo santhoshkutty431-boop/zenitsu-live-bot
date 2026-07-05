@@ -143,18 +143,17 @@ async function getOrCreateRole(guild, roleName, color = 0x000000) {
   if (!role) role = await guild.roles.create({ name: roleName, color, reason: 'Bot auto-role' }).catch(() => null);
   return role;
 }
+const guildConfig = require('../../modules/guild-config');
 function staffCheck(member) {
   if (!member) return false;
   if (isOwner(member.id)) return true;
-  if (member.id === member.guild?.ownerId) return true; // Server Owner is always staff
-
-  // Check whitelisted staff/admin roles
-  db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
-  if (db.commandRoleWhitelist.staff && db.commandRoleWhitelist.staff.some(id => member.roles.cache.has(id))) return true;
-  if (db.commandRoleWhitelist.admin && db.commandRoleWhitelist.admin.some(id => member.roles.cache.has(id))) return true;
-
-  return member.permissions.has(PermissionFlagsBits.Administrator) ||
-    [ID.ADMIN_ROLE, ID.MOD_ROLE, ID.SUPPORT_ROLE, ID.OWNER_ROLE].some(id => member.roles.cache.has(id));
+  // Universal, multi-server staff detection (Discord perms + configured/
+  // hardcoded roles). Uses the current guild's db for per-guild role config.
+  let gdb = db;
+  try {
+    if (runtimeInstance) gdb = runtimeInstance.getService('DatabaseManager').getGuildDb(member.guild.id);
+  } catch { /* fall back to module-scope db */ }
+  return guildConfig.isStaff(member, gdb, ID);
 }
 
 
@@ -187,35 +186,43 @@ client.on('guildMemberAdd', async member => {
   // Logger: join log
   await logMemberJoin(member, ID, db);
 
+  // Resolve this guild's channels/roles (per-guild config → main hardcoded →
+  // name-based). Works on any server; gracefully null if not present.
+  let gdb2 = db;
+  try { if (runtimeInstance) gdb2 = runtimeInstance.getService('DatabaseManager').getGuildDb(member.guild.id); } catch { /* */ }
+  const rulesId   = guildConfig.resolveChannelId(member.guild, 'rules', gdb2, ID);
+  const welcomeId = guildConfig.resolveChannelId(member.guild, 'welcome', gdb2, ID);
+  const gname = member.guild.name;
+
   // [2] Welcome DM
+  const rulesLine   = rulesId   ? `📜 Read the rules → <#${rulesId}>\n` : '';
+  const welcomeLine = welcomeId ? `✅ Click **Verify** in <#${welcomeId}> to unlock the community\n` : '';
   const dmEmbed = new EmbedBuilder()
-    .setTitle(`👋 Welcome to ZENITSU LIVE, ${member.user.username}!`)
+    .setTitle(`👋 Welcome to ${gname}, ${member.user.username}!`)
     .setDescription(
-      '> You have joined the **ZENITSU LIVE** server!\n\n' +
+      `> You have joined the **${gname}** server!\n\n` +
       '**📌 Getting started:**\n' +
-      `📜 Read the rules → <#${ID.RULES}>\n` +
-      `✅ Click **Verify** in <#${ID.WELCOME}> to unlock the community\n` +
-      `🛒 Browse products in the **SHOP** channels\n` +
+      rulesLine + welcomeLine +
       `🎫 Open a ticket if you need help\n\n` +
-      '> See you inside! — **ZENITSU LIVE Staff**'
+      `> See you inside! — **${gname} Staff**`
     )
     .setColor(0xEDC231)
     .setThumbnail(member.guild.iconURL({ dynamic: true }))
-    .setFooter({ text: 'ZENITSU LIVE' })
+    .setFooter({ text: gname })
     .setTimestamp();
 
   await member.send({ embeds: [dmEmbed] }).catch(() => {
     console.log(`  ⚠️  Could not DM ${member.user.tag} (DMs closed)`);
   });
 
-  // Welcome message in channel
-  const welcomeCh = member.guild.channels.cache.get(ID.WELCOME);
-  if (welcomeCh) {
+  // Welcome message in channel (only if this guild has a welcome channel)
+  const welcomeCh = welcomeId ? member.guild.channels.cache.get(welcomeId) : null;
+  if (welcomeCh?.isTextBased?.()) {
     const welcomeEmbed = new EmbedBuilder()
       .setTitle('👋 New Member!')
       .setDescription(
-        `Welcome to **ZENITSU LIVE**, ${member}!\n\n` +
-        `> 📜 Read <#${ID.RULES}> then click **✅ Verify** above to get full access!`
+        `Welcome to **${gname}**, ${member}!` +
+        (rulesId ? `\n\n> 📜 Read <#${rulesId}> to get started!` : '')
       )
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setColor(0xEDC231)
@@ -223,8 +230,6 @@ client.on('guildMemberAdd', async member => {
       .setTimestamp();
     await welcomeCh.send({ embeds: [welcomeEmbed] }).catch(() => {});
   }
-
-
 });
 
 // Log member leave
@@ -787,6 +792,20 @@ function hasCommandAccess(member, cmd, userId) {
 // ─── START ─────────────────────────────────────────────────────────────────────
 client.on('guildCreate', async guild => {
   console.log(`📥 Joined a new server: ${guild.name} (ID: ${guild.id}) - Members: ${guild.memberCount}`);
+
+  // MULTI-SERVER: auto-detect this server's channels/roles by conventional
+  // names and store them so features (welcome, logs, staff, tickets) work
+  // here without manual setup. The owner can override later via /setup-server.
+  try {
+    const detected = await guildConfig.autoDetect(guild);
+    const dbMgr = runtimeInstance.getService('DatabaseManager');
+    const gdb = dbMgr.getGuildDb(guild.id);
+    gdb.setup = { ...(gdb.setup || {}), ...detected };
+    dbMgr.saveGuildDb(guild.id, true);
+    console.log(`[guildCreate] Auto-detected setup for ${guild.name}:`, JSON.stringify({ roles: Object.keys(detected.roles), channels: Object.keys(detected.channels) }));
+  } catch (err) {
+    console.error('[guildCreate] Auto-detect failed:', err.message);
+  }
 
   // Run v5.2 Onboarding Scanner
   const onboarding = runtime.getService('OnboardingScanner');

@@ -211,7 +211,15 @@ const commandHandler = require('./src/handlers/commandHandler');
 
 // Resolve helpers
 const isOwner = (userId) => userId === client.guilds.cache.first()?.ownerId;
-const staffCheck = (member) => member.roles.cache.has(ID.MOD_ROLE) || member.roles.cache.has(ID.ADMIN_ROLE);
+// Multi-server staff detection: Discord permissions + per-guild configured
+// roles + main-server hardcoded roles. Works on ANY server.
+const guildConfig = require('./modules/guild-config');
+const staffCheck = (member) => {
+  if (!member) return false;
+  let gdb = null;
+  try { gdb = runtime.getService('DatabaseManager').getGuildDb(member.guild.id); } catch { /* ignore */ }
+  return guildConfig.isStaff(member, gdb, ID);
+};
 const getOrCreateRole = async (guild, name, color) => {
   let role = guild.roles.cache.find(r => r.name === name);
   if (!role) {

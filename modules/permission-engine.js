@@ -72,7 +72,8 @@ const COMMAND_REGISTRY = {
   'spam-signature': { tier: 'ADMIN', capability: 'SECURITY_CONFIG' },
   // Owner bypasses; otherwise ONLY users the owner whitelisted with the
   // AI_EXECUTE capability. Discord admins without that capability are denied.
-  'dev-ai': { tier: 'ADMIN', capability: 'AI_EXECUTE' }
+  'dev-ai': { tier: 'ADMIN', capability: 'AI_EXECUTE' },
+  'setup-server': { tier: 'ADMIN', capability: null }
 };
 
 function setDynamicOwnerId(id) {

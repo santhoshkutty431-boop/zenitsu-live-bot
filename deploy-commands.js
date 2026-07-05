@@ -484,6 +484,10 @@ const commands = [
       .setRequired(true)),
 
   new SlashCommandBuilder()
+    .setName('setup-server')
+    .setDescription('Auto-detect this server\'s channels & roles so all features work here'),
+
+  new SlashCommandBuilder()
     .setName('spam-signature')
     .setDescription('Manage semantic spam signatures for this server')
     .addSubcommand(sc => sc
@@ -574,6 +578,7 @@ const PERMISSION_GATES = {
   'reload':           PermissionFlagsBits.Administrator,
   'reindex':          PermissionFlagsBits.Administrator,
   'dev-ai':           PermissionFlagsBits.Administrator,
+  'setup-server':     PermissionFlagsBits.ManageGuild,
   'spam-signature':   PermissionFlagsBits.ManageGuild,
   'setup-logs':       PermissionFlagsBits.ManageGuild,
   'system-health':     PermissionFlagsBits.Administrator,

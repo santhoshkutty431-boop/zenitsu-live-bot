@@ -1473,6 +1473,35 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
     }
 
+    // /setup-server — auto-detect this guild's channels/roles for multi-server
+    else if (cmd === 'setup-server') {
+      await interaction.deferReply({ ephemeral: true });
+      const guildConfig = require('../../modules/guild-config');
+      const dbMgr = runtime.getService('DatabaseManager');
+      try {
+        const detected = await guildConfig.autoDetect(interaction.guild);
+        const gdb = dbMgr.getGuildDb(interaction.guild.id);
+        gdb.setup = { ...(gdb.setup || {}), ...detected };
+        dbMgr.saveGuildDb(interaction.guild.id, true);
+
+        const roleLines = Object.entries(detected.roles).map(([k, id]) => `• **${k}** → <@&${id}>`).join('\n') || '*none found*';
+        const chanLines = Object.entries(detected.channels).map(([k, id]) => `• **${k}** → <#${id}>`).join('\n') || '*none found*';
+        const embed = new EmbedBuilder()
+          .setTitle('⚙️ Server Setup Detected')
+          .setDescription(`I scanned **${interaction.guild.name}** and configured what I could find. Features will now use these.`)
+          .addFields(
+            { name: '🔑 Roles', value: roleLines.slice(0, 1024) },
+            { name: '📌 Channels', value: chanLines.slice(0, 1024) },
+            { name: 'ℹ️ Tip', value: 'Staff detection also works automatically via Discord permissions (Admin/Manage/Kick/Ban). Anything not found above just won\'t trigger that feature — nothing breaks.' }
+          )
+          .setColor(0x2ECC71)
+          .setTimestamp();
+        await interaction.editReply({ embeds: [embed] }).catch(() => {});
+      } catch (err) {
+        await interaction.editReply({ content: `❌ Setup failed: ${err.message}` }).catch(() => {});
+      }
+    }
+
     // /dev-ai — natural-language server agent (owner + AI_EXECUTE whitelist)
     else if (cmd === 'dev-ai') {
       await interaction.deferReply({ ephemeral: true });
