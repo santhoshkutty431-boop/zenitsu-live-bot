@@ -81,12 +81,18 @@ async function processExpiredCase(client, db, saveDb, logToChannel, ID, caseData
  */
 function startAutoPunishScheduler(client, db, saveDb, logToChannel, ID) {
   const check = async () => {
-    const expired = getExpiredCases(db);
-    if (expired.length > 0) {
-      console.log(`[AutoPunish] Processing ${expired.length} expired punishment(s)…`);
-      for (const c of expired) {
-        await processExpiredCase(client, db, saveDb, logToChannel, ID, c);
-      }
+    if (!global.asyncLocalStorage) return;
+
+    for (const guild of client.guilds.cache.values()) {
+      await global.asyncLocalStorage.run({ guildId: guild.id }, async () => {
+        const expired = getExpiredCases(db);
+        if (expired.length > 0) {
+          console.log(`[AutoPunish] [Guild: ${guild.name} (${guild.id})] Processing ${expired.length} expired punishment(s)…`);
+          for (const c of expired) {
+            await processExpiredCase(client, db, saveDb, logToChannel, ID, c);
+          }
+        }
+      });
     }
   };
 

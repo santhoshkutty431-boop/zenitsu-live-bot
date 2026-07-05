@@ -327,7 +327,15 @@ runtime.bootstrap().then(() => {
 
   // Start the dashboard web server immediately on startup
   try {
-    startDashboardServer(client, db, () => runtime.getService('DatabaseManager').saveGlobal());
+    startDashboardServer(client, db, () => {
+      const store = global.asyncLocalStorage?.getStore();
+      const guildId = store?.guildId;
+      const dbMgr = runtime.getService('DatabaseManager');
+      dbMgr.saveGlobal();
+      if (guildId) {
+        dbMgr.saveGuildDb(guildId);
+      }
+    });
   } catch (err) {
     log.error('Failed to start dashboard server', { error: err.message });
   }

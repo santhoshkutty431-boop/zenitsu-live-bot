@@ -36,6 +36,18 @@ function startDashboardServer(client, db, saveDb) {
   app.use(express.json());
   app.use(cookieParser(COOKIE_SECRET));
 
+  // Middleware to bind guildId in asyncLocalStorage for all /manage/:guildId routes
+  app.use((req, res, next) => {
+    const match = req.url.match(/^\/manage\/(\d+)/);
+    const guildId = match ? match[1] : null;
+    if (guildId && global.asyncLocalStorage) {
+      return global.asyncLocalStorage.run({ guildId }, () => {
+        next();
+      });
+    }
+    next();
+  });
+
   // Auth: registers /login, /logout, /api/auth/callback and returns middleware.
   const { checkAuth } = setupAuth(app, { client, PASSCODE, dashboardEnabled, isProduction });
 
