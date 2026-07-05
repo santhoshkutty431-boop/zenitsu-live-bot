@@ -268,18 +268,7 @@ client.on('guildMemberAdd', async member => {
     await welcomeCh.send({ embeds: [welcomeEmbed] }).catch(() => {});
   }
 
-  // [9] Log join to server-logs
-  const joinEmbed = new EmbedBuilder()
-    .setTitle('📥 Member Joined')
-    .setDescription(`${member.user} (${member.user.tag})`)
-    .addFields(
-      { name: 'User ID', value: member.user.id, inline: true },
-      { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
-    )
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-    .setColor(0x2ECC71)
-    .setTimestamp();
-  await logToChannel(member.guild, ID.SERVER_LOGS, joinEmbed);
+
 });
 
 // Log member leave
