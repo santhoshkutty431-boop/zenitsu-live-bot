@@ -11,6 +11,7 @@ class TicketPlugin {
   async onLoad() {
     this.logger.info('Loading Tickets Plugin...');
     this.router.registerCommand('setup-panel', (i) => this.handleSetupPanel(i));
+    this.router.registerCommand('setup-verify', (i) => this.handleSetupVerify(i));
   }
 
   async onUnload() {
@@ -58,11 +59,40 @@ class TicketPlugin {
       .setFooter({ text: 'ZENITSU LIVE Automation v5.0' })
       .setTimestamp();
 
-    const panelChId = config.channelPanel || interaction.channelId;
-    const panelCh = interaction.guild.channels.cache.get(panelChId) || interaction.channel;
+    const targetCh = interaction.options.getChannel('channel') || interaction.channel;
     
-    await panelCh.send({ embeds: [embed], components: [ticketRow, utilRow] });
-    await interaction.reply({ content: `✅ Control Panel posted in <#${panelCh.id}>`, ephemeral: true });
+    await targetCh.send({ embeds: [embed], components: [ticketRow, utilRow] });
+    await interaction.reply({ content: `✅ Control Panel posted in <#${targetCh.id}>`, ephemeral: true });
+  }
+
+  async handleSetupVerify(interaction) {
+    const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || interaction.user.id === '1444538003824447621');
+    if (!isExecAdmin) {
+      return interaction.reply({ content: '❌ Only administrators can construct the Verification Panel.', ephemeral: true });
+    }
+
+    const verifyEmbed = new EmbedBuilder()
+      .setTitle('👋 Welcome to ZENITSU LIVE')
+      .setDescription(
+        '> Thank you for joining! To unlock the community and get full access to the server, please read the rules and click the verification button below.\n\n' +
+        '**📜 Server Rules:** Read <#1444538272884981882> before verifying.\n\n' +
+        '**Click ✅ Verify below to get started!**'
+      )
+      .setColor(0xEDC231)
+      .setThumbnail(interaction.guild.iconURL())
+      .setFooter({ text: 'ZENITSU LIVE Verification' })
+      .setTimestamp();
+
+    const verifyRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('verify_member')
+        .setLabel('✅ Verify & Get Access')
+        .setStyle(ButtonStyle.Success)
+    );
+
+    const targetCh = interaction.options.getChannel('channel') || interaction.channel;
+    await targetCh.send({ embeds: [verifyEmbed], components: [verifyRow] });
+    await interaction.reply({ content: `✅ Verification Panel posted in <#${targetCh.id}>`, ephemeral: true });
   }
 }
 

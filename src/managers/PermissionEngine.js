@@ -53,6 +53,7 @@ class PermissionEngine {
       'unban': { tier: 'ADMIN', capability: 'MODERATION_EXECUTE' },
       'role': { tier: 'ADMIN', capability: 'ROLE_ASSIGN' },
       'setup-panel': { tier: 'ADMIN', capability: 'TICKET_CONFIG' },
+      'setup-verify': { tier: 'ADMIN', capability: 'TICKET_CONFIG' },
       'embed': { tier: 'ADMIN', capability: 'EMBED_MANAGE' },
       'ai-embed': { tier: 'ADMIN', capability: 'EMBED_MANAGE' },
       'clear-channel': { tier: 'ADMIN', capability: 'EMBED_MANAGE' },

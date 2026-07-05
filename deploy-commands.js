@@ -20,7 +20,19 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('setup-panel')
-    .setDescription('Deploys the basic panel interface to the configured channel'),
+    .setDescription('Deploys the basic control panel interface')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Channel to deploy the control panel (defaults to current channel)')
+        .setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName('setup-verify')
+    .setDescription('Deploys the verification panel interface')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Channel to deploy the verification panel (defaults to current channel)')
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('play')
@@ -544,6 +556,7 @@ const PERMISSION_GATES = {
   'ai-model':         PermissionFlagsBits.ManageGuild,
   'security':         PermissionFlagsBits.ManageGuild,
   'setup-panel':      PermissionFlagsBits.ManageGuild,
+  'setup-verify':     PermissionFlagsBits.ManageGuild,
   'setup':            PermissionFlagsBits.ManageGuild,
   'whitelist':        PermissionFlagsBits.Administrator,
   'whitelist-role':   PermissionFlagsBits.Administrator,
