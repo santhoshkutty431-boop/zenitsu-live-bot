@@ -2299,6 +2299,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     else if (['ticket_purchase', 'ticket_support', 'ticket_bug', 'ticket_ai'].includes(customId)) {
       await interaction.deferReply({ ephemeral: true });
 
+      if (!db.activeTickets) db.activeTickets = {};
       const existing = db.activeTickets[interaction.user.id];
       if (existing && interaction.guild.channels.cache.get(existing))
         return interaction.editReply({ content: `You already have an open ticket: <#${existing}>` });
@@ -2418,9 +2419,13 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     // Close Ticket
     else if (customId === 'ticket_close') {
       await interaction.reply({ content: '🔒 Closing ticket in 5 seconds...', ephemeral: false });
+      if (!db.activeTickets) db.activeTickets = {};
       for (const [uid, chanId] of Object.entries(db.activeTickets)) {
         if (chanId === interaction.channel.id) { delete db.activeTickets[uid]; saveDb(); break; }
       }
+      // Clean up AI-ticket tracking too so it doesn't leak
+      if (db.aiTickets) { delete db.aiTickets[interaction.channel.id]; saveDb(); }
+      if (db.aiAnsweredTickets) { delete db.aiAnsweredTickets[interaction.channel.id]; saveDb(); }
       const closeLog = new EmbedBuilder()
         .setTitle('🔒 Ticket Closed')
         .setDescription(`**Channel:** ${interaction.channel.name}\n**Closed by:** ${interaction.user}`)
