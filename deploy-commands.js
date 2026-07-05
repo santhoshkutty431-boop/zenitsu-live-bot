@@ -603,16 +603,21 @@ const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_t
       return;
     }
 
-    // Deploy guild-specific commands for instant update
+    // 1. GLOBAL deploy — makes commands available on EVERY server the bot is
+    //    in (required for multi-server). Propagation can take up to ~1 hour.
+    const globalData = await rest.put(
+      Routes.applicationCommands(config.clientId),
+      { body: commandsJson },
+    );
+    console.log(`Successfully reloaded ${globalData.length} GLOBAL application (/) commands (all servers).`);
+
+    // 2. GUILD deploy — instant update on the main server for fast iteration.
     if (config.guildId) {
-      console.log(`Deploying commands directly to guild: ${config.guildId}`);
       const data = await rest.put(
         Routes.applicationGuildCommands(config.clientId, config.guildId),
         { body: commandsJson },
       );
-      console.log(`Successfully reloaded ${data.length} guild-specific application (/) commands.`);
-    } else {
-      console.log('No guildId configured, skipping guild deploy.');
+      console.log(`Also reloaded ${data.length} commands on main guild ${config.guildId} (instant).`);
     }
   } catch (error) {
     console.error(error);
