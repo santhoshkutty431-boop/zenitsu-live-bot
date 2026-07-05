@@ -48,10 +48,21 @@ function setupHome(app, ctx) {
     const analytics = client.runtime.getService('AnalyticsManager');
     const stats = analytics ? analytics.getStats() : { joins: 0, ticketsOpened: 0, spamBlocked: 0, commands: {} };
 
-    const securityScore = db.protectmeActive ? 95 : 60;
-    const configScore = db.serverWhitelist && db.serverWhitelist.length > 0 ? 97 : 70;
-    const ticketScore = db.activeTickets && Object.keys(db.activeTickets).length > 0 ? 92 : 80;
-    const modScore = db.cases && db.cases.length > 0 ? 88 : 75;
+    // Health scores use GUILD-scoped keys. Express routes run outside the
+    // Discord-event AsyncLocalStorage context, so reading them through the
+    // `db` proxy here would silently hit global config (always defaults).
+    // Resolve the main guild's db explicitly instead.
+    const mainGuildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
+    let gdb = {};
+    try {
+      const dbMgr = client.runtime?.getService('DatabaseManager');
+      if (dbMgr && mainGuildId) gdb = dbMgr.getGuildDb(mainGuildId);
+    } catch { /* fall back to defaults below */ }
+
+    const securityScore = gdb.protectmeActive ? 95 : 60;
+    const configScore = db.serverWhitelist && db.serverWhitelist.length > 0 ? 97 : 70; // global-only key: proxy routes correctly
+    const ticketScore = gdb.activeTickets && Object.keys(gdb.activeTickets).length > 0 ? 92 : 80;
+    const modScore = gdb.cases && gdb.cases.length > 0 ? 88 : 75;
     const performanceScore = 90;
     const overallScore = Math.round((securityScore + configScore + ticketScore + modScore + performanceScore) / 5);
 
