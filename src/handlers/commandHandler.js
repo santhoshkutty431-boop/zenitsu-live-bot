@@ -1594,7 +1594,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Server Owner** can modify the bot whitelist.', ephemeral: true });
 
       await interaction.deferUpdate();
-      const targetUser = interaction.users.first();
+      const targetUserId = interaction.values[0];
+      const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
       if (!targetUser) return;
 
       db.guildWhitelists = db.guildWhitelists || {};
@@ -1622,7 +1623,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
 
       await interaction.deferUpdate();
-      const targetRole = interaction.roles.first();
+      const targetRoleId = interaction.values[0];
+      const targetRole = interaction.guild.roles.cache.get(targetRoleId);
       if (!targetRole) return;
 
       db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
