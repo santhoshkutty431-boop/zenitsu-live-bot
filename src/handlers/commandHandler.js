@@ -2331,14 +2331,28 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const ticketEmbed = new EmbedBuilder()
         .setTitle(t.title)
-        .setDescription(t.desc)
+        .setDescription(t.desc + '\n\n⚠️ **Notice:** To keep the server clean, this ticket channel will be automatically deleted **48 hours** after the last message or if it remains inactive.')
         .setColor(t.color)
-        .setFooter({ text: `Ticket: ${ticketCh.name}` })
+        .setFooter({ text: `Ticket: ${ticketCh.name} | Auto-delete policy active` })
         .setTimestamp();
       const closeRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger)
       );
       await ticketCh.send({ content: t.ping, embeds: [ticketEmbed], components: [closeRow] });
+
+      // DM the user to notify them that the ticket is open
+      const userDmEmbed = new EmbedBuilder()
+        .setTitle(`🎫 Ticket Opened — #${ticketCh.name}`)
+        .setDescription(
+          `Hello **${interaction.user.username}**!\n\n` +
+          `Your support ticket has been successfully created: <#${ticketCh.id}>.\n\n` +
+          `⚠️ **Important:** To keep the server clean, this ticket channel will be automatically deleted **48 hours** after it remains inactive.`
+        )
+        .setColor(t.color)
+        .setTimestamp();
+      await interaction.user.send({ embeds: [userDmEmbed] }).catch(() => {
+        console.log(`Failed to send DM to ${interaction.user.tag} (DMs closed)`);
+      });
 
       // Language selection buttons
       const langEmbed = new EmbedBuilder()

@@ -92,6 +92,58 @@ function startAutoPunishScheduler(client, db, saveDb, logToChannel, ID) {
             await processExpiredCase(client, db, saveDb, logToChannel, ID, c);
           }
         }
+
+        // Clean up inactive tickets (inactive for 48 hours)
+        try {
+          const activeTickets = db.activeTickets || {};
+          const fortyEightHoursAgo = Date.now() - (48 * 60 * 60 * 1000);
+          
+          for (const [userId, channelId] of Object.entries(activeTickets)) {
+            let channel = guild.channels.cache.get(channelId);
+            if (!channel) {
+              try {
+                channel = await guild.channels.fetch(channelId);
+              } catch {
+                // Channel deleted manually, clean up entry
+                delete db.activeTickets[userId];
+                saveDb();
+                continue;
+              }
+            }
+            
+            if (channel && channel.isTextBased()) {
+              try {
+                const messages = await channel.messages.fetch({ limit: 1 });
+                const lastMsg = messages.first();
+                const lastActiveTime = lastMsg ? lastMsg.createdTimestamp : channel.createdTimestamp;
+                
+                if (lastActiveTime < fortyEightHoursAgo) {
+                  console.log(`[AutoDelete] Deleting inactive ticket channel ${channel.name} (${channelId}) in guild ${guild.name}`);
+                  
+                  // Send a DM to the user before deleting if possible
+                  const user = await client.users.fetch(userId).catch(() => null);
+                  if (user) {
+                    await user.send(`⚠️ Your ticket channel **#${channel.name}** in **${guild.name}** was automatically deleted due to 48 hours of inactivity.`).catch(() => {});
+                  }
+                  
+                  const logEmbed = new EmbedBuilder()
+                    .setTitle('🗑️ Ticket Auto-Deleted')
+                    .setDescription(`**Channel:** ${channel.name}\n**Reason:** 48 hours of inactivity\n**Owner:** <@${userId}>`)
+                    .setColor(0x95A5A6).setTimestamp();
+                  await logToChannel(guild, ID.SERVER_LOGS, logEmbed);
+                  
+                  await channel.delete('Ticket auto-delete due to 48 hours of inactivity').catch(() => {});
+                  delete db.activeTickets[userId];
+                  saveDb();
+                }
+              } catch (err) {
+                console.error(`[AutoDelete] Error checking inactivity for channel ${channelId}:`, err.message);
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`[AutoDelete] Ticket cleanup error in guild ${guild.name}:`, e.message);
+        }
       });
     }
   };
