@@ -7,6 +7,7 @@ try {
   console.warn('[FFMPEG] Failed to load static ffmpeg binary:', e.message);
 }
 
+// Trigger Redeploy: 2026-07-05 17:07
 const { 
   Client, 
   GatewayIntentBits, 
