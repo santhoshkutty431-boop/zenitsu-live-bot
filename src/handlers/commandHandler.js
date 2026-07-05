@@ -1875,7 +1875,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
             { name: 'Audit ID', value: `\`${auditId}\`` },
             { name: 'Action', value: 'Updated Whitelisted Role Tier (Interactive)' },
             { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
-            { name: 'Target Role ID', value: `\`${roleId}\`` },
+            { name: 'Target Role', value: `<@&${roleId}>` },
             { name: 'New Tier', value: `\`${newTier.toUpperCase()}\`` },
             { name: 'Old Tier', value: `\`${currentTier.toUpperCase()}\`` },
             { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
@@ -1944,7 +1944,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           { name: 'Audit ID', value: `\`${auditId}\`` },
           { name: 'Action', value: 'Updated Whitelisted Role Capabilities (Interactive)' },
           { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
-          { name: 'Target Role ID', value: `\`${roleId}\`` },
+          { name: 'Target Role', value: `<@&${roleId}>` },
           { name: 'Capabilities (New)', value: selectedCaps.length ? selectedCaps.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
           { name: 'Capabilities (Prev)', value: previousState.length ? previousState.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
           { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
@@ -2057,7 +2057,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           { name: 'Audit ID', value: `\`${auditId}\`` },
           { name: 'Action', value: 'Removed Whitelisted Role (Interactive)' },
           { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
-          { name: 'Target Role ID', value: `\`${roleId}\`` },
+          { name: 'Target Role', value: `<@&${roleId}>` },
           { name: 'Revoked Tier', value: `\`${tier.toUpperCase()}\`` },
           { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
         )
