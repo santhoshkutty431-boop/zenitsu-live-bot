@@ -341,8 +341,8 @@ async function handleAiDraw(interaction) {
     .setTimestamp();
 
   await interaction.editReply({ embeds: [embed] }).catch(async () => {
-    // Failback
-    await interaction.editReply({ content: '❌ Image generation failed. Please try a different prompt.' });
+    // Failback — never let the failback itself produce an unhandled rejection
+    await interaction.editReply({ content: '❌ Image generation failed. Please try a different prompt.' }).catch(() => {});
   });
 }
 

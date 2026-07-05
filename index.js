@@ -315,12 +315,40 @@ runtime.bootstrap().then(() => {
   );
 
   client.on('interactionCreate', async interaction => {
+    // ── GLOBAL INTERACTION WATCHDOG ────────────────────────────────────────
+    // Every slash command / button / select flows through here. If ANY
+    // handler defers the reply and then hangs (provider stall, deadlock,
+    // future bug), the user would otherwise sit on "Sentinel Security is
+    // thinking..." until Discord's 15-minute cutoff. This watchdog
+    // guarantees a visible answer within 30 seconds no matter what.
+    const watchdog = setTimeout(() => {
+      if (interaction.deferred && !interaction.replied) {
+        const cmdName = interaction.commandName || interaction.customId || 'interaction';
+        log.error(`Watchdog: handler for "${cmdName}" hung >30s — replying with timeout notice`, {
+          user: interaction.user?.id, guild: interaction.guildId
+        });
+        interaction.editReply({
+          content: '⏳ This took too long and timed out. Please try again — if it keeps happening, contact staff.'
+        }).catch(() => {});
+      }
+    }, 30_000);
+
     try {
       await commandHandler.handleInteraction(
         interaction, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, client, staffCheck, isOwner, getOrCreateRole
       );
     } catch (err) {
       log.error('Interaction handler error', { error: err.message, stack: err.stack });
+      // Best-effort user-visible error instead of a silent failure
+      try {
+        if (interaction.deferred && !interaction.replied) {
+          await interaction.editReply({ content: `❌ Something went wrong: ${err.message}` }).catch(() => {});
+        } else if (!interaction.replied && typeof interaction.reply === 'function' && interaction.isRepliable?.()) {
+          await interaction.reply({ content: `❌ Something went wrong: ${err.message}`, ephemeral: true }).catch(() => {});
+        }
+      } catch { /* interaction already dead */ }
+    } finally {
+      clearTimeout(watchdog);
     }
   });
 
