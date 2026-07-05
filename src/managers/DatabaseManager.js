@@ -78,7 +78,7 @@ const DEFAULT_GUILD = {
   roleCapabilities: {},
   warnings: {}
 };
-// Schema version: 2026-07-05-v2 (commandRoleWhitelist added to DEFAULT_GUILD)
+// Schema version: 2026-07-05-v3 (trigger redeploy after clean hf database push)
 
 class DatabaseManager {
   constructor(runtime) {
