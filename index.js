@@ -1,8 +1,3 @@
-if (process.env.KOYEB_APP_NAME || process.env.KOYEB_SERVICE_NAME || process.env.KOYEB) {
-  console.log('Detected Koyeb deployment. This bot has been migrated to Render. Exiting immediately to prevent duplicate bot instance conflicts...');
-  process.exit(0);
-}
-
 try {
   const ffmpegPath = require('ffmpeg-static');
   if (ffmpegPath) {
@@ -412,8 +407,9 @@ runtime.bootstrap().then(() => {
   });
 
   // Connect to Discord
-  if (process.env.SPACE_ID) {
-    log.info('🤖 Running on Hugging Face Space. Skipping Discord Bot login to prevent duplicate instances.');
+  const isKoyeb = !!(process.env.KOYEB || process.env.KOYEB_APP_NAME || process.env.KOYEB_SERVICE_NAME);
+  if (process.env.SPACE_ID || isKoyeb) {
+    log.info('🤖 Running on Hugging Face Space or Koyeb. Skipping Discord Bot login to prevent duplicate instances.');
   } else {
     client.login(config.token).catch(err => {
       log.error('Discord client login failed', { error: err.message });
