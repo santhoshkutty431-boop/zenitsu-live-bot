@@ -540,7 +540,11 @@ class DatabaseManager {
   // ─── Cloud Sync (Binary Replication of zenitsu.db) ──────────────────────────
 
   scheduleSync() {
-    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    if (process.env.SPACE_ID) {
+      this.logger.debug('Running on Hugging Face Space. Cloud write/sync disabled to prevent database conflicts.');
+      return;
+    }
+    const isCloud = !!(process.env.RENDER);
     const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     if (!isSyncEnabled) return;
     if (this.syncTimer) return;
@@ -551,7 +555,11 @@ class DatabaseManager {
   }
 
   async flushToHf() {
-    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    if (process.env.SPACE_ID) {
+      this.logger.debug('Running on Hugging Face Space. Cloud write/sync disabled to prevent database conflicts.');
+      return;
+    }
+    const isCloud = !!(process.env.RENDER);
     const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     if (!isSyncEnabled) return;
 
