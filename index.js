@@ -407,9 +407,13 @@ runtime.bootstrap().then(() => {
   });
 
   // Connect to Discord
-  client.login(config.token).catch(err => {
-    log.error('Discord client login failed', { error: err.message });
-  });
+  if (process.env.SPACE_ID) {
+    log.info('🤖 Running on Hugging Face Space. Skipping Discord Bot login to prevent duplicate instances.');
+  } else {
+    client.login(config.token).catch(err => {
+      log.error('Discord client login failed', { error: err.message });
+    });
+  }
 }).catch(err => {
   // Runtime not yet available — fall back to console
   console.error('[RUNTIME BOOTSTRAP ERROR]', err);
