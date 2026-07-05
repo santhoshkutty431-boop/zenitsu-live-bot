@@ -106,59 +106,68 @@ class ModerationPlugin {
     return deleted.size;
   }
 
-  // Command handlers
+  // Command handlers.
+  // IMPORTANT: defer FIRST. Each of these does 2-3 network round-trips
+  // (member fetch → moderation action → mod-log send) before answering;
+  // on cold caches that blows Discord's 3-second interaction window and
+  // the user sees "The application did not respond" — i.e. "moderation
+  // is broken" — even though the action actually succeeded.
   async handleWarn(interaction) {
+    await interaction.deferReply();
     try {
       const target = interaction.options.getUser('user');
       const reason = interaction.options.getString('reason') || 'No reason provided';
       const caseData = await this.directWarn(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
       const embed = formatCaseEmbed(caseData);
+      await interaction.editReply({ embeds: [embed] });
       await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', embed);
-      await interaction.reply({ embeds: [embed] });
     } catch (err) {
-      await interaction.reply({ content: `❌ Failed to warn user: ${err.message}`, ephemeral: true }).catch(() => {});
+      await interaction.editReply({ content: `❌ Failed to warn user: ${err.message}` }).catch(() => {});
     }
   }
 
   async handleKick(interaction) {
+    await interaction.deferReply();
     try {
       const target = interaction.options.getUser('user');
       const reason = interaction.options.getString('reason') || 'No reason provided';
       const caseData = await this.directKick(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
       const embed = formatCaseEmbed(caseData);
+      await interaction.editReply({ embeds: [embed] });
       await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', embed);
-      await interaction.reply({ embeds: [embed] });
     } catch (err) {
-      await interaction.reply({ content: `❌ Failed to kick member: ${err.message}`, ephemeral: true }).catch(() => {});
+      await interaction.editReply({ content: `❌ Failed to kick member: ${err.message}` }).catch(() => {});
     }
   }
 
   async handleBan(interaction) {
+    await interaction.deferReply();
     try {
       const target = interaction.options.getUser('user');
       const reason = interaction.options.getString('reason') || 'No reason provided';
       const caseData = await this.directBan(interaction.guild, target.id, interaction.user.id, interaction.user.tag, reason);
       const embed = formatCaseEmbed(caseData);
+      await interaction.editReply({ embeds: [embed] });
       await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', embed);
-      await interaction.reply({ embeds: [embed] });
     } catch (err) {
-      await interaction.reply({ content: `❌ Failed to ban user: ${err.message}`, ephemeral: true }).catch(() => {});
+      await interaction.editReply({ content: `❌ Failed to ban user: ${err.message}` }).catch(() => {});
     }
   }
 
   async handlePurge(interaction) {
+    await interaction.deferReply({ ephemeral: true });
     try {
       const count = interaction.options.getInteger('amount') || 50;
       const deletedCount = await this.directPurge(interaction.channel, count);
+      await interaction.editReply({ content: `🧹 Successfully purged ${deletedCount} messages.` });
       const logEmbed = new EmbedBuilder()
         .setTitle('🗑️ Messages Purged')
         .setDescription(`**Channel:** ${interaction.channel}\n**Count:** ${deletedCount}\n**By:** ${interaction.user}`)
         .setColor(0xE74C3C)
         .setTimestamp();
       await logToChannel(interaction.guild, process.env.MOD_LOG_ID || '1521577060689248519', logEmbed);
-      await interaction.reply({ content: `🧹 Successfully purged ${deletedCount} messages.`, ephemeral: true });
     } catch (err) {
-      await interaction.reply({ content: `❌ Failed to purge messages: ${err.message}`, ephemeral: true }).catch(() => {});
+      await interaction.editReply({ content: `❌ Failed to purge messages: ${err.message}` }).catch(() => {});
     }
   }
 }
