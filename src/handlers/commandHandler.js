@@ -49,13 +49,15 @@ function xpForLevel(lvl) { return lvl * lvl * 100; }
 
 let runtimeInstance = null;
 const getInstanceName = () => {
-  if (process.env.SPACE_ID) return 'Hugging Face Space';
+  const dbMode = process.env.DB_MODE || 'READ_ONLY';
+  if (process.env.SPACE_ID) return `Hugging Face Space (Mode: ${dbMode})`;
   const isKoyeb = !!(process.env.KOYEB || process.env.KOYEB_APP_NAME || process.env.KOYEB_SERVICE_NAME);
-  if (isKoyeb) return 'Koyeb (Legacy)';
+  if (isKoyeb) return `Koyeb Legacy (Mode: ${dbMode})`;
   if (process.env.RENDER) {
-    return process.env.IS_PRIMARY_INSTANCE === 'true' ? 'Render (Primary Writer)' : 'Render (Read-Only)';
+    const primaryStr = process.env.IS_PRIMARY_INSTANCE === 'true' ? 'Primary Writer' : 'Read-Only';
+    return `Render (${primaryStr} - Mode: ${dbMode})`;
   }
-  return 'Local/Other';
+  return `Local/Other (Mode: ${dbMode})`;
 };
 const loadDb = () => {};
 const saveDb = () => {
