@@ -573,7 +573,7 @@ class MusicPlugin {
       return interaction.reply({ content: '❌ You must be in a voice channel to play music!', ephemeral: true });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ ephemeral: false });
 
     try {
       const track = await this.resolveTrack(query);
@@ -623,7 +623,7 @@ class MusicPlugin {
       return interaction.reply({ content: '❌ You must be in a voice channel to play music!', ephemeral: true });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ ephemeral: false });
 
     try {
       const track = await this.resolveTrack(query);
@@ -670,7 +670,7 @@ class MusicPlugin {
     }
 
     const { embed, components } = makeControllerEmbedAndButtons(playerState);
-    await interaction.reply({ embeds: [embed], components, ephemeral: true });
+    await interaction.reply({ embeds: [embed], components, ephemeral: false });
   }
 
   async handlePause(interaction) {
@@ -714,7 +714,7 @@ class MusicPlugin {
       .setColor(0xEDC231)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], ephemeral: false });
   }
 
   async handleSetup(interaction) {
