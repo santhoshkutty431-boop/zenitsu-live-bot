@@ -202,19 +202,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('whitelist')
-    .setDescription('Manage the whitelisted users and their capabilities')
-    .addSubcommand(subcommand =>
-      subcommand.setName('add')
-        .setDescription('Add a user to the whitelist with optional capabilities')
-        .addUserOption(option => option.setName('user').setDescription('The user to whitelist').setRequired(true))
-        .addStringOption(option => option.setName('capabilities').setDescription('Comma-separated list: AI_CONFIG, SECURITY_CONFIG, ROLE_ASSIGN, MODERATION_EXECUTE, etc.').setRequired(false)))
-    .addSubcommand(subcommand =>
-      subcommand.setName('remove')
-        .setDescription('Remove a user from the whitelist')
-        .addUserOption(option => option.setName('user').setDescription('The user to remove').setRequired(true)))
-    .addSubcommand(subcommand =>
-      subcommand.setName('list')
-        .setDescription('List all whitelisted users')),
+    .setDescription('Manage the whitelisted users and their capabilities'),
 
   new SlashCommandBuilder()
     .setName('warn')
@@ -393,18 +381,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('whitelist-server')
-    .setDescription('Manage which servers are allowed to use this bot (Owner only)')
-    .addSubcommand(s => s
-      .setName('add')
-      .setDescription('Allow a server to use the bot')
-      .addStringOption(o => o.setName('server_id').setDescription('Server (Guild) ID to whitelist').setRequired(true)))
-    .addSubcommand(s => s
-      .setName('remove')
-      .setDescription('Remove a server from the whitelist')
-      .addStringOption(o => o.setName('server_id').setDescription('Server (Guild) ID to remove').setRequired(true)))
-    .addSubcommand(s => s
-      .setName('list')
-      .setDescription('Show all whitelisted servers')),
+    .setDescription('Manage which servers are allowed to use this bot (Owner only)'),
 
   // ══════════════════════════════════════════════════════════════════════════
   //  AI EMBED ASSISTANT
@@ -436,31 +413,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('whitelist-role')
-    .setDescription('Manage whitelisted roles for bot commands (Admin only)')
-    .addSubcommand(s => s
-      .setName('add')
-      .setDescription('Add a role to a command tier whitelist')
-      .addRoleOption(o => o.setName('role').setDescription('The role to whitelist').setRequired(true))
-      .addStringOption(o => o.setName('tier').setDescription('The command tier').setRequired(true)
-        .addChoices(
-          { name: '🛠️ Admin Commands', value: 'admin' },
-          { name: '👮 Staff Commands', value: 'staff' },
-          { name: '👥 Normal Member Commands', value: 'member' }
-        ))
-      .addStringOption(o => o.setName('capabilities').setDescription('Optional capabilities for the role: ROLE_ASSIGN, SECURITY_CONFIG, AI_CONFIG').setRequired(false)))
-    .addSubcommand(s => s
-      .setName('remove')
-      .setDescription('Remove a role from a command tier whitelist')
-      .addRoleOption(o => o.setName('role').setDescription('The role to remove').setRequired(true))
-      .addStringOption(o => o.setName('tier').setDescription('The command tier').setRequired(true)
-        .addChoices(
-          { name: '🛠️ Admin Commands', value: 'admin' },
-          { name: '👮 Staff Commands', value: 'staff' },
-          { name: '👥 Normal Member Commands', value: 'member' }
-        )))
-    .addSubcommand(s => s
-      .setName('list')
-      .setDescription('Show all whitelisted roles for each command tier')),
+    .setDescription('Manage whitelisted roles for bot commands (Admin only)'),
 
   new SlashCommandBuilder()
     .setName('owner-help')
