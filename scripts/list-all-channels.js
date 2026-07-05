@@ -5,7 +5,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  const guild = client.guilds.cache.get(config.guildId);
+  const guild = client.guilds.cache.get('1444533392518680719');
   if (!guild) { console.log('Guild not found'); process.exit(1); }
 
   console.log('\n--- Channels ---');

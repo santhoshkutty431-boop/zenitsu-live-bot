@@ -28,7 +28,6 @@ const {
 const fs   = require('fs');
 const path = require('path');
 const http = require('http');
-const { AsyncLocalStorage } = require('async_hooks');
 
 // ─── DASHBOARD SERVER SETUP ──────────────────────────────────────────────────
 const { startDashboardServer } = require('./dashboard');
@@ -82,39 +81,39 @@ const client = new Client({
   ]
 });
 
-// Intercept client.on and client.once to automatically propagate guild context
-const asyncLocalStorage = global.asyncLocalStorage || new AsyncLocalStorage();
+// Intercept client.on and client.once to automatically propagate guild context.
+//
+// CRITICAL: the store MUST be resolved at EMIT time, not at file-load time.
+// DatabaseManager (required further down) creates the canonical
+// AsyncLocalStorage instance and assigns it to global.asyncLocalStorage.
+// If we captured `global.asyncLocalStorage || new AsyncLocalStorage()` here,
+// we'd capture our own orphan instance (DatabaseManager isn't loaded yet),
+// and every event's guildId would be written to a store the DB proxy never
+// reads — silently routing ALL guild data to global config. That exact bug
+// broke XP/cases/whitelists after the SQLite migration.
+const extractGuildId = (args) => {
+  const firstArg = args[0];
+  if (!firstArg) return null;
+  if (firstArg.guild) return firstArg.guild.id;
+  if (firstArg.guildId) return firstArg.guildId;
+  if (firstArg.message) return firstArg.message.guild?.id ?? null;
+  return null;
+};
+
+const runInGuildContext = (args, listener) => {
+  const store = global.asyncLocalStorage; // canonical instance from DatabaseManager
+  if (!store) return listener(...args);
+  return store.run({ guildId: extractGuildId(args) }, () => listener(...args));
+};
 
 const originalOn = client.on;
 client.on = function(event, listener) {
-  return originalOn.call(this, event, (...args) => {
-    let guildId = null;
-    const firstArg = args[0];
-    if (firstArg) {
-      if (firstArg.guild) guildId = firstArg.guild.id;
-      else if (firstArg.guildId) guildId = firstArg.guildId;
-      else if (firstArg.message) guildId = firstArg.message.guild?.id;
-    }
-    return asyncLocalStorage.run({ guildId }, () => {
-      return listener(...args);
-    });
-  });
+  return originalOn.call(this, event, (...args) => runInGuildContext(args, listener));
 };
 
 const originalOnce = client.once;
 client.once = function(event, listener) {
-  return originalOnce.call(this, event, (...args) => {
-    let guildId = null;
-    const firstArg = args[0];
-    if (firstArg) {
-      if (firstArg.guild) guildId = firstArg.guild.id;
-      else if (firstArg.guildId) guildId = firstArg.guildId;
-      else if (firstArg.message) guildId = firstArg.message.guild?.id;
-    }
-    return asyncLocalStorage.run({ guildId }, () => {
-      return listener(...args);
-    });
-  });
+  return originalOnce.call(this, event, (...args) => runInGuildContext(args, listener));
 };
 
 // v4.0 CORE RUNTIME SETUP
