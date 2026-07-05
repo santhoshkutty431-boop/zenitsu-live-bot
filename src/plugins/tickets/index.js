@@ -10,8 +10,8 @@ class TicketPlugin {
 
   async onLoad() {
     this.logger.info('Loading Tickets Plugin...');
-    this.router.registerCommand('setup-panel', (i) => this.handleSetupPanel(i));
-    this.router.registerCommand('setup-verify', (i) => this.handleSetupVerify(i));
+    this.router.registerCommand('setup-ticket-channel', (i) => this.handleSetupPanel(i));
+    this.router.registerCommand('setup-welcome-channel', (i) => this.handleSetupVerify(i));
   }
 
   async onUnload() {

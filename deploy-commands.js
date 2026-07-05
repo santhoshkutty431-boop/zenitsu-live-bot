@@ -19,19 +19,19 @@ const commands = [
     .setDescription('Exposes live bot status for diagnostics and checks'),
 
   new SlashCommandBuilder()
-    .setName('setup-panel')
-    .setDescription('Deploys the basic control panel interface')
+    .setName('setup-ticket-channel')
+    .setDescription('Deploys the support ticket control panel interface')
     .addChannelOption(option =>
       option.setName('channel')
-        .setDescription('Channel to deploy the control panel (defaults to current channel)')
+        .setDescription('Channel to deploy the ticket panel (defaults to current channel)')
         .setRequired(false)),
 
   new SlashCommandBuilder()
-    .setName('setup-verify')
-    .setDescription('Deploys the verification panel interface')
+    .setName('setup-welcome-channel')
+    .setDescription('Deploys the welcome verification panel interface')
     .addChannelOption(option =>
       option.setName('channel')
-        .setDescription('Channel to deploy the verification panel (defaults to current channel)')
+        .setDescription('Channel to deploy the welcome verification panel (defaults to current channel)')
         .setRequired(false)),
 
   new SlashCommandBuilder()
@@ -555,8 +555,8 @@ const PERMISSION_GATES = {
   'ai-channel':       PermissionFlagsBits.ManageGuild,
   'ai-model':         PermissionFlagsBits.ManageGuild,
   'security':         PermissionFlagsBits.ManageGuild,
-  'setup-panel':      PermissionFlagsBits.ManageGuild,
-  'setup-verify':     PermissionFlagsBits.ManageGuild,
+  'setup-ticket-channel':  PermissionFlagsBits.ManageGuild,
+  'setup-welcome-channel': PermissionFlagsBits.ManageGuild,
   'setup':            PermissionFlagsBits.ManageGuild,
   'whitelist':        PermissionFlagsBits.Administrator,
   'whitelist-role':   PermissionFlagsBits.Administrator,
