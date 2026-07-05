@@ -897,6 +897,50 @@ client.on('guildCreate', async guild => {
     console.error('Error sending welcome DM to server owner:', err.message);
   }
 });
+
+  // guildMemberUpdate event handler: DM users when given a whitelisted role later
+  client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    // Find roles that were added
+    const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+    if (addedRoles.size === 0) return;
+
+    const guildId = newMember.guild.id;
+    const dbMgr = runtimeInstance?.getService('DatabaseManager');
+    if (!dbMgr) return;
+    const guildDb = dbMgr.getGuildDb(guildId);
+    if (!guildDb || !guildDb.commandRoleWhitelist) return;
+
+    const getRoleTier = (roleId) => {
+      for (const [tier, roles] of Object.entries(guildDb.commandRoleWhitelist)) {
+        if (Array.isArray(roles) && roles.includes(roleId)) return tier;
+      }
+      return null;
+    };
+
+    for (const [roleId, role] of addedRoles) {
+      const tier = getRoleTier(roleId);
+      if (tier) {
+        const capabilities = guildDb.roleCapabilities?.[roleId] || [];
+        const dmEmbed = new EmbedBuilder()
+          .setTitle('🔐 You Have Been Whitelisted')
+          .setDescription(`You have been granted command permissions in **${newMember.guild.name}** because you were assigned the **${role.name}** role!`)
+          .addFields(
+            { name: '🛡️ Role', value: `${role.name}`, inline: true },
+            { name: '🔑 Command Tier', value: `\`${tier.toUpperCase()}\``, inline: true }
+          )
+          .setColor(0x2ECC71)
+          .setTimestamp();
+
+        if (capabilities.length > 0) {
+          dmEmbed.addFields({ name: '🔑 Capabilities', value: capabilities.map(c => `• ${c}`).join('\n') });
+        }
+
+        await newMember.send({ embeds: [dmEmbed] }).catch(() => {
+          console.log(`Failed to DM user ${newMember.user.tag} (DMs closed)`);
+        });
+      }
+    }
+  });
 }
 
 module.exports = { registerEvents, getLanguageSelectorEmbed, logToReports, logAiAnalytics, logToChannel };

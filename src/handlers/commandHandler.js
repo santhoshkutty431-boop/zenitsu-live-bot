@@ -559,6 +559,32 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         saveDb();
         invalidatePermCache(guildId);
 
+        // Notify all current role members via DM
+        try {
+          const members = await interaction.guild.members.fetch();
+          const roleMembers = members.filter(m => m.roles.cache.has(role.id));
+          const dmEmbed = new EmbedBuilder()
+            .setTitle('🔐 You Have Been Whitelisted')
+            .setDescription(`You have been granted command permissions in **${interaction.guild.name}** because you hold the **${role.name}** role!`)
+            .addFields(
+              { name: '🛡️ Role', value: `${role.name}`, inline: true },
+              { name: '🔑 Command Tier', value: `\`${tier.toUpperCase()}\``, inline: true }
+            )
+            .setColor(0x2ECC71)
+            .setTimestamp();
+
+          if (capabilities.length > 0) {
+            dmEmbed.addFields({ name: '🔑 Capabilities', value: capabilities.map(c => `• ${CAPABILITY_LABELS[c] || c || c}`).join('\n') });
+          }
+            
+          for (const [memberId, member] of roleMembers) {
+            if (member.user.bot) continue;
+            await member.send({ embeds: [dmEmbed] }).catch(() => {});
+          }
+        } catch (err) {
+          console.error('Failed to DM current role members:', err);
+        }
+
         const auditId = generateAuditId();
 
         const auditLogEmbed = new EmbedBuilder()
