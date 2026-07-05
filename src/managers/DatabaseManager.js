@@ -373,6 +373,10 @@ Reason:            ${reason}
   }
 
   isDatabaseWriter() {
+    // Force Hugging Face Space instance to always be READ_ONLY to prevent clobbering primary Render database
+    if (process.env.SPACE_ID) {
+      return false;
+    }
     // Fail-safe: Default DB_MODE to READ_ONLY if not explicitly specified.
     // Both DB_MODE === 'READ_WRITE' and IS_PRIMARY_INSTANCE === 'true' are required.
     const dbMode = process.env.DB_MODE || 'READ_ONLY';
