@@ -45,11 +45,20 @@ function setupHealth(app, ctx) {
     try {
       const guildId = '1444533392518680719';
       const allRows = dbMgr.sqlDb.prepare("SELECT key, value_json FROM guild_config WHERE guild_id = ?").all(guildId);
-      const data = {};
+      const dbData = {};
       allRows.forEach(r => {
-        data[r.key] = JSON.parse(r.value_json);
+        dbData[r.key] = JSON.parse(r.value_json);
       });
-      res.json(data);
+      res.json({
+        db: dbData,
+        idMap: client.runtime?.getService('CommandRouter')?.idMap || {}, // Fallback reference if exists
+        processEnvLogIds: {
+          SERVER_LOGS_ID: process.env.SERVER_LOGS_ID,
+          VOICE_LOG_ID: process.env.VOICE_LOG_ID,
+          MOD_LOG_ID: process.env.MOD_LOG_ID,
+          MESSAGE_LOG_ID: process.env.MESSAGE_LOG_ID
+        }
+      });
     } catch (err) {
       res.status(500).send(`Failed to read db: ${err.message}`);
     }
