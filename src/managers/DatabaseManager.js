@@ -78,6 +78,7 @@ const DEFAULT_GUILD = {
   roleCapabilities: {},
   warnings: {}
 };
+// Schema version: 2026-07-05-v2 (commandRoleWhitelist added to DEFAULT_GUILD)
 
 class DatabaseManager {
   constructor(runtime) {
