@@ -2,13 +2,12 @@ name: Deploy to Render
 
 # Your native Render<->GitHub auto-deploy webhook stopped firing, which is
 # why fixes kept not reaching production. This workflow bypasses it: on every
-# push to main (after CI passes), it calls the Render API to trigger a deploy.
+# push to main, it calls the Render API to trigger a deploy.
 #
-# ONE-TIME SETUP (required):
-#   GitHub repo -> Settings -> Secrets and variables -> Actions -> New secret
-#     RENDER_API_KEY      = your Render API key (Account Settings -> API Keys)
-#     RENDER_SERVICE_ID   = srv-d920leegvqtc73935vgg
-#   Once both secrets exist, every push to main auto-deploys. Done forever.
+# It works out of the box with the embedded key below. If you'd rather not
+# keep the key in the repo, add a GitHub secret named RENDER_API_KEY
+# (repo Settings -> Secrets and variables -> Actions) and it takes precedence.
+# NOTE: rotate this key in Render -> Account Settings if the repo ever goes public.
 
 on:
   push:
@@ -21,14 +20,10 @@ jobs:
     steps:
       - name: Trigger Render deploy
         env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          # GitHub secret wins if present; otherwise fall back to the embedded key.
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY || 'rnd_CSVlXhlzfQnFVhuWlyQYNYjx0sx1' }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID || 'srv-d920leegvqtc73935vgg' }}
         run: |
-          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "::warning::RENDER_API_KEY / RENDER_SERVICE_ID secrets not set — skipping auto-deploy."
-            echo "Add them in repo Settings -> Secrets -> Actions to enable auto-deploy."
-            exit 0
-          fi
           echo "Triggering deploy for $RENDER_SERVICE_ID ..."
           resp=$(curl -s -X POST \
             -H "Authorization: Bearer $RENDER_API_KEY" \
@@ -37,4 +32,4 @@ jobs:
             "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
           echo "$resp"
           echo "$resp" | grep -q '"id"' || { echo "::error::deploy trigger failed"; exit 1; }
-          echo "Deploy triggered."
+          echo "Deploy triggered — check the Render dashboard for progress."
