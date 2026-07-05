@@ -66,6 +66,23 @@ async function sendLog(guild, channelId, embed, db) {
     if (!ch) {
       ch = await guild.channels.fetch(resolvedChannelId).catch(() => null);
     }
+    if (!ch) {
+      const title = embed.data?.title || '';
+      let targetName = 'server-logs';
+      if (title.includes('Message Deleted') || title.includes('Message Edited')) {
+        targetName = 'message-log';
+      } else if (title.includes('Voice')) {
+        targetName = 'voice-log';
+      } else if (title.includes('Incident') || title.includes('Audit') || title.includes('Banned') || title.includes('Kicked') || title.includes('Warning') || title.includes('Mute') || title.includes('Timeout') || title.includes('Whitelist Removed') || title.includes('User Successfully Whitelisted') || title.includes('Moderation') || title.includes('Roles Updated')) {
+        targetName = 'mod-log';
+      }
+      const cleanName = targetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      const foundCh = guild.channels.cache.find(c => {
+        const cClean = c.name.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        return cClean === cleanName || cClean.includes(cleanName);
+      });
+      if (foundCh) ch = foundCh;
+    }
     if (ch?.isTextBased()) {
       await ch.send({ embeds: [embed] }).catch(() => {});
     }
