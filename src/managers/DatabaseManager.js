@@ -461,7 +461,14 @@ class DatabaseManager {
 
   checkAndRecordQuery(guildId, userId) {
     const db = this.getGuildDb(guildId);
+    // Defensive: stored rows may predate the full rateLimits shape. A throw
+    // here happens BEFORE /ai defers its reply, so it must never throw.
+    if (!db.rateLimits || typeof db.rateLimits !== 'object') {
+      db.rateLimits = { queriesPerUserPerHour: 60, userQueryLog: {} };
+    }
     const rl = db.rateLimits;
+    if (!rl.userQueryLog) rl.userQueryLog = {};
+    if (!rl.queriesPerUserPerHour) rl.queriesPerUserPerHour = 60;
     const now = Date.now();
     const windowMs = 60 * 60 * 1000;
 
@@ -483,7 +490,12 @@ class DatabaseManager {
 
   checkAndRecordEmbedding(guildId) {
     const db = this.getGuildDb(guildId);
+    // Defensive: same partial-shape concern as checkAndRecordQuery above.
+    if (!db.costState || typeof db.costState !== 'object') {
+      db.costState = { embeddingCallsThisHour: 0, hourWindowStart: null, embeddingBudgetPerHour: 500 };
+    }
     const cs = db.costState;
+    if (!cs.embeddingBudgetPerHour) cs.embeddingBudgetPerHour = 500;
     const now = Date.now();
     const windowMs = 60 * 60 * 1000;
 
