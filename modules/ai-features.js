@@ -296,7 +296,7 @@ async function handleAiReactionTranslate(reaction, user) {
 
 Message: "${message.content}"`;
 
-  const modelKey = 'gemini'; // default translation model
+  const modelKey = process.env.DEFAULT_AI_MODEL || 'groq'; // Groq: only provider with live quota
   const result   = await queryAI(user.id, prompt, modelKey, null, {
     applicationId: message.client.application?.id || 'default',
     guildId: message.guild?.id || 'dm',

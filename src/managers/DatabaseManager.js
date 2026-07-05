@@ -69,7 +69,7 @@ const DEFAULT_GUILD = {
   caseCounter: 0,
   securityConfig: {},
   aiChannelId: null,
-  aiDefaultModel: 'gemini',
+  aiDefaultModel: process.env.DEFAULT_AI_MODEL || 'groq',
   ticketLanguages: {},
   userLanguages: {},
   guildWhitelists: {},

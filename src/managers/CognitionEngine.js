@@ -126,11 +126,14 @@ class CognitionEngine {
       systemPrompt += `The user has the following moderation case history. Use it to answer their question:\n${modCasesText}\n`;
     }
 
-    // Query AI Provider
+    // Query AI Provider. Default to the working provider (Groq) unless the
+    // guild configured another via /ai-model — Gemini key currently has 0 quota.
+    const dbMgr = this.runtime.getService('DatabaseManager');
+    const preferredModel = (dbMgr && dbMgr.get('aiDefaultModel')) || process.env.DEFAULT_AI_MODEL || 'groq';
     const aiRes = await this.aiProvider.query(
       userId,
       prompt,
-      'gemini',
+      preferredModel,
       systemPrompt,
       [{ role: 'user', content: prompt }]
     );

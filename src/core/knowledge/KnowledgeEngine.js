@@ -314,7 +314,7 @@ class KnowledgeEngine {
     const prompt = `Context:\n${context}\n\nQuestion: ${query}`;
 
     try {
-      const response = await this.aiService.query(userId, prompt, 'gemini', systemPrompt);
+      const response = await this.aiService.query(userId, prompt, process.env.DEFAULT_AI_MODEL || 'groq', systemPrompt);
       if (response && response.response) {
         return response.response;
       }

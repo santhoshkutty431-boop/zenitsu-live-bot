@@ -71,7 +71,7 @@ class AIProviderManager {
     return { allowed: true };
   }
 
-  async query(userId, prompt, modelKey = 'gemini', systemPrompt = '', messages = []) {
+  async query(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL || 'groq'), systemPrompt = '', messages = []) {
     // 1. Check Rate Limit
     const rl = this.checkRateLimit(userId);
     if (!rl.allowed) {
@@ -83,7 +83,7 @@ class AIProviderManager {
     if (modelKey === 'gpt4o' || modelKey === 'gpt35') {
       failoverQueue = [modelKey, 'groq', 'gemini'];
     } else {
-      failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
+      failoverQueue = [modelKey, 'groq', 'gemini', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
     }
 
     let lastError = null;

@@ -338,7 +338,7 @@ function recordUsage({ userId, context, model, prompt, response, latencyMs, succ
   }
 }
 
-async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, context = {}) {
+async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL || 'groq'), userLang = null, context = {}) {
   const sessionKey = resolveSessionKey(userId, context);
 
   // Prompt injection guardrail
@@ -367,7 +367,7 @@ async function queryAI(userId, prompt, modelKey = 'gemini', userLang = null, con
     if (modelKey === 'gpt4o' || modelKey === 'gpt35') {
       failoverQueue = [modelKey, 'groq', 'gemini'];
     } else {
-      failoverQueue = [modelKey, 'gemini', 'groq', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
+      failoverQueue = [modelKey, 'groq', 'gemini', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
     }
 
     let attemptErrorLogs = [];
