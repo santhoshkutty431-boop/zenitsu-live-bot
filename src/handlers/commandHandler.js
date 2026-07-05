@@ -526,51 +526,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
 
       else if (sub === 'list') {
-        const guildUsers = db.guildWhitelists[guildId]?.users || {};
-        const legacyUsers = db.roleWhitelist || [];
-
-        const allUserIds = Array.from(new Set([...Object.keys(guildUsers), ...legacyUsers]));
-
-        if (allUserIds.length === 0) {
-          return interaction.reply({ content: '📝 The whitelisted users list is currently empty for this server.', ephemeral: true });
-        }
-
-        const listLines = [];
-        const selectOptions = [];
-
-        for (const id of allUserIds) {
-          const caps = guildUsers[id] || [];
-          const capsFormatted = caps.length > 0
-            ? caps.map(c => CAPABILITY_LABELS[c] || c).join(', ')
-            : 'Legacy (All capabilities)';
-          listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${capsFormatted}`);
-
-          const cachedUser = interaction.client.users.cache.get(id);
-          const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
-          selectOptions.push({
-            label: label.slice(0, 100),
-            description: `Remove ${label.slice(0, 50)} from whitelist`,
-            value: id
-          });
-        }
-
-        const embed = new EmbedBuilder()
-          .setTitle('🛡️ Whitelisted Users Directory')
-          .setDescription(`Below are the trusted users whitelisted on this server:\n\n${listLines.join('\n\n')}`)
-          .setColor(0x00D4FF)
-          .setTimestamp();
-
-        const components = [];
-        if (selectOptions.length > 0) {
-          const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('remove_whitelist_select')
-            .setPlaceholder('🛑 Select a user to remove from whitelist')
-            .addOptions(selectOptions.slice(0, 25));
-
-          components.push(new ActionRowBuilder().addComponents(selectMenu));
-        }
-
-        await interaction.reply({ embeds: [embed], components, ephemeral: true });
+        const { embeds, components } = getWhitelistedUsersList(interaction, db);
+        await interaction.reply({ embeds, components, ephemeral: true });
       }
     }
 
@@ -681,64 +638,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
 
       else if (sub === 'list') {
-        const adminRoles = db.commandRoleWhitelist.admin || [];
-        const staffRoles = db.commandRoleWhitelist.staff || [];
-        const memberRoles = db.commandRoleWhitelist.member || [];
-
-        const selectOptions = [];
-
-        adminRoles.forEach(id => {
-          const role = interaction.guild.roles.cache.get(id);
-          const label = role ? role.name : `Role ID: ${id}`;
-          selectOptions.push({
-            label: `Remove ${label.slice(0, 50)} (Admin Tier)`,
-            description: `Remove this role from Admin Whitelist`,
-            value: `admin_${id}`
-          });
-        });
-
-        staffRoles.forEach(id => {
-          const role = interaction.guild.roles.cache.get(id);
-          const label = role ? role.name : `Role ID: ${id}`;
-          selectOptions.push({
-            label: `Remove ${label.slice(0, 50)} (Staff Tier)`,
-            description: `Remove this role from Staff Whitelist`,
-            value: `staff_${id}`
-          });
-        });
-
-        memberRoles.forEach(id => {
-          const role = interaction.guild.roles.cache.get(id);
-          const label = role ? role.name : `Role ID: ${id}`;
-          selectOptions.push({
-            label: `Remove ${label.slice(0, 50)} (Member Tier)`,
-            description: `Remove this role from Member Whitelist`,
-            value: `member_${id}`
-          });
-        });
-
-        const embed = new EmbedBuilder()
-          .setTitle('🛡️ Bot Command Role Whitelist')
-          .setDescription('Custom roles authorized to run Zenitsu bot commands:')
-          .addFields(
-            { name: '🛠️ Admin Commands Whitelist', value: adminRoles.map(id => `• <@&${id}>`).join('\n') || 'None' },
-            { name: '👮 Staff Commands Whitelist', value: staffRoles.map(id => `• <@&${id}>`).join('\n') || 'None' },
-            { name: '👥 Normal Member Commands Whitelist', value: memberRoles.map(id => `• <@&${id}>`).join('\n') || 'None' }
-          )
-          .setColor(0x00D4FF)
-          .setTimestamp();
-
-        const components = [];
-        if (selectOptions.length > 0) {
-          const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('remove_whitelist_role_select')
-            .setPlaceholder('🛑 Select a role to remove from whitelist')
-            .addOptions(selectOptions.slice(0, 25));
-
-          components.push(new ActionRowBuilder().addComponents(selectMenu));
-        }
-
-        await interaction.reply({ embeds: [embed], components, ephemeral: true });
+        const { embeds, components } = getWhitelistedRolesList(interaction, db);
+        await interaction.reply({ embeds, components, ephemeral: true });
       }
     }
 
@@ -1433,39 +1334,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         await interaction.reply({ content: `🗑️ Removed \`${serverId}\` from whitelist.`, ephemeral: true });
 
       } else if (sub === 'list') {
-        const list = db.serverWhitelist;
-        if (list.length === 0) return interaction.reply({ content: '📋 No extra servers whitelisted. Only your main server can use this bot.', ephemeral: true });
-        
-        const lines = list.map((id, i) => { const g = client.guilds.cache.get(id); return `\`${i+1}.\` ${g ? `**${g.name}**` : 'Unknown'} — \`${id}\``; }).join('\n');
-        
-        const selectOptions = list.map(id => {
-          const g = client.guilds.cache.get(id);
-          const label = g ? g.name : `Server: ${id}`;
-          return {
-            label: label.slice(0, 100),
-            description: `Remove ${label.slice(0, 50)} from server whitelist`,
-            value: id
-          };
-        });
-
-        const embed = new EmbedBuilder()
-          .setTitle('🔒 Whitelisted Servers')
-          .setDescription(lines)
-          .setColor(0x00D4FF)
-          .setFooter({ text: `${list.length} server(s)` })
-          .setTimestamp();
-
-        const components = [];
-        if (selectOptions.length > 0) {
-          const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('remove_whitelist_server_select')
-            .setPlaceholder('🛑 Select a server to remove from whitelist')
-            .addOptions(selectOptions.slice(0, 25));
-
-          components.push(new ActionRowBuilder().addComponents(selectMenu));
-        }
-
-        await interaction.reply({ embeds: [embed], components, ephemeral: true });
+        const { embeds, components } = getWhitelistedServersList(interaction, db);
+        await interaction.reply({ embeds, components, ephemeral: true });
       }
     }
 
@@ -1923,16 +1793,182 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
   // ── STRING SELECT MENUS ────────────────────────────────────────────────────
   else if (interaction.isStringSelectMenu()) {
     const { customId, guildId } = interaction;
-    if (customId === 'remove_whitelist_select') {
+    if (customId === 'manage_whitelist_select') {
       const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
-      if (!isExecOwner) {
-        return interaction.reply({ content: '❌ Only the **Server Owner** can modify the bot whitelist.', ephemeral: true });
-      }
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Server Owner** can modify the bot whitelist.', ephemeral: true });
 
       await interaction.deferUpdate();
-
       const targetUserId = interaction.values[0];
-      const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
+      const { embeds, components } = getWhitelistedUserPanel(interaction, db, targetUserId);
+      await interaction.editReply({ embeds, components });
+    }
+    
+    else if (customId.startsWith('edit_user_caps_select:')) {
+      const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Server Owner** can modify the bot whitelist.', ephemeral: true });
+
+      await interaction.deferUpdate();
+      const targetUserId = customId.split(':').pop();
+      const selectedCaps = interaction.values;
+
+      db.guildWhitelists = db.guildWhitelists || {};
+      db.guildWhitelists[guildId] = db.guildWhitelists[guildId] || { users: {}, roles: {} };
+      
+      const previousState = db.guildWhitelists[guildId].users[targetUserId] || [];
+      db.guildWhitelists[guildId].users[targetUserId] = selectedCaps;
+
+      saveDb();
+      invalidatePermCache(guildId, targetUserId);
+
+      const auditId = generateAuditId();
+      const auditLogEmbed = new EmbedBuilder()
+        .setTitle('🔐 Permission Audit Log')
+        .addFields(
+          { name: 'Audit ID', value: `\`${auditId}\`` },
+          { name: 'Action', value: 'Updated Whitelisted User Capabilities (Interactive)' },
+          { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+          { name: 'Target User', value: `<@${targetUserId}> (ID: \`${targetUserId}\`)` },
+          { name: 'Capabilities (New)', value: selectedCaps.length ? selectedCaps.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
+          { name: 'Capabilities (Prev)', value: previousState.length ? previousState.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
+          { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+        )
+        .setColor(0xF39C12)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+      const { embeds, components } = getWhitelistedUserPanel(interaction, db, targetUserId);
+      embeds[0].setDescription(`✅ Successfully updated capabilities.\n🛡️ **Audit ID**: \`${auditId}\`\n\n` + embeds[0].data.description);
+      await interaction.editReply({ embeds, components });
+    }
+
+    else if (customId === 'manage_whitelist_role_select') {
+      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+
+      await interaction.deferUpdate();
+      const val = interaction.values[0];
+      const parts = val.split('_');
+      const currentTier = parts[0];
+      const roleId = parts[1];
+
+      const { embeds, components } = getWhitelistedRolePanel(interaction, db, roleId, currentTier);
+      await interaction.editReply({ embeds, components });
+    }
+
+    else if (customId.startsWith('edit_role_tier_select:')) {
+      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+
+      await interaction.deferUpdate();
+      const parts = customId.split(':');
+      const roleId = parts[1];
+      const currentTier = parts[2];
+      const newTier = interaction.values[0];
+
+      if (currentTier !== newTier) {
+        if (db.commandRoleWhitelist?.[currentTier]) {
+          db.commandRoleWhitelist[currentTier] = db.commandRoleWhitelist[currentTier].filter(id => id !== roleId);
+        }
+        db.commandRoleWhitelist = db.commandRoleWhitelist || { admin: [], staff: [], member: [] };
+        db.commandRoleWhitelist[newTier] = db.commandRoleWhitelist[newTier] || [];
+        if (!db.commandRoleWhitelist[newTier].includes(roleId)) {
+          db.commandRoleWhitelist[newTier].push(roleId);
+        }
+
+        saveDb();
+        invalidatePermCache(guildId);
+
+        const auditId = generateAuditId();
+        const auditLogEmbed = new EmbedBuilder()
+          .setTitle('🔐 Permission Audit Log')
+          .addFields(
+            { name: 'Audit ID', value: `\`${auditId}\`` },
+            { name: 'Action', value: 'Updated Whitelisted Role Tier (Interactive)' },
+            { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+            { name: 'Target Role ID', value: `\`${roleId}\`` },
+            { name: 'New Tier', value: `\`${newTier.toUpperCase()}\`` },
+            { name: 'Old Tier', value: `\`${currentTier.toUpperCase()}\`` },
+            { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+          )
+          .setColor(0xF39C12)
+          .setTimestamp();
+        await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+        const { embeds, components } = getWhitelistedRolePanel(interaction, db, roleId, newTier);
+        embeds[0].setDescription(`✅ Successfully updated role tier to **${newTier.toUpperCase()}**.\n🛡️ **Audit ID**: \`${auditId}\`\n\n` + embeds[0].data.description);
+        await interaction.editReply({ embeds, components });
+      }
+    }
+
+    else if (customId.startsWith('edit_role_caps_select:')) {
+      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+
+      await interaction.deferUpdate();
+      const parts = customId.split(':');
+      const roleId = parts[1];
+      const currentTier = parts[2];
+      const selectedCaps = interaction.values;
+
+      db.roleCapabilities = db.roleCapabilities || {};
+      const previousState = db.roleCapabilities[roleId] || [];
+      db.roleCapabilities[roleId] = selectedCaps;
+
+      saveDb();
+      invalidatePermCache(guildId);
+
+      const auditId = generateAuditId();
+      const auditLogEmbed = new EmbedBuilder()
+        .setTitle('🔐 Permission Audit Log')
+        .addFields(
+          { name: 'Audit ID', value: `\`${auditId}\`` },
+          { name: 'Action', value: 'Updated Whitelisted Role Capabilities (Interactive)' },
+          { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
+          { name: 'Target Role ID', value: `\`${roleId}\`` },
+          { name: 'Capabilities (New)', value: selectedCaps.length ? selectedCaps.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
+          { name: 'Capabilities (Prev)', value: previousState.length ? previousState.map(c => `• ${CAPABILITY_LABELS[c] || c}`).join('\n') : 'None' },
+          { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
+        )
+        .setColor(0xF39C12)
+        .setTimestamp();
+      await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
+
+      const { embeds, components } = getWhitelistedRolePanel(interaction, db, roleId, currentTier);
+      embeds[0].setDescription(`✅ Successfully updated custom capabilities.\n🛡️ **Audit ID**: \`${auditId}\`\n\n` + embeds[0].data.description);
+      await interaction.editReply({ embeds, components });
+    }
+
+    else if (customId === 'manage_whitelist_server_select') {
+      const isExecOwner = isOwner(interaction.user.id);
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Bot Owner** can modify whitelisted servers.', ephemeral: true });
+
+      await interaction.deferUpdate();
+      const serverId = interaction.values[0];
+      const { embeds, components } = getWhitelistedServerPanel(interaction, serverId);
+      await interaction.editReply({ embeds, components });
+    }
+  }
+
+  // ── BUTTONS ────────────────────────────────────────────────────────────────
+  else if (interaction.isButton()) {
+    const { customId, guildId } = interaction;
+
+    // Whitelist Interactive Buttons
+    if (customId === 'back_whitelist_users') {
+      const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Server Owner** can manage whitelists.', ephemeral: true });
+      await interaction.deferUpdate();
+      const { embeds, components } = getWhitelistedUsersList(interaction, db);
+      await interaction.editReply({ embeds, components });
+      return;
+    }
+
+    if (customId.startsWith('delete_whitelist_user:')) {
+      const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Server Owner** can manage whitelists.', ephemeral: true });
+      
+      await interaction.deferUpdate();
+      const targetUserId = customId.split(':').pop();
 
       if (db.guildWhitelists?.[guildId]?.users) {
         delete db.guildWhitelists[guildId].users[targetUserId];
@@ -1945,81 +1981,44 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       invalidatePermCache(guildId, targetUserId);
 
       const auditId = generateAuditId();
-
       const auditLogEmbed = new EmbedBuilder()
         .setTitle('🔐 Permission Audit Log')
         .addFields(
           { name: 'Audit ID', value: `\`${auditId}\`` },
           { name: 'Action', value: 'Removed Whitelisted User (Interactive)' },
           { name: 'By', value: `${interaction.user} (ID: \`${interaction.user.id}\`)` },
-          { name: 'Target User', value: targetUser ? `${targetUser} (ID: \`${targetUserId}\`)` : `\`${targetUserId}\`` },
+          { name: 'Target User', value: `\`${targetUserId}\`` },
           { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
         )
         .setColor(0xE74C3C)
         .setTimestamp();
       await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
-      const guildUsers = db.guildWhitelists[guildId]?.users || {};
-      const legacyUsers = db.roleWhitelist || [];
-      const allUserIds = Array.from(new Set([...Object.keys(guildUsers), ...legacyUsers]));
-
-      const listLines = [];
-      const selectOptions = [];
-
-      for (const id of allUserIds) {
-        const caps = guildUsers[id] || [];
-        const capsFormatted = caps.length > 0
-          ? caps.map(c => CAPABILITY_LABELS[c] || c).join(', ')
-          : 'Legacy (All capabilities)';
-        listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${capsFormatted}`);
-
-        const cachedUser = interaction.client.users.cache.get(id);
-        const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
-        selectOptions.push({
-          label: label.slice(0, 100),
-          description: `Remove ${label.slice(0, 50)} from whitelist`,
-          value: id
-        });
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle('🛡️ Whitelisted Users Directory')
-        .setDescription(
-          `✅ Successfully removed <@${targetUserId}> from the whitelist.\n` +
-          `🛡️ **Audit ID**: \`${auditId}\`\n\n` +
-          `Below are the trusted users whitelisted on this server:\n\n` +
-          (listLines.length > 0 ? listLines.join('\n\n') : '*No whitelisted users left.*')
-        )
-        .setColor(0x00D4FF)
-        .setTimestamp();
-
-      const components = [];
-      if (selectOptions.length > 0) {
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('remove_whitelist_select')
-          .setPlaceholder('🛑 Select a user to remove from whitelist')
-          .addOptions(selectOptions.slice(0, 25));
-
-        components.push(new ActionRowBuilder().addComponents(selectMenu));
-      }
-
-      await interaction.editReply({ embeds: [embed], components });
+      const { embeds, components } = getWhitelistedUsersList(interaction, db);
+      embeds[0].setDescription(`✅ Successfully removed <@${targetUserId}> from the whitelist.\n\n` + embeds[0].data.description);
+      await interaction.editReply({ embeds, components });
+      return;
     }
-    
-    else if (customId === 'remove_whitelist_role_select') {
+
+    if (customId === 'back_whitelist_roles') {
       const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) {
-        return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
-      }
-
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can manage whitelisted roles.', ephemeral: true });
       await interaction.deferUpdate();
+      const { embeds, components } = getWhitelistedRolesList(interaction, db);
+      await interaction.editReply({ embeds, components });
+      return;
+    }
 
-      const val = interaction.values[0];
-      const parts = val.split('_');
-      const tier = parts[0];
+    if (customId.startsWith('delete_whitelist_role:')) {
+      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can manage whitelisted roles.', ephemeral: true });
+      
+      await interaction.deferUpdate();
+      const parts = customId.split(':');
       const roleId = parts[1];
+      const tier = parts[2];
 
-      if (db.commandRoleWhitelist[tier]) {
+      if (db.commandRoleWhitelist?.[tier]) {
         db.commandRoleWhitelist[tier] = db.commandRoleWhitelist[tier].filter(id => id !== roleId);
       }
       if (db.roleCapabilities) {
@@ -2030,7 +2029,6 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       invalidatePermCache(guildId);
 
       const auditId = generateAuditId();
-
       const auditLogEmbed = new EmbedBuilder()
         .setTitle('🔐 Permission Audit Log')
         .addFields(
@@ -2045,125 +2043,39 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         .setTimestamp();
       await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
-      const adminRoles = db.commandRoleWhitelist.admin || [];
-      const staffRoles = db.commandRoleWhitelist.staff || [];
-      const memberRoles = db.commandRoleWhitelist.member || [];
-
-      const selectOptions = [];
-
-      adminRoles.forEach(id => {
-        const role = interaction.guild.roles.cache.get(id);
-        const label = role ? role.name : `Role ID: ${id}`;
-        selectOptions.push({
-          label: `Remove ${label.slice(0, 50)} (Admin Tier)`,
-          description: `Remove this role from Admin Whitelist`,
-          value: `admin_${id}`
-        });
-      });
-
-      staffRoles.forEach(id => {
-        const role = interaction.guild.roles.cache.get(id);
-        const label = role ? role.name : `Role ID: ${id}`;
-        selectOptions.push({
-          label: `Remove ${label.slice(0, 50)} (Staff Tier)`,
-          description: `Remove this role from Staff Whitelist`,
-          value: `staff_${id}`
-        });
-      });
-
-      memberRoles.forEach(id => {
-        const role = interaction.guild.roles.cache.get(id);
-        const label = role ? role.name : `Role ID: ${id}`;
-        selectOptions.push({
-          label: `Remove ${label.slice(0, 50)} (Member Tier)`,
-          description: `Remove this role from Member Whitelist`,
-          value: `member_${id}`
-        });
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle('🛡️ Bot Command Role Whitelist')
-        .setDescription(
-          `✅ Successfully removed role \`${roleId}\` from the whitelist.\n` +
-          `🛡️ **Audit ID**: \`${auditId}\`\n\n` +
-          `Custom roles authorized to run Zenitsu bot commands:`
-        )
-        .addFields(
-          { name: '🛠️ Admin Commands Whitelist', value: adminRoles.map(id => `• <@&${id}>`).join('\n') || 'None' },
-          { name: '👮 Staff Commands Whitelist', value: staffRoles.map(id => `• <@&${id}>`).join('\n') || 'None' },
-          { name: '👥 Normal Member Commands Whitelist', value: memberRoles.map(id => `• <@&${id}>`).join('\n') || 'None' }
-        )
-        .setColor(0x00D4FF)
-        .setTimestamp();
-
-      const components = [];
-      if (selectOptions.length > 0) {
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('remove_whitelist_role_select')
-          .setPlaceholder('🛑 Select a role to remove from whitelist')
-          .addOptions(selectOptions.slice(0, 25));
-
-        components.push(new ActionRowBuilder().addComponents(selectMenu));
-      }
-
-      await interaction.editReply({ embeds: [embed], components });
+      const { embeds, components } = getWhitelistedRolesList(interaction, db);
+      embeds[0].setDescription(`✅ Successfully removed role \`${roleId}\` from the whitelist.\n\n` + embeds[0].data.description);
+      await interaction.editReply({ embeds, components });
+      return;
     }
 
-    else if (customId === 'remove_whitelist_server_select') {
+    if (customId === 'back_whitelist_servers') {
       const isExecOwner = isOwner(interaction.user.id);
-      if (!isExecOwner) {
-        return interaction.reply({ content: '❌ Only the **Bot Owner** can modify whitelisted servers.', ephemeral: true });
-      }
-
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Bot Owner** can manage whitelisted servers.', ephemeral: true });
       await interaction.deferUpdate();
+      const { embeds, components } = getWhitelistedServersList(interaction, db);
+      await interaction.editReply({ embeds, components });
+      return;
+    }
 
-      const serverId = interaction.values[0];
+    if (customId.startsWith('delete_whitelist_server:')) {
+      const isExecOwner = isOwner(interaction.user.id);
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Bot Owner** can manage whitelisted servers.', ephemeral: true });
+      
+      await interaction.deferUpdate();
+      const serverId = customId.split(':').pop();
+
       if (db.serverWhitelist) {
         db.serverWhitelist = db.serverWhitelist.filter(id => id !== serverId);
       }
 
       saveDb();
 
-      const list = db.serverWhitelist || [];
-      const lines = list.map((id, i) => { const g = client.guilds.cache.get(id); return `\`${i+1}.\` ${g ? `**${g.name}**` : 'Unknown'} — \`${id}\``; }).join('\n');
-
-      const selectOptions = list.map(id => {
-        const g = client.guilds.cache.get(id);
-        const label = g ? g.name : `Server: ${id}`;
-        return {
-          label: label.slice(0, 100),
-          description: `Remove ${label.slice(0, 50)} from server whitelist`,
-          value: id
-        };
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle('🔒 Whitelisted Servers')
-        .setDescription(
-          `✅ Successfully removed server \`${serverId}\` from the whitelist.\n\n` +
-          (lines.length > 0 ? lines : '*No extra servers whitelisted.*')
-        )
-        .setColor(0x00D4FF)
-        .setFooter({ text: `${list.length} server(s)` })
-        .setTimestamp();
-
-      const components = [];
-      if (selectOptions.length > 0) {
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('remove_whitelist_server_select')
-          .setPlaceholder('🛑 Select a server to remove from whitelist')
-          .addOptions(selectOptions.slice(0, 25));
-
-        components.push(new ActionRowBuilder().addComponents(selectMenu));
-      }
-
-      await interaction.editReply({ embeds: [embed], components });
+      const { embeds, components } = getWhitelistedServersList(interaction, db);
+      embeds[0].setDescription(`✅ Successfully removed server \`${serverId}\` from the whitelist.\n\n` + (embeds[0].data.description || ''));
+      await interaction.editReply({ embeds, components });
+      return;
     }
-  }
-
-  // ── BUTTONS ────────────────────────────────────────────────────────────────
-  else if (interaction.isButton()) {
-    const { customId } = interaction;
 
     if (customId.startsWith('poll_vote_')) {
       const { handlePollVote } = require('../../modules/poll-manager');
@@ -2680,6 +2592,314 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
     }
   }
+}
+
+
+// Helper functions for Whitelist Interactive Control Panel
+
+function getWhitelistedUsersList(interaction, db) {
+  const guildId = interaction.guildId;
+  const guildUsers = db.guildWhitelists?.[guildId]?.users || {};
+  const legacyUsers = db.roleWhitelist || [];
+  const allUserIds = Array.from(new Set([...Object.keys(guildUsers), ...legacyUsers]));
+
+  if (allUserIds.length === 0) {
+    return {
+      embeds: [new EmbedBuilder()
+        .setTitle('🛡️ Whitelisted Users Directory')
+        .setDescription('📝 The whitelisted users list is currently empty for this server.')
+        .setColor(0x00D4FF)
+        .setTimestamp()
+      ],
+      components: []
+    };
+  }
+
+  const listLines = [];
+  const selectOptions = [];
+
+  for (const id of allUserIds) {
+    const caps = guildUsers[id] || [];
+    const capsFormatted = caps.length > 0
+      ? caps.map(c => CAPABILITY_LABELS[c] || c).join(', ')
+      : 'Legacy (All capabilities)';
+    listLines.push(`• <@${id}> (\`${id}\`)\n  **Capabilities**: ${capsFormatted}`);
+
+    const cachedUser = interaction.client.users.cache.get(id);
+    const label = cachedUser ? cachedUser.tag : `User ID: ${id}`;
+    selectOptions.push({
+      label: label.slice(0, 100),
+      description: `Manage capabilities or remove ${label.slice(0, 50)}`,
+      value: id
+    });
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle('🛡️ Whitelisted Users Directory')
+    .setDescription(`Below are the trusted users whitelisted on this server:\n\n${listLines.join('\n\n')}`)
+    .setColor(0x00D4FF)
+    .setTimestamp();
+
+  const components = [];
+  if (selectOptions.length > 0) {
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('manage_whitelist_select')
+      .setPlaceholder('⚙️ Select a user to edit/manage')
+      .addOptions(selectOptions.slice(0, 25));
+
+    components.push(new ActionRowBuilder().addComponents(selectMenu));
+  }
+
+  return { embeds: [embed], components };
+}
+
+function getWhitelistedUserPanel(interaction, db, targetUserId) {
+  const guildId = interaction.guildId;
+  const userCaps = db.guildWhitelists?.[guildId]?.users?.[targetUserId] || [];
+  
+  const systemCapabilities = [
+    { label: '🤖 AI Configuration', value: 'AI_CONFIG' },
+    { label: '🛡️ Security & Anti-Raid Settings', value: 'SECURITY_CONFIG' },
+    { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE' },
+    { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
+    { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
+    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' }
+  ];
+
+  const selectOptions = systemCapabilities.map(c => ({
+    label: c.label,
+    value: c.value,
+    default: userCaps.includes(c.value)
+  }));
+
+  const embed = new EmbedBuilder()
+    .setTitle('⚙️ Edit Whitelisted User Capabilities')
+    .setDescription(
+      `**User**: <@${targetUserId}> (\`${targetUserId}\`)\n\n` +
+      `Use the dropdown menu below to select/deselect capabilities for this user. Press back to return.`
+    )
+    .setColor(0xEDC231)
+    .setTimestamp();
+
+  const capSelect = new StringSelectMenuBuilder()
+    .setCustomId(`edit_user_caps_select:${targetUserId}`)
+    .setPlaceholder('Select capabilities')
+    .setMinValues(0)
+    .setMaxValues(6)
+    .addOptions(selectOptions);
+
+  const deleteBtn = new ButtonBuilder()
+    .setCustomId(`delete_whitelist_user:${targetUserId}`)
+    .setLabel('🛑 Remove User')
+    .setStyle(ButtonStyle.Danger);
+
+  const backBtn = new ButtonBuilder()
+    .setCustomId('back_whitelist_users')
+    .setLabel('⬅️ Back to List')
+    .setStyle(ButtonStyle.Secondary);
+
+  const row1 = new ActionRowBuilder().addComponents(capSelect);
+  const row2 = new ActionRowBuilder().addComponents(backBtn, deleteBtn);
+
+  return { embeds: [embed], components: [row1, row2] };
+}
+
+function getWhitelistedRolesList(interaction, db) {
+  const adminRoles = db.commandRoleWhitelist?.admin || [];
+  const staffRoles = db.commandRoleWhitelist?.staff || [];
+  const memberRoles = db.commandRoleWhitelist?.member || [];
+
+  const selectOptions = [];
+
+  adminRoles.forEach(id => {
+    const role = interaction.guild.roles.cache.get(id);
+    const label = role ? role.name : `Role ID: ${id}`;
+    selectOptions.push({
+      label: `${label.slice(0, 50)} (Admin Tier)`,
+      description: `Manage capabilities or tier for ${label.slice(0, 50)}`,
+      value: `admin_${id}`
+    });
+  });
+
+  staffRoles.forEach(id => {
+    const role = interaction.guild.roles.cache.get(id);
+    const label = role ? role.name : `Role ID: ${id}`;
+    selectOptions.push({
+      label: `${label.slice(0, 50)} (Staff Tier)`,
+      description: `Manage capabilities or tier for ${label.slice(0, 50)}`,
+      value: `staff_${id}`
+    });
+  });
+
+  memberRoles.forEach(id => {
+    const role = interaction.guild.roles.cache.get(id);
+    const label = role ? role.name : `Role ID: ${id}`;
+    selectOptions.push({
+      label: `${label.slice(0, 50)} (Member Tier)`,
+      description: `Manage capabilities or tier for ${label.slice(0, 50)}`,
+      value: `member_${id}`
+    });
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('🛡️ Bot Command Role Whitelist')
+    .setDescription('Custom roles authorized to run Zenitsu bot commands:')
+    .addFields(
+      { name: '🛠️ Admin Commands Whitelist', value: adminRoles.map(id => `• <@&${id}>`).join('\n') || 'None' },
+      { name: '👮 Staff Commands Whitelist', value: staffRoles.map(id => `• <@&${id}>`).join('\n') || 'None' },
+      { name: '👥 Normal Member Commands Whitelist', value: memberRoles.map(id => `• <@&${id}>`).join('\n') || 'None' }
+    )
+    .setColor(0x00D4FF)
+    .setTimestamp();
+
+  const components = [];
+  if (selectOptions.length > 0) {
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('manage_whitelist_role_select')
+      .setPlaceholder('⚙️ Select a role to edit/manage')
+      .addOptions(selectOptions.slice(0, 25));
+
+    components.push(new ActionRowBuilder().addComponents(selectMenu));
+  }
+
+  return { embeds: [embed], components };
+}
+
+function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
+  const roleCapabilities = db.roleCapabilities?.[roleId] || [];
+  
+  const systemCapabilities = [
+    { label: '🤖 AI Configuration', value: 'AI_CONFIG' },
+    { label: '🛡️ Security & Anti-Raid Settings', value: 'SECURITY_CONFIG' },
+    { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE' },
+    { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
+    { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
+    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' }
+  ];
+
+  const capOptions = systemCapabilities.map(c => ({
+    label: c.label,
+    value: c.value,
+    default: roleCapabilities.includes(c.value)
+  }));
+
+  const tierOptions = [
+    { label: '🛠️ Admin Tier', value: 'admin', default: currentTier === 'admin' },
+    { label: '👮 Staff Tier', value: 'staff', default: currentTier === 'staff' },
+    { label: '👥 Normal Member Tier', value: 'member', default: currentTier === 'member' }
+  ];
+
+  const embed = new EmbedBuilder()
+    .setTitle('⚙️ Edit Whitelisted Role')
+    .setDescription(
+      `**Role**: <@&${roleId}> (\`${roleId}\`)\n` +
+      `**Assigned Tier**: \`${currentTier.toUpperCase()}\`\n\n` +
+      `Modify the tier and custom capabilities below.`
+    )
+    .setColor(0xEDC231)
+    .setTimestamp();
+
+  const tierSelect = new StringSelectMenuBuilder()
+    .setCustomId(`edit_role_tier_select:${roleId}:${currentTier}`)
+    .setPlaceholder('Select command tier')
+    .addOptions(tierOptions);
+
+  const capSelect = new StringSelectMenuBuilder()
+    .setCustomId(`edit_role_caps_select:${roleId}:${currentTier}`)
+    .setPlaceholder('Select capabilities')
+    .setMinValues(0)
+    .setMaxValues(6)
+    .addOptions(capOptions);
+
+  const deleteBtn = new ButtonBuilder()
+    .setCustomId(`delete_whitelist_role:${roleId}:${currentTier}`)
+    .setLabel('🛑 Remove Role')
+    .setStyle(ButtonStyle.Danger);
+
+  const backBtn = new ButtonBuilder()
+    .setCustomId('back_whitelist_roles')
+    .setLabel('⬅️ Back to List')
+    .setStyle(ButtonStyle.Secondary);
+
+  const row1 = new ActionRowBuilder().addComponents(tierSelect);
+  const row2 = new ActionRowBuilder().addComponents(capSelect);
+  const row3 = new ActionRowBuilder().addComponents(backBtn, deleteBtn);
+
+  return { embeds: [embed], components: [row1, row2, row3] };
+}
+
+function getWhitelistedServersList(interaction, db) {
+  const list = db.serverWhitelist || [];
+  if (list.length === 0) {
+    return {
+      embeds: [new EmbedBuilder()
+        .setTitle('🔒 Whitelisted Servers')
+        .setDescription('📋 No extra servers whitelisted. Only your main server can use this bot.')
+        .setColor(0x00D4FF)
+        .setTimestamp()
+      ],
+      components: []
+    };
+  }
+  
+  const lines = list.map((id, i) => { const g = interaction.client.guilds.cache.get(id); return `\`${i+1}.\` ${g ? `**${g.name}**` : 'Unknown'} — \`${id}\``; }).join('\n');
+  
+  const selectOptions = list.map(id => {
+    const g = interaction.client.guilds.cache.get(id);
+    const label = g ? g.name : `Server: ${id}`;
+    return {
+      label: label.slice(0, 100),
+      description: `Manage or remove server ${label.slice(0, 50)}`,
+      value: id
+    };
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('🔒 Whitelisted Servers')
+    .setDescription(`Below are the authorized servers whitelisted to use the bot:\n\n${lines}`)
+    .setColor(0x00D4FF)
+    .setTimestamp();
+
+  const components = [];
+  if (selectOptions.length > 0) {
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('manage_whitelist_server_select')
+      .setPlaceholder('⚙️ Select a server to edit/manage')
+      .addOptions(selectOptions.slice(0, 25));
+
+    components.push(new ActionRowBuilder().addComponents(selectMenu));
+  }
+
+  return { embeds: [embed], components };
+}
+
+function getWhitelistedServerPanel(interaction, serverId) {
+  const guild = interaction.client.guilds.cache.get(serverId);
+  const name = guild ? guild.name : 'Unknown Server';
+
+  const embed = new EmbedBuilder()
+    .setTitle('⚙️ Edit Whitelisted Server')
+    .setDescription(
+      `**Server Name**: **${name}**\n` +
+      `**Server ID**: \`${serverId}\`\n\n` +
+      `This server is currently whitelisted to use the bot.`
+    )
+    .setColor(0xEDC231)
+    .setTimestamp();
+
+  const deleteBtn = new ButtonBuilder()
+    .setCustomId(`delete_whitelist_server:${serverId}`)
+    .setLabel('🛑 Remove Server')
+    .setStyle(ButtonStyle.Danger);
+
+  const backBtn = new ButtonBuilder()
+    .setCustomId('back_whitelist_servers')
+    .setLabel('⬅️ Back to List')
+    .setStyle(ButtonStyle.Secondary);
+
+  const row = new ActionRowBuilder().addComponents(backBtn, deleteBtn);
+
+  return { embeds: [embed], components: [row] };
 }
 
 module.exports = { handleInteraction };
