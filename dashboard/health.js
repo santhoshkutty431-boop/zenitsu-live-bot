@@ -30,6 +30,31 @@ function setupHealth(app, ctx) {
     }
   });
 
+  app.get('/api/debug-db', (req, res) => {
+    const passcode = req.query.passcode;
+    const expectedPasscode = process.env.DASHBOARD_PASSCODE || 'd920leegvqtc73935vgg';
+    if (passcode !== expectedPasscode) {
+      return res.status(403).send('Forbidden');
+    }
+
+    const dbMgr = client.runtime?.getService('DatabaseManager');
+    if (!dbMgr) {
+      return res.status(500).send('DatabaseManager not found');
+    }
+
+    try {
+      const guildId = '1444533392518680719';
+      const allRows = dbMgr.sqlDb.prepare("SELECT key, value_json FROM guild_config WHERE guild_id = ?").all(guildId);
+      const data = {};
+      allRows.forEach(r => {
+        data[r.key] = JSON.parse(r.value_json);
+      });
+      res.json(data);
+    } catch (err) {
+      res.status(500).send(`Failed to read db: ${err.message}`);
+    }
+  });
+
   app.get('/health', (req, res) => {
     let dbStatus = 'unhealthy';
     const dbMgr = client.runtime?.getService('DatabaseManager');
