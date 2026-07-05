@@ -48,6 +48,15 @@ function calcLevel(xp) { return Math.floor(Math.sqrt(xp / 100)); }
 function xpForLevel(lvl) { return lvl * lvl * 100; }
 
 let runtimeInstance = null;
+const getInstanceName = () => {
+  if (process.env.SPACE_ID) return 'Hugging Face Space';
+  const isKoyeb = !!(process.env.KOYEB || process.env.KOYEB_APP_NAME || process.env.KOYEB_SERVICE_NAME);
+  if (isKoyeb) return 'Koyeb (Legacy)';
+  if (process.env.RENDER) {
+    return process.env.IS_PRIMARY_INSTANCE === 'true' ? 'Render (Primary Writer)' : 'Render (Read-Only)';
+  }
+  return 'Local/Other';
+};
 const loadDb = () => {};
 const saveDb = () => {
   if (!runtimeInstance) return;
@@ -1639,6 +1648,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
               { name: '📋 Default Permissions', value: 'None yet. Ask an Administrator or the Server Owner to configure your custom capabilities.' }
             )
             .setColor(0x2ECC71)
+            .setFooter({ text: `Active Instance: ${getInstanceName()}` })
             .setTimestamp();
           await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
         } catch (err) {
@@ -1698,6 +1708,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
               { name: '📋 What You Can Do', value: tierDesc }
             )
             .setColor(0x2ECC71)
+            .setFooter({ text: `Active Instance: ${getInstanceName()}` })
             .setTimestamp();
 
           for (const [memberId, member] of roleMembers) {
@@ -1761,6 +1772,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
               { name: '📋 Your New Capabilities', value: capsDesc }
             )
             .setColor(0xE67E22)
+            .setFooter({ text: `Active Instance: ${getInstanceName()}` })
             .setTimestamp();
           await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
         }
@@ -1843,6 +1855,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
               { name: '📋 What You Can Do Now', value: tierDesc }
             )
             .setColor(0x3498DB)
+            .setFooter({ text: `Active Instance: ${getInstanceName()}` })
             .setTimestamp();
 
           for (const [memberId, member] of roleMembers) {
@@ -1866,6 +1879,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
             { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
           )
           .setColor(0xF39C12)
+          .setFooter({ text: `Active Instance: ${getInstanceName()}` })
           .setTimestamp();
         await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
@@ -1910,6 +1924,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
             { name: '📋 Updated Capabilities', value: capsDesc }
           )
           .setColor(0xE67E22)
+          .setFooter({ text: `Active Instance: ${getInstanceName()}` })
           .setTimestamp();
 
         for (const [memberId, member] of roleMembers) {
@@ -1933,6 +1948,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
         )
         .setColor(0xF39C12)
+        .setFooter({ text: `Active Instance: ${getInstanceName()}` })
         .setTimestamp();
       await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
@@ -1994,6 +2010,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
         )
         .setColor(0xE74C3C)
+        .setFooter({ text: `Active Instance: ${getInstanceName()}` })
         .setTimestamp();
       await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
@@ -2043,6 +2060,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           { name: 'Server', value: `\`${interaction.guild.name}\` (ID: \`${guildId}\`)` }
         )
         .setColor(0xE74C3C)
+        .setFooter({ text: `Active Instance: ${getInstanceName()}` })
         .setTimestamp();
       await logToChannel(interaction.guild, ID.MOD_LOG, auditLogEmbed);
 
