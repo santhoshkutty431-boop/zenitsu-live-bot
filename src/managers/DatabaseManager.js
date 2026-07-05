@@ -767,15 +767,11 @@ Writer:            ${writerStatus}
           this.sqlDb.exec(`VACUUM INTO '${snapshotPath.replace(/'/g, "''")}'`);
 
           const content = fs.readFileSync(snapshotPath);
-          const action = {
-            action: 'add',
-            path: 'data/zenitsu.db',
-            content: content.toString('base64')
-          };
+          const base64Text = content.toString('base64');
 
-          await this.commitToHf([action]);
+          await this.commitToHf(base64Text);
           this.lastSuccessfulSync = new Date().toISOString();
-          this.logger.info(`SQLite DB synced to Hugging Face Cloud (${content.length} bytes).`);
+          this.logger.info(`Database synced to Hugging Face Cloud (${content.length} bytes → ${base64Text.length} b64 chars).`);
         } catch (err) {
           this.logger.error(`SQLite HF sync failed: ${err.message}`);
         } finally {
@@ -789,15 +785,24 @@ Writer:            ${writerStatus}
     return this.writeQueue;
   }
 
-  commitToHf(actions) {
+  // Commit the database to HF as a BASE64 TEXT file (data/zenitsu.db.b64).
+  //
+  // CRITICAL: HF's commit API REJECTS binary files ("Please use Xet to store
+  // binary files") — but the old {actions:[...]} JSON payload got fake 200s
+  // and silently committed NOTHING, so the .db on HF was frozen for months and
+  // every whitelist/setting change "reverted" on restart. Committing the DB as
+  // a base64 *text* file via the proper NDJSON commit format actually persists.
+  commitToHf(base64Text) {
     return new Promise((resolve, reject) => {
-      const commitPayload = {
-        actions,
-        summary: 'Sync SQLite binary database',
-        parentCommit: undefined
-      };
-
-      const payloadString = JSON.stringify(commitPayload);
+      // NDJSON: one header line + one file line. content is base64 of the
+      // UTF-8 text we want the file to contain (HF decodes it back to the text).
+      const payloadString =
+        JSON.stringify({ key: 'header', value: { summary: 'Sync database (base64)', description: '' } }) + '\n' +
+        JSON.stringify({ key: 'file', value: {
+          path: 'data/zenitsu.db.b64',
+          content: Buffer.from(base64Text, 'utf8').toString('base64'),
+          encoding: 'base64'
+        } }) + '\n';
 
       const options = {
         hostname: 'huggingface.co',
@@ -806,7 +811,7 @@ Writer:            ${writerStatus}
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.hfToken}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-ndjson',
           'Content-Length': Buffer.byteLength(payloadString)
         },
         // Bug 1c: hard 10s socket timeout so an immediate config flush can
@@ -847,7 +852,11 @@ Writer:            ${writerStatus}
   }
 
   async syncFromHf() {
-    const url = `https://huggingface.co/spaces/${this.config.hfRepo}/raw/main/data/zenitsu.db`;
+    // Pull the base64-TEXT database (data/zenitsu.db.b64) that flushToHf now
+    // writes. A cache-buster defeats HF's CDN which otherwise serves a stale
+    // copy for minutes after a push. Falls back to the legacy binary path.
+    const url = `https://huggingface.co/spaces/${this.config.hfRepo}/raw/main/data/zenitsu.db.b64?cb=${Date.now()}`;
+    const legacyUrl = `https://huggingface.co/spaces/${this.config.hfRepo}/raw/main/data/zenitsu.db`;
     const options = {
       headers: { 'Authorization': `Bearer ${this.config.hfToken}` }
     };
@@ -889,7 +898,33 @@ Writer:            ${writerStatus}
     };
 
     try {
-      const buffer = await download(url);
+      // Try the base64-text file first; decode to binary. Validate it's a real
+      // SQLite db before trusting it (the .b64 might be absent or garbage).
+      let buffer = null;
+      const b64raw = await download(url).catch(() => null);
+      if (b64raw && b64raw.length > 100) {
+        try {
+          const decoded = Buffer.from(b64raw.toString('utf8').trim(), 'base64');
+          if (decoded.length > 100 && decoded.slice(0, 16).toString() === 'SQLite format 3\0') {
+            buffer = decoded;
+            this.logger.info(`Pulled base64 database from HF (${decoded.length} bytes).`);
+          } else {
+            this.logger.warn('HF .b64 file did not decode to a valid SQLite database; ignoring.');
+          }
+        } catch (e) {
+          this.logger.warn(`Failed to decode HF .b64 database: ${e.message}`);
+        }
+      }
+      // Legacy fallback: the old binary path (may be a stale relic, used only
+      // if no valid .b64 exists yet on the very first migration).
+      if (!buffer) {
+        const legacy = await download(legacyUrl).catch(() => null);
+        if (legacy && legacy.length > 100 && legacy.slice(0, 16).toString() === 'SQLite format 3\0') {
+          buffer = legacy;
+          this.logger.info('Pulled legacy binary database from HF (migration path).');
+        }
+      }
+
       if (buffer && buffer.length > 100) {
         // Version protection check: Reject cloud DB if its version is older than local DB
         if (fs.existsSync(DB_PATH)) {
