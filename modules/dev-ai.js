@@ -28,6 +28,7 @@ const TOOLS = {
   lock_channel:    { destructive: false, params: 'channel',                  desc: 'Prevent @everyone from sending in a channel' },
   unlock_channel:  { destructive: false, params: 'channel',                  desc: 'Restore @everyone send in a channel' },
   restrict_channel:{ destructive: false, params: 'channel, mode',            desc: 'mode = media_only | text_only | read_only | normal' },
+  set_permission:  { destructive: false, params: 'target, role, permissions, allow', desc: 'Grant/deny permissions for a role on a channel OR category. target = channel or category name. permissions = comma list of: view, send, attach, react, connect, speak, manage, mention. allow = true|false' },
   create_channel:  { destructive: false, params: 'name, type',              desc: 'Create a text or voice channel (type=text|voice)' },
   rename_channel:  { destructive: false, params: 'channel, name',            desc: 'Rename a channel' },
   create_role:     { destructive: false, params: 'name, color',             desc: 'Create a role (color = hex like #FF0000 or name)' },
@@ -62,17 +63,25 @@ function cleanId(str) {
   return m ? m[1] : null;
 }
 
-async function resolveChannel(guild, ref) {
+async function resolveChannel(guild, ref, includeCategories = true) {
   if (!ref) return null;
   const id = cleanId(ref);
   if (id) {
     const byId = guild.channels.cache.get(id) || await guild.channels.fetch(id).catch(() => null);
     if (byId) return byId;
   }
-  const name = String(ref).replace(/[#<>]/g, '').toLowerCase().trim();
+  // Strip common noise words so "announcement channel in client category" still
+  // resolves the intended target name.
+  let name = String(ref).replace(/[#<>]/g, '').toLowerCase()
+    .replace(/\b(channel|category|the|in|to|role)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
   await guild.channels.fetch().catch(() => {});
-  return guild.channels.cache.find(c => c.name.toLowerCase() === name)
-      || guild.channels.cache.find(c => c.name.toLowerCase().includes(name))
+  const pool = includeCategories
+    ? guild.channels.cache
+    : guild.channels.cache.filter(c => c.type !== ChannelType.GuildCategory);
+  return pool.find(c => c.name.toLowerCase() === name)
+      || pool.find(c => c.name.toLowerCase().includes(name))
+      || (name.split(' ')[0] && pool.find(c => c.name.toLowerCase().includes(name.split(' ')[0])))
       || null;
 }
 
@@ -180,6 +189,36 @@ async function executeAction(guild, action, ctx) {
       };
       await ch.permissionOverwrites.edit(guild.roles.everyone, map[mode] || map.normal);
       return `#${ch.name} → ${mode}`;
+    }
+    case 'set_permission': {
+      const ch = await resolveChannel(guild, p.target);
+      if (!ch) throw new Error(`channel/category "${p.target}" not found`);
+      const role = await resolveRole(guild, p.role);
+      if (!role) throw new Error(`role "${p.role}" not found`);
+      // Map friendly permission words to Discord flags.
+      const FLAG = {
+        view: 'ViewChannel', see: 'ViewChannel', read: 'ViewChannel',
+        send: 'SendMessages', write: 'SendMessages', message: 'SendMessages', msg: 'SendMessages',
+        attach: 'AttachFiles', upload: 'AttachFiles', photo: 'AttachFiles', file: 'AttachFiles',
+        react: 'AddReactions', reaction: 'AddReactions',
+        connect: 'Connect', join: 'Connect',
+        speak: 'Speak', talk: 'Speak',
+        manage: 'ManageChannels',
+        mention: 'MentionEveryone',
+        embed: 'EmbedLinks', link: 'EmbedLinks',
+      };
+      const allow = !(String(p.allow).toLowerCase() === 'false' || p.allow === false);
+      const perms = String(p.permissions || 'view').split(/[,\s]+/).filter(Boolean);
+      const edit = {};
+      const applied = [];
+      for (const word of perms) {
+        const flag = FLAG[word.toLowerCase()];
+        if (flag) { edit[flag] = allow; applied.push(flag); }
+      }
+      if (!applied.length) throw new Error(`no recognizable permissions in "${p.permissions}"`);
+      await ch.permissionOverwrites.edit(role, edit);
+      const label = ch.type === ChannelType.GuildCategory ? `category "${ch.name}"` : `#${ch.name}`;
+      return `${allow ? 'Granted' : 'Denied'} ${applied.join(', ')} for @${role.name} on ${label}`;
     }
     case 'create_channel': {
       const type = /voice/i.test(p.type) ? ChannelType.GuildVoice : ChannelType.GuildText;
