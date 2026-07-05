@@ -73,7 +73,10 @@ const DEFAULT_GUILD = {
   ticketLanguages: {},
   userLanguages: {},
   guildWhitelists: {},
-  permissionSchemaVersion: 4
+  permissionSchemaVersion: 4,
+  commandRoleWhitelist: { admin: [], staff: [], member: [] },
+  roleCapabilities: {},
+  warnings: {}
 };
 
 class DatabaseManager {
