@@ -8,3 +8,14 @@ data/
 logs/
 *.log
 database.json
+
+# junk / local artifacts
+temp_dbs/
+hf_space_repo/
+test_commit.db
+test_commit_prev.db
+find-populated-db.js
+avatar.png
+banner.png
+*.db-shm
+*.db-wal

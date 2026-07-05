@@ -60,65 +60,18 @@ function isOwner(userId) {
   return userId === ownerId;
 }
 
+// The canonical, self-healing logToChannel lives in index.js and is injected
+// into registerEvents. This module-level wrapper simply delegates to it so
+// logToReports/logAiAnalytics get the same recreated-channel self-healing.
+let injectedLogToChannel = null;
 async function logToChannel(guild, channelId, embed) {
+  if (injectedLogToChannel) return injectedLogToChannel(guild, channelId, embed);
+  // Fallback (should not happen once registerEvents has run): best-effort send.
   if (!guild || !channelId) return;
-
-  // Step 1: Check per-guild /setup-logs config from RuntimeDatabaseManager
-  let resolvedChannelId = null;
-  const LOG_KEY_MAP = {
-    [ID.MESSAGE_LOG]: 'messageLogId',
-    [ID.VOICE_LOG]:   'voiceLogId',
-    [ID.MOD_LOG]:     'modLogId',
-    [ID.SERVER_LOGS]: 'serverLogsId',
-  };
-  if (runtimeInstance) {
-    try {
-      const gdb = runtimeInstance.getService('DatabaseManager')?.getGuildDb(guild.id);
-      const loggingKey = LOG_KEY_MAP[channelId];
-      if (loggingKey && gdb?.logging?.[loggingKey]) {
-        resolvedChannelId = gdb.logging[loggingKey];
-      }
-    } catch { /* db not ready */ }
-  }
-
-  // Step 2: Fall back to the env-var/hardcoded ID map (main server only)
-  const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
-  if (!resolvedChannelId && isMainServer && /^\d+$/.test(String(channelId))) {
-    resolvedChannelId = channelId;
-  }
-
-  // Step 3: Name-based channel lookup for non-main servers or as last resort
-  if (!resolvedChannelId) {
-    const title = embed.data?.title || '';
-    let targetName = 'server-logs';
-    if (title.includes('Message Deleted') || title.includes('Message Edited')) targetName = 'message-log';
-    else if (title.includes('Voice')) targetName = 'voice-log';
-    else if (title.includes('Incident') || title.includes('Audit') || title.includes('Banned') ||
-             title.includes('Kicked') || title.includes('Warning') || title.includes('Mute') ||
-             title.includes('Timeout') || title.includes('Moderation')) targetName = 'mod-log';
-
-    const cleanName = targetName.replace(/[^a-z0-9-]/g, '');
-    const foundCh = guild.channels.cache.find(c => {
-      const cClean = c.name.toLowerCase().replace(/[^a-z0-9-]/g, '');
-      return cClean === cleanName || cClean.includes(cleanName);
-    });
-    if (foundCh) resolvedChannelId = foundCh.id;
-  }
-
-  if (!resolvedChannelId) return;
   try {
-    let ch = guild.channels.cache.get(resolvedChannelId);
-    if (!ch) {
-      ch = await guild.channels.fetch(resolvedChannelId).catch(() => null);
-    }
-    if (ch) {
-      await ch.send({ embeds: [embed] }).catch(err => {
-        console.error(`[LOG ERROR] Failed to send embed to channel ${resolvedChannelId}:`, err.message);
-      });
-    }
-  } catch (err) {
-    console.error(`[LOG ERROR] Exception in logToChannel:`, err.message);
-  }
+    let ch = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null);
+    if (ch?.isTextBased?.()) await ch.send({ embeds: [embed] }).catch(() => {});
+  } catch { /* ignore */ }
 }
 async function logToReports(guild, embed) {
   await logToChannel(guild, ID.MOD_REPORTS, embed);
@@ -219,6 +172,9 @@ function registerEvents(client, runtime, _db, _ID, logToChannel, isDeveloper, re
   // Publish db/ID to module scope so helpers like logToReports() see them
   db = _db;
   ID = _ID;
+  // Capture the canonical self-healing logToChannel (from index.js) so the
+  // module-level wrapper + logToReports/logAiAnalytics delegate to it.
+  injectedLogToChannel = logToChannel;
   // Bind all event listeners to the client
 client.on('guildMemberAdd', async member => {
   console.log(`[JOIN] ${member.user.tag} joined`);

@@ -793,22 +793,39 @@ Writer:            ${writerStatus}
           'Authorization': `Bearer ${this.config.hfToken}`,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payloadString)
-        }
+        },
+        // Bug 1c: hard 10s socket timeout so an immediate config flush can
+        // never deadlock the interaction that triggered it.
+        timeout: 10_000
       };
+
+      let settled = false;
+      const settleOk = () => { if (!settled) { settled = true; resolve(); } };
+      const settleErr = (e) => { if (!settled) { settled = true; reject(e); } };
 
       const req = https.request(options, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
           if (res.statusCode === 200 || res.statusCode === 201) {
-            resolve();
+            settleOk();
           } else {
-            reject(new Error(`Hugging Face upload responded with code ${res.statusCode} - ${body}`));
+            settleErr(new Error(`Hugging Face upload responded with code ${res.statusCode} - ${body}`));
           }
         });
+        res.on('error', settleErr);
       });
 
-      req.on('error', reject);
+      req.on('error', settleErr);
+      req.on('timeout', () => {
+        req.destroy(new Error('Hugging Face commit timed out after 10s'));
+      });
+      // Watchdog fallback in case the socket 'timeout' event never fires.
+      const watchdog = setTimeout(() => {
+        if (!settled) req.destroy(new Error('Hugging Face commit watchdog timed out after 11s'));
+      }, 11_000);
+      req.on('close', () => clearTimeout(watchdog));
+
       req.write(payloadString);
       req.end();
     });

@@ -296,7 +296,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     // /protectme
     else if (cmd === 'protectme') {
       const active = interaction.options.getBoolean('active');
-      db.protectmeActive = active; saveDb();
+      db.protectmeActive = active; saveDb(true);
       await interaction.reply({ content: `Auto-mod is now **${active ? 'ENABLED ✅' : 'DISABLED ❌'}**`, ephemeral: true });
     }
 
@@ -840,17 +840,17 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       } else if (sub === 'toggle-antinuke') {
         db.securityConfig.antiNukeEnabled = !db.securityConfig.antiNukeEnabled;
-        saveDb();
+        saveDb(true);
         await interaction.reply({ content: `💣 Anti-Nuke is now **${db.securityConfig.antiNukeEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
 
       } else if (sub === 'toggle-antiraid') {
         db.securityConfig.antiRaidEnabled = !db.securityConfig.antiRaidEnabled;
-        saveDb();
+        saveDb(true);
         await interaction.reply({ content: `🔒 Anti-Raid is now **${db.securityConfig.antiRaidEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
 
       } else if (sub === 'toggle-quarantine') {
         db.securityConfig.quarantineEnabled = !db.securityConfig.quarantineEnabled;
-        saveDb();
+        saveDb(true);
         await interaction.reply({ content: `🔒 Auto-Quarantine is now **${db.securityConfig.quarantineEnabled ? 'Enabled ✅' : 'Disabled ❌'}**`, ephemeral: true });
       }
     }
@@ -983,7 +983,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       if (!ch) {
         db.aiChannelId = null;
-        saveDb();
+        saveDb(true);
         return interaction.reply({
           embeds: [new EmbedBuilder()
             .setTitle('🤖 AI Channel Disabled')
@@ -1001,7 +1001,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
 
       db.aiChannelId = ch.id;
-      saveDb();
+      saveDb(true);
 
       // Post an intro message in the newly set AI channel
       const introEmbed = new EmbedBuilder()
@@ -1038,7 +1038,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const selectedModel = interaction.options.getString('model');
       db.aiDefaultModel = selectedModel;
-      saveDb();
+      saveDb(true);
 
       const modelNames = {
         gemini: '🔷 Gemini 2.0 Flash (Free)',
@@ -1093,7 +1093,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         return interaction.reply({ content: '⚠️ Please specify at least one logging channel option to configure.', ephemeral: true });
       }
 
-      saveDb();
+      saveDb(true);
 
       const embed = new EmbedBuilder()
         .setTitle('⚙️ Logging Channels Updated')
@@ -1138,7 +1138,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const isLock = action === 'on';
 
       db.emergencyLock = isLock;
-      saveDb();
+      saveDb(true);
 
       invalidatePermCache();
 
@@ -2611,7 +2611,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
 
       db.serverWhitelist.push(serverId);
-      saveDb();
+      saveDb(true);
 
       const { embeds, components } = getWhitelistedServersList(interaction, db);
       embeds[0].setDescription(`✅ Successfully added server \`${serverId}\` to the whitelist.\n\n` + (embeds[0].data.description || ''));

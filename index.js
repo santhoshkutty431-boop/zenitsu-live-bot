@@ -255,50 +255,61 @@ function resolveLogKind(nameOrId, ID) {
 const logToChannel = async (guild, channelNameOrId, embed) => {
   if (!guild || !channelNameOrId) return;
 
-  let channelId = null;
   const kind = resolveLogKind(channelNameOrId, ID);
 
-  const isMainServer = guild.id === (process.env.GUILD_ID || '1444533392518680719');
-
-  // 1. Per-guild /setup-logs config
+  // Gather candidate channel IDs in priority order.
+  const candidateIds = [];
   if (kind) {
     try {
       const gdb = runtime.getService('DatabaseManager').getGuildDb(guild.id);
       const configured = gdb?.logging?.[LOG_KIND_TO_DB_KEY[kind]];
-      if (configured) channelId = configured;
-    } catch { /* db not ready — fall through */ }
+      if (configured) candidateIds.push(configured);
+    } catch { /* db not ready */ }
+    if (ID[kind]) candidateIds.push(ID[kind]); // env/default map, all servers
+  }
+  if (!kind && typeof channelNameOrId === 'string' && /^\d+$/.test(channelNameOrId)) {
+    candidateIds.push(channelNameOrId); // raw ID passed directly
   }
 
-  // 2. ID map / env var (main-server default)
-  if (!channelId && kind && ID[kind] && isMainServer) channelId = ID[kind];
-
-  // 3. Raw channel ID passed by caller
-  if (!channelId && !kind && typeof channelNameOrId === 'string' && /^\d+$/.test(channelNameOrId)) {
-    channelId = channelNameOrId;
+  // Try each candidate. A deleted+recreated channel makes its old ID resolve
+  // to null here, which drops us into the self-healing name lookup below.
+  let channel = null;
+  for (const id of candidateIds) {
+    if (!id) continue;
+    channel = guild.channels.cache.get(id) || await guild.channels.fetch(id).catch(() => null);
+    if (channel && channel.isTextBased?.()) break;
+    channel = null;
   }
 
-  // 4. Name-based lookup on non-main servers (or as last resort)
-  if (!channelId && kind && LOG_KIND_TO_CHANNEL_NAME[kind]) {
-    const targetName = LOG_KIND_TO_CHANNEL_NAME[kind];
-    const cleanName = targetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const foundCh = guild.channels.cache.find(c => {
+  // ── SELF-HEALING NAME FALLBACK (universal — main server included) ──────────
+  // Runs whenever no configured ID resolves, e.g. the admin deleted and
+  // recreated the log channel (new ID). Force a full channel fetch so the
+  // freshly-created channel is in cache, then match by conventional name.
+  if (!channel && kind && LOG_KIND_TO_CHANNEL_NAME[kind]) {
+    await guild.channels.fetch().catch(() => {});
+    const cleanName = LOG_KIND_TO_CHANNEL_NAME[kind].toLowerCase().replace(/[^a-z0-9-]/g, '');
+    channel = guild.channels.cache.find(c => {
+      if (!c?.isTextBased?.()) return false;
       const cClean = c.name.toLowerCase().replace(/[^a-z0-9-]/g, '');
       return cClean === cleanName || cClean.includes(cleanName);
-    });
-    if (foundCh) channelId = foundCh.id;
-    else if (!isMainServer) return; // give up on non-main servers
+    }) || null;
+
+    // Persist the rediscovered ID so future logs skip the fetch (immediate
+    // flush so it survives a restart).
+    if (channel) {
+      try {
+        const dbMgr = runtime.getService('DatabaseManager');
+        const gdb = dbMgr.getGuildDb(guild.id);
+        gdb.logging = gdb.logging || {};
+        gdb.logging[LOG_KIND_TO_DB_KEY[kind]] = channel.id;
+        dbMgr.saveGuildDb(guild.id, true);
+      } catch { /* best effort */ }
+    }
   }
 
-  if (!channelId) return;
-
+  if (!channel || !channel.isTextBased?.()) return;
   try {
-    let channel = guild.channels.cache.get(channelId);
-    if (!channel) {
-      channel = await guild.channels.fetch(channelId).catch(() => null);
-    }
-    if (channel && channel.isTextBased?.()) {
-      await channel.send({ embeds: [embed] });
-    }
+    await channel.send({ embeds: [embed] });
   } catch (err) {
     console.error(`Failed to log to channel ${channelNameOrId}:`, err.message);
   }
