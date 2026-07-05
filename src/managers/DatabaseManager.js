@@ -524,7 +524,7 @@ Writer:            ${writerStatus}
     return this._globalCache;
   }
 
-  saveGlobal() {
+  saveGlobal(immediate = false) {
     if (!this._assertWritePermission('saveGlobal')) return;
     if (!this._globalCache) return;
     const transaction = this.sqlDb.transaction(() => {
@@ -533,19 +533,27 @@ Writer:            ${writerStatus}
       }
     });
     transaction();
-    this.scheduleSync();
+    if (immediate) {
+      if (this.syncTimer) {
+        clearTimeout(this.syncTimer);
+        this.syncTimer = null;
+      }
+      this.flushToHf();
+    } else {
+      this.scheduleSync();
+    }
   }
 
-  save() {
+  save(immediate = false) {
     // Note: save() just delegates to saveGuildDb or saveGlobal, which both assert permission.
     // However, we can assert permission here as well to fail fast.
     if (!this._assertWritePermission('save')) return;
     const store = asyncLocalStorage.getStore();
     const guildId = store?.guildId;
     if (guildId) {
-      this.saveGuildDb(guildId);
+      this.saveGuildDb(guildId, immediate);
     } else {
-      this.saveGlobal();
+      this.saveGlobal(immediate);
     }
   }
 
@@ -575,7 +583,7 @@ Writer:            ${writerStatus}
     return db;
   }
 
-  saveGuildDb(guildId) {
+  saveGuildDb(guildId, immediate = false) {
     if (!this._assertWritePermission('saveGuildDb')) return;
     if (!this._guildCache.has(guildId)) return;
     const cache = this._guildCache.get(guildId);
@@ -586,7 +594,15 @@ Writer:            ${writerStatus}
       }
     });
     transaction();
-    this.scheduleSync();
+    if (immediate) {
+      if (this.syncTimer) {
+        clearTimeout(this.syncTimer);
+        this.syncTimer = null;
+      }
+      this.flushToHf();
+    } else {
+      this.scheduleSync();
+    }
   }
 
   deleteGuildDb(guildId) {

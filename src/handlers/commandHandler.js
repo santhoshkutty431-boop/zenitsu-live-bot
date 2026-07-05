@@ -60,15 +60,15 @@ const getInstanceName = () => {
   return `Local/Other (Mode: ${dbMode})`;
 };
 const loadDb = () => {};
-const saveDb = () => {
+const saveDb = (immediate = false) => {
   if (!runtimeInstance) return;
   const store = global.asyncLocalStorage?.getStore();
   const guildId = store?.guildId;
   const dbMgr = runtimeInstance.getService('DatabaseManager');
   if (dbMgr) {
-    dbMgr.saveGlobal();
+    dbMgr.saveGlobal(immediate);
     if (guildId) {
-      dbMgr.saveGuildDb(guildId);
+      dbMgr.saveGuildDb(guildId, immediate);
     }
   }
 };
@@ -1638,7 +1638,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         if (!db.roleWhitelist.includes(targetUser.id)) {
           db.roleWhitelist.push(targetUser.id);
         }
-        saveDb();
+        saveDb(true);
 
         // Notify the user via DM
         try {
@@ -1693,7 +1693,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         db.commandRoleWhitelist[defaultTier].push(targetRole.id);
         db.roleCapabilities = db.roleCapabilities || {};
         db.roleCapabilities[targetRole.id] = [];
-        saveDb();
+        saveDb(true);
         invalidatePermCache(guildId);
 
         // Notify all current role members via DM
@@ -1756,7 +1756,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const previousState = db.guildWhitelists[guildId].users[targetUserId] || [];
       db.guildWhitelists[guildId].users[targetUserId] = selectedCaps;
 
-      saveDb();
+      saveDb(true);
       invalidatePermCache(guildId, targetUserId);
 
       // Notify the user via DM
@@ -1837,7 +1837,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           db.commandRoleWhitelist[newTier].push(roleId);
         }
 
-        saveDb();
+        saveDb(true);
         invalidatePermCache(guildId);
 
         // Notify all current role members of the updated tier via DM
@@ -1905,7 +1905,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const previousState = db.roleCapabilities[roleId] || [];
       db.roleCapabilities[roleId] = selectedCaps;
 
-      saveDb();
+      saveDb(true);
       invalidatePermCache(guildId);
 
       // Notify all current role members of updated custom capabilities via DM
@@ -1998,7 +1998,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         db.roleWhitelist = db.roleWhitelist.filter(id => id !== targetUserId);
       }
 
-      saveDb();
+      saveDb(true);
       invalidatePermCache(guildId, targetUserId);
 
       const auditId = generateAuditId();
@@ -2047,7 +2047,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         delete db.roleCapabilities[roleId];
       }
 
-      saveDb();
+      saveDb(true);
       invalidatePermCache(guildId);
 
       const auditId = generateAuditId();
