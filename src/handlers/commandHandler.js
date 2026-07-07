@@ -2492,15 +2492,17 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       };
       const animEmoji = emojiMap[customId] || '🎫';
 
+      const customTicketDesc = db.ticketDescription
+        ? db.ticketDescription.replace(/{guild}/g, interaction.guild.name).replace(/{username}/g, interaction.user.toString())
+        : `⚡ **Thunder Breathing: Ticket Initialized** ⚡\n\n` + t.desc + `\n\n⚡ ─── ⚡ ─── ⚡ ─── ⚡`;
+
+      const customTicketImg = db.ticketImage || 'https://media1.tenor.com/m/V8G4820rM01C8AAAAd/zenitsu-demon-slayer.gif';
+
       const ticketEmbed = new EmbedBuilder()
         .setTitle(`${animEmoji} ${t.title}`)
-        .setDescription(
-          `⚡ **Thunder Breathing: Ticket Initialized** ⚡\n\n` +
-          t.desc + `\n\n` +
-          `⚡ ─── ⚡ ─── ⚡ ─── ⚡`
-        )
+        .setDescription(customTicketDesc)
         .setColor(t.color)
-        .setImage('https://media1.tenor.com/m/V8G4820rM01C8AAAAd/zenitsu-demon-slayer.gif')
+        .setImage(customTicketImg)
         .setFooter({ text: `Ticket: ${ticketCh.name} • Lightning speed support` })
         .setTimestamp();
       const closeRow = new ActionRowBuilder().addComponents(

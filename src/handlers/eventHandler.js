@@ -197,18 +197,28 @@ client.on('guildMemberAdd', async member => {
   // [2] Welcome DM
   const rulesLine   = rulesId   ? `📜 Read the rules → <#${rulesId}>\n` : '';
   const welcomeLine = welcomeId ? `✅ Click **Verify** in <#${welcomeId}> to unlock the community\n` : '';
-  const dmEmbed = new EmbedBuilder()
-    .setTitle(`⚡ Welcome to ${gname}, ${member.user.username}! <a:tt_clapCat_OwO:1444716354023461016>`)
-    .setDescription(
-      `⚡ **Thunder Breathing, First Form: Welcome!** ⚡\n\n` +
+
+  // Custom or Fallback Welcome DM Embed
+  const welcomeTitle = db.welcomeTitle 
+    ? db.welcomeTitle.replace(/{guild}/g, gname).replace(/{username}/g, member.user.username)
+    : `⚡ Welcome to ${gname}, ${member.user.username}! <a:tt_clapCat_OwO:1444716354023461016>`;
+    
+  const welcomeDesc = db.welcomeDescription
+    ? db.welcomeDescription.replace(/{guild}/g, gname).replace(/{username}/g, member.user.toString())
+    : `⚡ **Thunder Breathing, First Form: Welcome!** ⚡\n\n` +
       `Hello ${member.user}! You have successfully flashed into **${gname}**! <a:nekolove:1444716314223710228>\n\n` +
       `**📌 Fast-Path Navigation:**\n` +
       rulesLine + welcomeLine +
       `🎫 Open a support ticket if you need anything!\n\n` +
-      `> *See you in the lightning storm!* — **${gname} Staff**`
-    )
+      `> *See you in the lightning storm!* — **${gname} Staff**`;
+
+  const welcomeImg = db.welcomeImage || 'https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif';
+
+  const dmEmbed = new EmbedBuilder()
+    .setTitle(welcomeTitle)
+    .setDescription(welcomeDesc)
     .setColor(0xEDC231)
-    .setImage('https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif')
+    .setImage(welcomeImg)
     .setThumbnail(member.guild.iconURL({ dynamic: true }))
     .setFooter({ text: `Zenitsu Live Automation • ${gname}` })
     .setTimestamp();
@@ -221,14 +231,20 @@ client.on('guildMemberAdd', async member => {
   // Welcome message in channel (only if this guild has a welcome channel)
   const welcomeCh = welcomeId ? member.guild.channels.cache.get(welcomeId) : null;
   if (welcomeCh?.isTextBased?.()) {
-    const welcomeEmbed = new EmbedBuilder()
-      .setTitle(`⚡ New Member Arrived! <a:tt_clapCat_OwO:1444716354023461016>`)
-      .setDescription(
-        `Welcome to the storm, ${member}! <a:nyanbang1:1444716412185739274>\n\n` +
+    const channelWelcomeTitle = db.welcomeTitle
+      ? db.welcomeTitle.replace(/{guild}/g, gname).replace(/{username}/g, member.user.username)
+      : `⚡ New Member Arrived! <a:tt_clapCat_OwO:1444716354023461016>`;
+      
+    const channelWelcomeDesc = db.welcomeDescription
+      ? db.welcomeDescription.replace(/{guild}/g, gname).replace(/{username}/g, member.user.toString())
+      : `Welcome to the storm, ${member}! <a:nyanbang1:1444716412185739274>\n\n` +
         `We are thrilled to have you here in **${gname}**.\n` +
-        (rulesId ? `> 📜 Flashing-step over to <#${rulesId}> to read the rules and verify!` : '')
-      )
-      .setImage('https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif')
+        (rulesId ? `> 📜 Flashing-step over to <#${rulesId}> to read the rules and verify!` : '');
+
+    const welcomeEmbed = new EmbedBuilder()
+      .setTitle(channelWelcomeTitle)
+      .setDescription(channelWelcomeDesc)
+      .setImage(welcomeImg)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setColor(0xEDC231)
       .setFooter({ text: `Member #${member.guild.memberCount} • Thunder breathing active` })

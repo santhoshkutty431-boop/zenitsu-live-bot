@@ -109,6 +109,20 @@ function setupManage(app, ctx) {
     }
   });
 
+  app.post('/manage/:guildId/customizations', checkAuth, (req, res) => {
+    const { guildId } = req.params;
+    const { welcomeTitle, welcomeDescription, welcomeImage, ticketDescription, ticketImage } = req.body;
+    
+    db.welcomeTitle = welcomeTitle || '';
+    db.welcomeDescription = welcomeDescription || '';
+    db.welcomeImage = welcomeImage || '';
+    db.ticketDescription = ticketDescription || '';
+    db.ticketImage = ticketImage || '';
+    
+    saveDb();
+    res.redirect(`/manage/${guildId}?updated=1`);
+  });
+
   app.post('/manage/:guildId/toggle-automod', checkAuth, (req, res) => {
     const { guildId } = req.params;
     db.protectmeActive = !db.protectmeActive;
@@ -240,6 +254,33 @@ function renderManagePage(vars) {
             <textarea name="description" placeholder="Write your announcement details here..." required></textarea>
           </div>
           <button type="submit" class="btn-submit">Send Announcement</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-title">✨ Welcome & Ticket Customizations</div>
+        <form method="POST" action="/manage/${guild.id}/customizations">
+          <div class="form-group">
+            <label>Welcome Title</label>
+            <input type="text" name="welcomeTitle" value="${db.welcomeTitle || ''}" placeholder="e.g. ⚡ Welcome to {guild}, {username}!" />
+          </div>
+          <div class="form-group">
+            <label>Welcome Description</label>
+            <textarea name="welcomeDescription" placeholder="e.g. Hello {username}! Welcome to our server...">${db.welcomeDescription || ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Welcome Banner URL (GIF/PNG)</label>
+            <input type="text" name="welcomeImage" value="${db.welcomeImage || ''}" placeholder="e.g. https://media.giphy.com/media/.../giphy.gif" />
+          </div>
+          <div class="form-group">
+            <label>Ticket Description</label>
+            <textarea name="ticketDescription" placeholder="Custom text inside new tickets...">${db.ticketDescription || ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Ticket Banner URL (GIF/PNG)</label>
+            <input type="text" name="ticketImage" value="${db.ticketImage || ''}" placeholder="e.g. https://media.giphy.com/media/.../giphy.gif" />
+          </div>
+          <button type="submit" class="btn-submit">Save Customizations</button>
         </form>
       </div>
 
