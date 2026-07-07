@@ -2496,6 +2496,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         ? db.ticketDescription.replace(/{guild}/g, interaction.guild.name).replace(/{username}/g, interaction.user.toString())
         : `⚡ **Thunder Breathing: Ticket Initialized** ⚡\n\n` + t.desc + `\n\n⚡ ─── ⚡ ─── ⚡ ─── ⚡`;
 
+      const customTicketImg = db.ticketImage || 'https://media1.tenor.com/m/V8G4820rM01C8AAAAd/zenitsu-demon-slayer.gif';
       const isVideo = db.ticketFileMime && db.ticketFileMime.startsWith('video/');
 
       const ticketEmbed = new EmbedBuilder()
@@ -2513,12 +2514,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger)
       );
 
-      const ticketPayload = { content: t.ping, embeds: [ticketEmbed], components: [closeRow] };
-      if (isVideo) {
-        ticketPayload.files = [{ attachment: customTicketImg, name: `ticket_video.${db.ticketFileMime.split('/')[1]}` }];
-      }
-
-      await ticketCh.send(ticketPayload);
+      const { playZenitsuTicketAnimation } = require('../../modules/animations');
+      playZenitsuTicketAnimation(ticketCh, interaction.user, ticketEmbed, isVideo, customTicketImg, db.ticketFileMime, closeRow, t.ping).catch(() => {});
 
       // DM the user to notify them that the ticket is open
       const userDmEmbed = new EmbedBuilder()

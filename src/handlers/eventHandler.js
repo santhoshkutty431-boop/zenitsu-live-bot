@@ -262,12 +262,8 @@ client.on('guildMemberAdd', async member => {
       welcomeEmbed.setImage(welcomeImg);
     }
 
-    const channelPayload = { embeds: [welcomeEmbed] };
-    if (isVideo) {
-      channelPayload.files = [{ attachment: welcomeImg, name: `welcome_video.${db.welcomeFileMime.split('/')[1]}` }];
-    }
-
-    await welcomeCh.send(channelPayload).catch(() => {});
+    const { playZenitsuWelcomeAnimation } = require('../../modules/animations');
+    playZenitsuWelcomeAnimation(welcomeCh, member, welcomeEmbed, isVideo, welcomeImg, db.welcomeFileMime).catch(() => {});
   }
 });
 
