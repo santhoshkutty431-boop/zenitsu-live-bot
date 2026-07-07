@@ -242,20 +242,23 @@ client.on('guildMemberAdd', async member => {
   if (welcomeCh?.isTextBased?.()) {
     const channelWelcomeTitle = db.welcomeTitle
       ? db.welcomeTitle.replace(/{guild}/g, gname).replace(/{username}/g, member.user.username)
-      : `⚡ New Member Arrived! <a:tt_clapCat_OwO:1444716354023461016>`;
+      : `WELCOME TO ${gname.toUpperCase()}!`;
       
     const channelWelcomeDesc = db.welcomeDescription
       ? db.welcomeDescription.replace(/{guild}/g, gname).replace(/{username}/g, member.user.toString())
-      : `Welcome to the storm, ${member}! <a:nyanbang1:1444716412185739274>\n\n` +
-        `We are thrilled to have you here in **${gname}**.\n` +
-        (rulesId ? `> 📜 Flashing-step over to <#${rulesId}> to read the rules and verify!` : '');
+      : `Hey ${member} Thanks For Joining!\n` +
+        `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
+        `📊 **Member Count:** ${member.guild.memberCount}\n` +
+        `📅 **Joined:** <t:${Math.floor(member.joinedTimestamp / 1000)}:F>\n` +
+        `🏷️ **Roles Assigned:**\n` +
+        `• <@&${ID.MEMBER_ROLE || '1444538183206440960'}> / Zenitsu Member`;
 
     const welcomeEmbed = new EmbedBuilder()
       .setTitle(channelWelcomeTitle)
       .setDescription(channelWelcomeDesc)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setColor(0xEDC231)
-      .setFooter({ text: `Member #${member.guild.memberCount} • Thunder breathing active` })
+      .setFooter({ text: `Powered by JSR Security • Member #${member.guild.memberCount}` })
       .setTimestamp();
 
     if (!isVideo) {

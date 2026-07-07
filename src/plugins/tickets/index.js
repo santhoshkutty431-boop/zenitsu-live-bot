@@ -24,7 +24,8 @@ class TicketPlugin {
       return interaction.reply({ content: '❌ Only administrators can construct the Control Panel.', ephemeral: true });
     }
 
-    const config = this.dbService.db.config || {};
+    const db = this.dbService.db || {};
+    const customTicketImg = db.ticketImage || 'https://media1.tenor.com/m/V8G4820rM01C8AAAAd/zenitsu-demon-slayer.gif';
 
     // Row 1 — Ticket Categories
     const ticketRow = new ActionRowBuilder().addComponents(
@@ -42,21 +43,23 @@ class TicketPlugin {
     );
 
     const embed = new EmbedBuilder()
-      .setTitle('🖥️ ZENITSU LIVE — CONTROL PANEL')
+      .setTitle('🛡️ ZENITSU SECURITY SYSTEM')
       .setDescription(
-        '**─── 🎫 OPEN A TICKET ───**\n' +
-        '🛒 **Purchase** — Buy a product / place an order\n' +
-        '🔧 **Support** — Get help with an existing product\n' +
-        '🐛 **Bug Report** — Report a bug or issue\n' +
-        '🤖 **AI Support** — Start a private conversation with ZENITSU AI\n\n' +
-        '**─── OTHER ───**\n' +
-        '🚨 **Report User** — Report a rule-breaking member\n' +
-        '🎶 **Song Queue** — View active waifu song requests\n' +
-        '✅ **Get Member Role** — Unlock the full community'
+        `**Admin:** ${interaction.guild.members.cache.get(interaction.guild.ownerId)?.user.username || 'Server Owner'} • <t:${Math.floor(Date.now() / 1000)}:t>\n` +
+        `**${interaction.guild.name} - Official Tickets System**\n` +
+        `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
+        `Welcome to the official ticket system of **${interaction.guild.name}**.\n` +
+        `Open a ticket for purchases, support, or any product-related inquiries.\n\n` +
+        `💛 **Rules:-**\n` +
+        `• Tickets are only for purchases and support.\n` +
+        `• Any unrelated requests - instant ban.\n` +
+        `• Maintain respect with staff at all times.\n\n` +
+        `Interact with the below buttons to proceed!`
       )
-      .setColor(0xEDC231)
-      .setThumbnail(interaction.guild.iconURL())
-      .setFooter({ text: 'ZENITSU LIVE Automation v5.0' })
+      .setColor(0x2F3136)
+      .setImage(customTicketImg)
+      .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
+      .setFooter({ text: `Secure Core v2 - Powered by JSR Security` })
       .setTimestamp();
 
     const targetCh = interaction.options.getChannel('channel') || interaction.channel;
@@ -71,16 +74,26 @@ class TicketPlugin {
       return interaction.reply({ content: '❌ Only administrators can construct the Verification Panel.', ephemeral: true });
     }
 
+    const db = this.dbService.db || {};
+    const customWelcomeImg = db.welcomeImage || 'https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif';
+
     const verifyEmbed = new EmbedBuilder()
-      .setTitle('👋 Welcome to ZENITSU LIVE')
+      .setTitle('🛡️ WELCOME GATE SYSTEM')
       .setDescription(
-        '> Thank you for joining! To unlock the community and get full access to the server, please read the rules and click the verification button below.\n\n' +
-        '**📜 Server Rules:** Read <#1444538272884981882> before verifying.\n\n' +
-        '**Click ✅ Verify below to get started!**'
+        `**Admin:** ${interaction.guild.members.cache.get(interaction.guild.ownerId)?.user.username || 'Server Owner'} • <t:${Math.floor(Date.now() / 1000)}:t>\n` +
+        `**${interaction.guild.name} - Verification Portal**\n` +
+        `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
+        `Welcome to **${interaction.guild.name}**! To prevent automated bot accounts and gain full access, please read the rules and click the verification button below.\n\n` +
+        `💛 **Quick Rules:-**\n` +
+        `• Make sure to read the server rules before verifying.\n` +
+        `• Clicking the button will assign you the **Member** role.\n` +
+        `• Maintain a friendly environment at all times.\n\n` +
+        `Click the ✅ **Verify & Get Access** button to join!`
       )
-      .setColor(0xEDC231)
-      .setThumbnail(interaction.guild.iconURL())
-      .setFooter({ text: 'ZENITSU LIVE Verification' })
+      .setColor(0x2F3136)
+      .setImage(customWelcomeImg)
+      .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
+      .setFooter({ text: `Secure Core v2 - Powered by JSR Security` })
       .setTimestamp();
 
     const verifyRow = new ActionRowBuilder().addComponents(
