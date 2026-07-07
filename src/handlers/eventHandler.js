@@ -213,18 +213,27 @@ client.on('guildMemberAdd', async member => {
       `> *See you in the lightning storm!* — **${gname} Staff**`;
 
   const welcomeImg = db.welcomeImage || 'https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif';
+  const isVideo = db.welcomeFileMime && db.welcomeFileMime.startsWith('video/');
 
   const dmEmbed = new EmbedBuilder()
     .setTitle(welcomeTitle)
     .setDescription(welcomeDesc)
     .setColor(0xEDC231)
-    .setImage(welcomeImg)
     .setThumbnail(member.guild.iconURL({ dynamic: true }))
     .setFooter({ text: `Zenitsu Live Automation • ${gname}` })
     .setTimestamp();
 
+  if (!isVideo) {
+    dmEmbed.setImage(welcomeImg);
+  }
+
   const { sendCleanDm } = require('../../modules/dm-manager');
-  await sendCleanDm(member, { embeds: [dmEmbed] }).catch(() => {
+  const dmPayload = { embeds: [dmEmbed] };
+  if (isVideo) {
+    dmPayload.files = [{ attachment: welcomeImg, name: `welcome_video.${db.welcomeFileMime.split('/')[1]}` }];
+  }
+
+  await sendCleanDm(member, dmPayload).catch(() => {
     console.log(`  ⚠️  Could not DM ${member.user.tag} (DMs closed)`);
   });
 
@@ -244,12 +253,21 @@ client.on('guildMemberAdd', async member => {
     const welcomeEmbed = new EmbedBuilder()
       .setTitle(channelWelcomeTitle)
       .setDescription(channelWelcomeDesc)
-      .setImage(welcomeImg)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setColor(0xEDC231)
       .setFooter({ text: `Member #${member.guild.memberCount} • Thunder breathing active` })
       .setTimestamp();
-    await welcomeCh.send({ embeds: [welcomeEmbed] }).catch(() => {});
+
+    if (!isVideo) {
+      welcomeEmbed.setImage(welcomeImg);
+    }
+
+    const channelPayload = { embeds: [welcomeEmbed] };
+    if (isVideo) {
+      channelPayload.files = [{ attachment: welcomeImg, name: `welcome_video.${db.welcomeFileMime.split('/')[1]}` }];
+    }
+
+    await welcomeCh.send(channelPayload).catch(() => {});
   }
 });
 

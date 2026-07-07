@@ -5,6 +5,45 @@ const { ChannelType, EmbedBuilder } = require('discord.js');
 function setupManage(app, ctx) {
   const { client, db, saveDb, checkAuth } = ctx;
 
+  // Public upload serving endpoint (no checkAuth needed so Discord can fetch it)
+  app.get('/uploads/:guildId/:type', async (req, res) => {
+    const { guildId, type } = req.params;
+    
+    // Resolve guild-specific database
+    let gdb = db;
+    try {
+      const dbMgr = client.runtime?.getService('DatabaseManager');
+      if (dbMgr) gdb = dbMgr.getGuildDb(guildId);
+    } catch { /* */ }
+
+    let mimeKey, dataKey;
+    if (type === 'welcome') {
+      mimeKey = 'welcomeFileMime';
+      dataKey = 'welcomeFileData';
+    } else if (type === 'ticket') {
+      mimeKey = 'ticketFileMime';
+      dataKey = 'ticketFileData';
+    } else {
+      return res.status(404).send('Not found');
+    }
+
+    const mime = gdb[mimeKey];
+    const base64Data = gdb[dataKey];
+
+    if (!mime || !base64Data) {
+      return res.status(404).send('No file uploaded for this type');
+    }
+
+    try {
+      const buffer = Buffer.from(base64Data, 'base64');
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      return res.send(buffer);
+    } catch (err) {
+      return res.status(500).send('Failed to parse file data');
+    }
+  });
+
   // ── PAGE ─────────────────────────────────────────────────────────────────────
   app.get('/manage/:guildId', checkAuth, async (req, res) => {
     const { guildId } = req.params;
@@ -118,6 +157,22 @@ function setupManage(app, ctx) {
     db.welcomeImage = welcomeImage || '';
     db.ticketDescription = ticketDescription || '';
     db.ticketImage = ticketImage || '';
+
+    // Handle files if uploaded
+    if (req.files) {
+      if (req.files.welcomeUpload && req.files.welcomeUpload.name) {
+        const file = req.files.welcomeUpload;
+        db.welcomeFileMime = file.mimetype;
+        db.welcomeFileData = file.data.toString('base64');
+        db.welcomeImage = `${req.protocol}://${req.get('host')}/uploads/${guildId}/welcome`;
+      }
+      if (req.files.ticketUpload && req.files.ticketUpload.name) {
+        const file = req.files.ticketUpload;
+        db.ticketFileMime = file.mimetype;
+        db.ticketFileData = file.data.toString('base64');
+        db.ticketImage = `${req.protocol}://${req.get('host')}/uploads/${guildId}/ticket`;
+      }
+    }
     
     saveDb();
     res.redirect(`/manage/${guildId}?updated=1`);
@@ -259,7 +314,7 @@ function renderManagePage(vars) {
 
       <div class="card">
         <div class="card-title">✨ Welcome & Ticket Customizations</div>
-        <form method="POST" action="/manage/${guild.id}/customizations">
+        <form method="POST" action="/manage/${guild.id}/customizations" enctype="multipart/form-data">
           <div class="form-group">
             <label>Welcome Title</label>
             <input type="text" name="welcomeTitle" value="${db.welcomeTitle || ''}" placeholder="e.g. ⚡ Welcome to {guild}, {username}!" />
@@ -273,12 +328,22 @@ function renderManagePage(vars) {
             <input type="text" name="welcomeImage" value="${db.welcomeImage || ''}" placeholder="e.g. https://media.giphy.com/media/.../giphy.gif" />
           </div>
           <div class="form-group">
+            <label>Or Upload Welcome File (GIF/Video/Image)</label>
+            <input type="file" name="welcomeUpload" accept="image/*,video/*" style="font-size: 14px; color: var(--muted);" />
+            ${db.welcomeFileMime ? `<div style="font-size: 11px; color: var(--green); margin-top: 4px;">Current upload: ${db.welcomeFileMime}</div>` : ''}
+          </div>
+          <div class="form-group">
             <label>Ticket Description</label>
             <textarea name="ticketDescription" placeholder="Custom text inside new tickets...">${db.ticketDescription || ''}</textarea>
           </div>
           <div class="form-group">
             <label>Ticket Banner URL (GIF/PNG)</label>
             <input type="text" name="ticketImage" value="${db.ticketImage || ''}" placeholder="e.g. https://media.giphy.com/media/.../giphy.gif" />
+          </div>
+          <div class="form-group">
+            <label>Or Upload Ticket File (GIF/Video/Image)</label>
+            <input type="file" name="ticketUpload" accept="image/*,video/*" style="font-size: 14px; color: var(--muted);" />
+            ${db.ticketFileMime ? `<div style="font-size: 11px; color: var(--green); margin-top: 4px;">Current upload: ${db.ticketFileMime}</div>` : ''}
           </div>
           <button type="submit" class="btn-submit">Save Customizations</button>
         </form>
