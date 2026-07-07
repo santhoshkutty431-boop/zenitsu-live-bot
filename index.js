@@ -390,6 +390,12 @@ runtime.bootstrap().then(() => {
   client.once('clientReady', async () => {
     log.info(`Bot logged in as ${client.user.tag}`);
 
+    // Trigger pruning of all historical DMs sent by the bot asynchronously on startup
+    const { pruneAllHistoricalDms } = require('./modules/dm-manager');
+    pruneAllHistoricalDms(client).catch(err => {
+      log.error('Failed to run startup DM pruning:', { error: err.message });
+    });
+
     // Seed semantic spam defaults (idempotent, safe to call every boot).
     try {
       const semanticSpam = require('./modules/semantic-spam');

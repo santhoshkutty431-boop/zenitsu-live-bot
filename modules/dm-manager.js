@@ -120,7 +120,51 @@ async function processPendingDmDeletions(client) {
   }
 }
 
+async function pruneAllHistoricalDms(client) {
+  console.log('[DM Pruner] Starting historical DM cleanup for all guild members...');
+  try {
+    let prunedCount = 0;
+    let userCount = 0;
+    
+    for (const guild of client.guilds.cache.values()) {
+      // Force fetching all guild members to ensure the cache is fully populated.
+      const members = await guild.members.fetch().catch(() => null);
+      if (!members) continue;
+      
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        userCount++;
+        
+        // Add a 200ms delay between users to be gentle on Discord API rate limits
+        await new Promise(r => setTimeout(r, 200));
+        
+        try {
+          const dmChannel = await member.createDM().catch(() => null);
+          if (!dmChannel) continue;
+          
+          const messages = await dmChannel.messages.fetch({ limit: 100 }).catch(() => null);
+          if (!messages) continue;
+          
+          const botMessages = messages.filter(m => m.author.id === client.user.id);
+          if (botMessages.size > 0) {
+            for (const msg of botMessages.values()) {
+              await msg.delete().catch(() => {});
+              prunedCount++;
+            }
+          }
+        } catch (err) {
+          // Fail silently for individual user errors
+        }
+      }
+    }
+    console.log(`[DM Pruner] Historical cleanup completed. Checked ${userCount} users, deleted ${prunedCount} bot messages.`);
+  } catch (globalErr) {
+    console.error('[DM Pruner] Error during global historical DM pruning:', globalErr.message);
+  }
+}
+
 module.exports = {
   sendCleanDm,
-  processPendingDmDeletions
+  processPendingDmDeletions,
+  pruneAllHistoricalDms
 };
