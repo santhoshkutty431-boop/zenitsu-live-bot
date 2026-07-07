@@ -59,7 +59,7 @@ class TicketPlugin {
       .setColor(0x2F3136)
       .setImage(customTicketImg)
       .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
-      .setFooter({ text: `Secure Core v2 - Powered by JSR Security` })
+      .setFooter({ text: `Secure Core v2 - Powered by Zenitsu Security` })
       .setTimestamp();
 
     const targetCh = interaction.options.getChannel('channel') || interaction.channel;
@@ -93,7 +93,7 @@ class TicketPlugin {
       .setColor(0x2F3136)
       .setImage(customWelcomeImg)
       .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
-      .setFooter({ text: `Secure Core v2 - Powered by JSR Security` })
+      .setFooter({ text: `Secure Core v2 - Powered by Zenitsu Security` })
       .setTimestamp();
 
     const verifyRow = new ActionRowBuilder().addComponents(

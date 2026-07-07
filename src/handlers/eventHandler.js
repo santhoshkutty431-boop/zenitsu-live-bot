@@ -258,7 +258,7 @@ client.on('guildMemberAdd', async member => {
       .setDescription(channelWelcomeDesc)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setColor(0xEDC231)
-      .setFooter({ text: `Powered by JSR Security • Member #${member.guild.memberCount}` })
+      .setFooter({ text: `Powered by Zenitsu Security • Member #${member.guild.memberCount}` })
       .setTimestamp();
 
     if (!isVideo) {
