@@ -1738,7 +1738,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
             .setColor(0x2ECC71)
             .setFooter({ text: `Active Instance: ${getInstanceName()}` })
             .setTimestamp();
-          await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
+          const { sendCleanDm } = require('../../modules/dm-manager');
+          await sendCleanDm(targetUser, { embeds: [dmEmbed] }).catch(() => {});
         } catch (err) {
           console.error('Failed to DM whitelisted user:', err);
         }
@@ -1862,7 +1863,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
             .setColor(0xE67E22)
             .setFooter({ text: `Active Instance: ${getInstanceName()}` })
             .setTimestamp();
-          await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
+          const { sendCleanDm } = require('../../modules/dm-manager');
+          await sendCleanDm(targetUser, { embeds: [dmEmbed] }).catch(() => {});
         }
       } catch (err) {
         console.error('Failed to DM user on capability update:', err);
@@ -2222,6 +2224,39 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       return;
     }
 
+    // Intro panel buttons (feature showcase / quick setup on join)
+    if (customId.startsWith('intro_')) {
+      // Only staff/owner can configure
+      if (!staffCheck(interaction.member)) {
+        return interaction.reply({ content: '🔒 Only server staff can use setup buttons.', ephemeral: true }).catch(() => {});
+      }
+      if (customId === 'intro_quicksetup') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const guildConfig = require('../../modules/guild-config');
+          const dbMgr = runtime.getService('DatabaseManager');
+          const detected = await guildConfig.autoDetect(interaction.guild);
+          const gdb = dbMgr.getGuildDb(interaction.guild.id);
+          gdb.setup = { ...(gdb.setup || {}), ...detected };
+          if (gdb.protectmeActive === undefined) gdb.protectmeActive = true; // enable automod by default
+          dbMgr.saveGuildDb(interaction.guild.id, true);
+          const r = Object.keys(detected.roles).length, c = Object.keys(detected.channels).length;
+          return interaction.editReply({ content: `⚡ **Quick setup done!**\nDetected **${r} roles** and **${c} channels**, and enabled auto-moderation.\n\nNext (optional): \`/setup-panel\` for tickets, \`/setup-logs\` to pick log channels, \`/setup-music\` for a music room. Staff detection already works via Discord permissions.` }).catch(() => {});
+        } catch (e) {
+          return interaction.editReply({ content: `❌ Quick setup failed: ${e.message}` }).catch(() => {});
+        }
+      }
+      if (customId === 'intro_tickets')
+        return interaction.reply({ content: '🎫 Run **`/setup-panel`** in the channel where you want the ticket panel to appear.', ephemeral: true }).catch(() => {});
+      if (customId === 'intro_logs')
+        return interaction.reply({ content: '📋 Run **`/setup-logs`** and pick your message / voice / mod / server log channels.', ephemeral: true }).catch(() => {});
+      if (customId === 'intro_music')
+        return interaction.reply({ content: '🎵 Run **`/setup-music`** to create a music room with an interactive control panel.', ephemeral: true }).catch(() => {});
+      if (customId === 'intro_commands')
+        return interaction.reply({ content: '📖 Run **`/help`** for the full command list, or **`/owner-help`** for the 8-page owner guide.', ephemeral: true }).catch(() => {});
+      return;
+    }
+
     // DEV-AI destructive-plan confirmation
     if (customId.startsWith('devai_confirm_') || customId.startsWith('devai_reject_')) {
       const id = customId.replace('devai_confirm_', '').replace('devai_reject_', '');
@@ -2451,9 +2486,9 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const ticketEmbed = new EmbedBuilder()
         .setTitle(t.title)
-        .setDescription(t.desc + '\n\n⚠️ **Notice:** To keep the server clean, this ticket channel will be automatically deleted **48 hours** after the last message or if it remains inactive.')
+        .setDescription(t.desc)
         .setColor(t.color)
-        .setFooter({ text: `Ticket: ${ticketCh.name} | Auto-delete policy active` })
+        .setFooter({ text: `Ticket: ${ticketCh.name}` })
         .setTimestamp();
       const closeRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger)
@@ -2465,12 +2500,12 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         .setTitle(`🎫 Ticket Opened — #${ticketCh.name}`)
         .setDescription(
           `Hello **${interaction.user.username}**!\n\n` +
-          `Your support ticket has been successfully created: <#${ticketCh.id}>.\n\n` +
-          `⚠️ **Important:** To keep the server clean, this ticket channel will be automatically deleted **48 hours** after it remains inactive.`
+          `Your support ticket has been successfully created: <#${ticketCh.id}>.`
         )
         .setColor(t.color)
         .setTimestamp();
-      await interaction.user.send({ embeds: [userDmEmbed] }).catch(() => {
+      const { sendCleanDm } = require('../../modules/dm-manager');
+      await sendCleanDm(interaction.user, { embeds: [userDmEmbed] }).catch(() => {
         console.log(`Failed to send DM to ${interaction.user.tag} (DMs closed)`);
       });
 
@@ -2636,7 +2671,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           .setDescription('Hello! I am **ZENITSU AI**. Feel free to ask me any questions privately here!')
           .setColor(0x00D4FF)
           .setTimestamp();
-        await interaction.user.send({ embeds: [dmEmbed] });
+        const { sendCleanDm } = require('../../modules/dm-manager');
+        await sendCleanDm(interaction.user, { embeds: [dmEmbed] });
         await interaction.editReply({ content: '📬 **I have sent you a DM!** You can start a private chat with me there.' });
       } catch (err) {
         await interaction.editReply({ content: '❌ **Failed to send DM.** Please check if you have allowed direct messages from server members.' });

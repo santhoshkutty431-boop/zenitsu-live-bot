@@ -306,7 +306,8 @@ Message: "${message.content}"`;
   });
 
   if (result.error) {
-    return user.send(`❌ Translation failed: ${result.message}`).catch(() => {});
+    const { sendCleanDm } = require('./dm-manager');
+    return sendCleanDm(user, { content: `❌ Translation failed: ${result.message}` }).catch(() => {});
   }
 
   const embed = new EmbedBuilder()

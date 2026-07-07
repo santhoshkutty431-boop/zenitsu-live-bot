@@ -211,7 +211,8 @@ client.on('guildMemberAdd', async member => {
     .setFooter({ text: gname })
     .setTimestamp();
 
-  await member.send({ embeds: [dmEmbed] }).catch(() => {
+  const { sendCleanDm } = require('../../modules/dm-manager');
+  await sendCleanDm(member, { embeds: [dmEmbed] }).catch(() => {
     console.log(`  ⚠️  Could not DM ${member.user.tag} (DMs closed)`);
   });
 
@@ -480,7 +481,8 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
                 )
                 .setColor(0xE74C3C)
                 .setTimestamp();
-              await executorMember.send({ embeds: [dmEmbed] }).catch(() => {});
+              const { sendCleanDm } = require('../../modules/dm-manager');
+              await sendCleanDm(executorMember, { embeds: [dmEmbed] }).catch(() => {});
             }
 
             return;
@@ -807,6 +809,14 @@ client.on('guildCreate', async guild => {
     console.error('[guildCreate] Auto-detect failed:', err.message);
   }
 
+  // Post the feature-showcase + quick-setup panel to the server and DM owner.
+  try {
+    const introPanel = require('../../modules/intro-panel');
+    await introPanel.postIntro(guild);
+  } catch (err) {
+    console.error('[guildCreate] Intro panel failed:', err.message);
+  }
+
   // Run v5.2 Onboarding Scanner
   const onboarding = runtime.getService('OnboardingScanner');
   if (onboarding) {
@@ -899,7 +909,8 @@ client.on('guildCreate', async guild => {
           dmEmbed.addFields({ name: '🔑 Capabilities', value: capabilities.map(c => `• ${c}`).join('\n') });
         }
 
-        await newMember.send({ embeds: [dmEmbed] }).catch(() => {
+        const { sendCleanDm } = require('../../modules/dm-manager');
+        await sendCleanDm(newMember, { embeds: [dmEmbed] }).catch(() => {
           console.log(`Failed to DM user ${newMember.user.tag} (DMs closed)`);
         });
       }
