@@ -176,98 +176,100 @@ function registerEvents(client, runtime, _db, _ID, logToChannel, isDeveloper, re
   injectedLogToChannel = logToChannel;
   // Bind all event listeners to the client
 client.on('guildMemberAdd', async member => {
-  console.log(`[JOIN] ${member.user.tag} joined`);
-  loadDb(); // Sync with disk before security checks
-  runtime.eventBus.publish('MEMBER_JOIN', { member, guild: member.guild });
+  global.asyncLocalStorage.run({ guildId: member.guild.id }, async () => {
+    console.log(`[JOIN] ${member.user.tag} joined`);
+    loadDb(); // Sync with disk before security checks
+    runtime.eventBus.publish('MEMBER_JOIN', { member, guild: member.guild });
 
-  // Security: anti-raid + account age check
-  await secHandleJoin(member, db, saveDb, logToChannel, ID);
+    // Security: anti-raid + account age check
+    await secHandleJoin(member, db, saveDb, logToChannel, ID);
 
-  // Logger: join log
-  await logMemberJoin(member, ID, db);
+    // Logger: join log
+    await logMemberJoin(member, ID, db);
 
-  // Resolve this guild's channels/roles (per-guild config → main hardcoded →
-  // name-based). Works on any server; gracefully null if not present.
-  let gdb2 = db;
-  try { if (runtimeInstance) gdb2 = runtimeInstance.getService('DatabaseManager').getGuildDb(member.guild.id); } catch { /* */ }
-  const rulesId   = guildConfig.resolveChannelId(member.guild, 'rules', gdb2, ID);
-  const welcomeId = guildConfig.resolveChannelId(member.guild, 'welcome', gdb2, ID);
-  const gname = member.guild.name;
+    // Resolve this guild's channels/roles (per-guild config → main hardcoded →
+    // name-based). Works on any server; gracefully null if not present.
+    let gdb2 = db;
+    try { if (runtimeInstance) gdb2 = runtimeInstance.getService('DatabaseManager').getGuildDb(member.guild.id); } catch { /* */ }
+    const rulesId   = guildConfig.resolveChannelId(member.guild, 'rules', gdb2, ID);
+    const welcomeId = guildConfig.resolveChannelId(member.guild, 'welcome', gdb2, ID);
+    const gname = member.guild.name;
 
-  // [2] Welcome DM
-  const rulesLine   = rulesId   ? `📜 Read the rules → <#${rulesId}>\n` : '';
-  const welcomeLine = welcomeId ? `✅ Click **Verify** in <#${welcomeId}> to unlock the community\n` : '';
+    // [2] Welcome DM
+    const rulesLine   = rulesId   ? `📜 Read the rules → <#${rulesId}>\n` : '';
+    const welcomeLine = welcomeId ? `✅ Click **Verify** in <#${welcomeId}> to unlock the community\n` : '';
 
-  // Custom or Fallback Welcome DM Embed
-  const welcomeTitle = db.welcomeTitle 
-    ? db.welcomeTitle.replace(/{guild}/g, gname).replace(/{username}/g, member.user.username)
-    : `⚡ Welcome to ${gname}, ${member.user.username}! <a:tt_clapCat_OwO:1444716354023461016>`;
-    
-  const welcomeDesc = db.welcomeDescription
-    ? db.welcomeDescription.replace(/{guild}/g, gname).replace(/{username}/g, member.user.toString())
-    : `⚡ **Thunder Breathing, First Form: Welcome!** ⚡\n\n` +
-      `Hello ${member.user}! You have successfully flashed into **${gname}**! <a:nekolove:1444716314223710228>\n\n` +
-      `**📌 Fast-Path Navigation:**\n` +
-      rulesLine + welcomeLine +
-      `🎫 Open a support ticket if you need anything!\n\n` +
-      `> *See you in the lightning storm!* — **${gname} Staff**`;
-
-  const welcomeImg = db.welcomeImage || 'https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif';
-  const isVideo = db.welcomeFileMime && db.welcomeFileMime.startsWith('video/');
-
-  const dmEmbed = new EmbedBuilder()
-    .setTitle(welcomeTitle)
-    .setDescription(welcomeDesc)
-    .setColor(0xEDC231)
-    .setThumbnail(member.guild.iconURL({ dynamic: true }))
-    .setFooter({ text: `Zenitsu Live Automation • ${gname}` })
-    .setTimestamp();
-
-  if (!isVideo) {
-    dmEmbed.setImage(welcomeImg);
-  }
-
-  const { sendCleanDm } = require('../../modules/dm-manager');
-  const dmPayload = { embeds: [dmEmbed] };
-  if (isVideo) {
-    dmPayload.files = [{ attachment: welcomeImg, name: `welcome_video.${db.welcomeFileMime.split('/')[1]}` }];
-  }
-
-  await sendCleanDm(member, dmPayload).catch(() => {
-    console.log(`  ⚠️  Could not DM ${member.user.tag} (DMs closed)`);
-  });
-
-  // Welcome message in channel (only if this guild has a welcome channel)
-  const welcomeCh = welcomeId ? member.guild.channels.cache.get(welcomeId) : null;
-  if (welcomeCh?.isTextBased?.()) {
-    const channelWelcomeTitle = db.welcomeTitle
+    // Custom or Fallback Welcome DM Embed
+    const welcomeTitle = db.welcomeTitle 
       ? db.welcomeTitle.replace(/{guild}/g, gname).replace(/{username}/g, member.user.username)
-      : `WELCOME TO ${gname.toUpperCase()}!`;
+      : `⚡ Welcome to ${gname}, ${member.user.username}! <a:tt_clapCat_OwO:1444716354023461016>`;
       
-    const channelWelcomeDesc = db.welcomeDescription
+    const welcomeDesc = db.welcomeDescription
       ? db.welcomeDescription.replace(/{guild}/g, gname).replace(/{username}/g, member.user.toString())
-      : `Hey ${member} Thanks For Joining!\n` +
-        `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
-        `📊 **Member Count:** ${member.guild.memberCount}\n` +
-        `📅 **Joined:** <t:${Math.floor(member.joinedTimestamp / 1000)}:F>\n` +
-        `🏷️ **Roles Assigned:**\n` +
-        `• <@&${ID.MEMBER_ROLE || '1444538183206440960'}> / Zenitsu Member`;
+      : `⚡ **Thunder Breathing, First Form: Welcome!** ⚡\n\n` +
+        `Hello ${member.user}! You have successfully flashed into **${gname}**! <a:nekolove:1444716314223710228>\n\n` +
+        `**📌 Fast-Path Navigation:**\n` +
+        rulesLine + welcomeLine +
+        `🎫 Open a support ticket if you need anything!\n\n` +
+        `> *See you in the lightning storm!* — **${gname} Staff**`;
 
-    const welcomeEmbed = new EmbedBuilder()
-      .setTitle(channelWelcomeTitle)
-      .setDescription(channelWelcomeDesc)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    const welcomeImg = db.welcomeImage || 'https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif';
+    const isVideo = db.welcomeFileMime && db.welcomeFileMime.startsWith('video/');
+
+    const dmEmbed = new EmbedBuilder()
+      .setTitle(welcomeTitle)
+      .setDescription(welcomeDesc)
       .setColor(0xEDC231)
-      .setFooter({ text: `Powered by Zenitsu Security • Member #${member.guild.memberCount}` })
+      .setThumbnail(member.guild.iconURL({ dynamic: true }))
+      .setFooter({ text: `Zenitsu Live Automation • ${gname}` })
       .setTimestamp();
 
     if (!isVideo) {
-      welcomeEmbed.setImage(welcomeImg);
+      dmEmbed.setImage(welcomeImg);
     }
 
-    const { playZenitsuWelcomeAnimation } = require('../../modules/animations');
-    playZenitsuWelcomeAnimation(welcomeCh, member, welcomeEmbed, isVideo, welcomeImg, db.welcomeFileMime).catch(() => {});
-  }
+    const { sendCleanDm } = require('../../modules/dm-manager');
+    const dmPayload = { embeds: [dmEmbed] };
+    if (isVideo) {
+      dmPayload.files = [{ attachment: welcomeImg, name: `welcome_video.${db.welcomeFileMime.split('/')[1]}` }];
+    }
+
+    await sendCleanDm(member, dmPayload).catch(() => {
+      console.log(`  ⚠️  Could not DM ${member.user.tag} (DMs closed)`);
+    });
+
+    // Welcome message in channel (only if this guild has a welcome channel)
+    const welcomeCh = welcomeId ? member.guild.channels.cache.get(welcomeId) : null;
+    if (welcomeCh?.isTextBased?.()) {
+      const channelWelcomeTitle = db.welcomeTitle
+        ? db.welcomeTitle.replace(/{guild}/g, gname).replace(/{username}/g, member.user.username)
+        : `WELCOME TO ${gname.toUpperCase()}!`;
+        
+      const channelWelcomeDesc = db.welcomeDescription
+        ? db.welcomeDescription.replace(/{guild}/g, gname).replace(/{username}/g, member.user.toString())
+        : `Hey ${member} Thanks For Joining!\n` +
+          `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
+          `📊 **Member Count:** ${member.guild.memberCount}\n` +
+          `📅 **Joined:** <t:${Math.floor(member.joinedTimestamp / 1000)}:F>\n` +
+          `🏷️ **Roles Assigned:**\n` +
+          `• <@&${ID.MEMBER_ROLE || '1444538183206440960'}> / Zenitsu Member`;
+
+      const welcomeEmbed = new EmbedBuilder()
+        .setTitle(channelWelcomeTitle)
+        .setDescription(channelWelcomeDesc)
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+        .setColor(0xEDC231)
+        .setFooter({ text: `Powered by Zenitsu Security • Member #${member.guild.memberCount}` })
+        .setTimestamp();
+
+      if (!isVideo) {
+        welcomeEmbed.setImage(welcomeImg);
+      }
+
+      const { playZenitsuWelcomeAnimation } = require('../../modules/animations');
+      playZenitsuWelcomeAnimation(welcomeCh, member, welcomeEmbed, isVideo, welcomeImg, db.welcomeFileMime).catch(() => {});
+    }
+  });
 });
 
 // Log member leave

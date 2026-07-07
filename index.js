@@ -353,23 +353,24 @@ runtime.bootstrap().then(() => {
       }
     }, 30_000);
 
-    try {
-      await commandHandler.handleInteraction(
-        interaction, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, client, staffCheck, isOwner, getOrCreateRole
-      );
-    } catch (err) {
-      log.error('Interaction handler error', { error: err.message, stack: err.stack });
-      // Best-effort user-visible error instead of a silent failure
+    global.asyncLocalStorage.run({ guildId: interaction.guildId }, async () => {
       try {
-        if (interaction.deferred && !interaction.replied) {
-          await interaction.editReply({ content: `❌ Something went wrong: ${err.message}` }).catch(() => {});
-        } else if (!interaction.replied && typeof interaction.reply === 'function' && interaction.isRepliable?.()) {
-          await interaction.reply({ content: `❌ Something went wrong: ${err.message}`, ephemeral: true }).catch(() => {});
-        }
-      } catch { /* interaction already dead */ }
-    } finally {
-      clearTimeout(watchdog);
-    }
+        await commandHandler.handleInteraction(
+          interaction, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, client, staffCheck, isOwner, getOrCreateRole
+        );
+      } catch (err) {
+        log.error('Interaction handler error', { error: err.message, stack: err.stack });
+        try {
+          if (interaction.deferred && !interaction.replied) {
+            await interaction.editReply({ content: `❌ Something went wrong: ${err.message}` }).catch(() => {});
+          } else if (!interaction.replied && typeof interaction.reply === 'function' && interaction.isRepliable?.()) {
+            await interaction.reply({ content: `❌ Something went wrong: ${err.message}`, ephemeral: true }).catch(() => {});
+          }
+        } catch { /* interaction already dead */ }
+      } finally {
+        clearTimeout(watchdog);
+      }
+    });
   });
 
   // Start the dashboard web server immediately on startup
