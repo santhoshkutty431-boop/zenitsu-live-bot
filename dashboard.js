@@ -36,7 +36,7 @@ function startDashboardServer(client, db, saveDb) {
   app.use(express.json());
   app.use(cookieParser(COOKIE_SECRET));
   app.use(require('express-fileupload')({
-    limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
     abortOnLimit: true
   }));
 
