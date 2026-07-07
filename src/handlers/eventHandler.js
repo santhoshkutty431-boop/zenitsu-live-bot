@@ -198,17 +198,19 @@ client.on('guildMemberAdd', async member => {
   const rulesLine   = rulesId   ? `📜 Read the rules → <#${rulesId}>\n` : '';
   const welcomeLine = welcomeId ? `✅ Click **Verify** in <#${welcomeId}> to unlock the community\n` : '';
   const dmEmbed = new EmbedBuilder()
-    .setTitle(`👋 Welcome to ${gname}, ${member.user.username}!`)
+    .setTitle(`⚡ Welcome to ${gname}, ${member.user.username}! <a:tt_clapCat_OwO:1444716354023461016>`)
     .setDescription(
-      `> You have joined the **${gname}** server!\n\n` +
-      '**📌 Getting started:**\n' +
+      `⚡ **Thunder Breathing, First Form: Welcome!** ⚡\n\n` +
+      `Hello ${member.user}! You have successfully flashed into **${gname}**! <a:nekolove:1444716314223710228>\n\n` +
+      `**📌 Fast-Path Navigation:**\n` +
       rulesLine + welcomeLine +
-      `🎫 Open a ticket if you need help\n\n` +
-      `> See you inside! — **${gname} Staff**`
+      `🎫 Open a support ticket if you need anything!\n\n` +
+      `> *See you in the lightning storm!* — **${gname} Staff**`
     )
     .setColor(0xEDC231)
+    .setImage('https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif')
     .setThumbnail(member.guild.iconURL({ dynamic: true }))
-    .setFooter({ text: gname })
+    .setFooter({ text: `Zenitsu Live Automation • ${gname}` })
     .setTimestamp();
 
   const { sendCleanDm } = require('../../modules/dm-manager');
@@ -220,14 +222,16 @@ client.on('guildMemberAdd', async member => {
   const welcomeCh = welcomeId ? member.guild.channels.cache.get(welcomeId) : null;
   if (welcomeCh?.isTextBased?.()) {
     const welcomeEmbed = new EmbedBuilder()
-      .setTitle('👋 New Member!')
+      .setTitle(`⚡ New Member Arrived! <a:tt_clapCat_OwO:1444716354023461016>`)
       .setDescription(
-        `Welcome to **${gname}**, ${member}!` +
-        (rulesId ? `\n\n> 📜 Read <#${rulesId}> to get started!` : '')
+        `Welcome to the storm, ${member}! <a:nyanbang1:1444716412185739274>\n\n` +
+        `We are thrilled to have you here in **${gname}**.\n` +
+        (rulesId ? `> 📜 Flashing-step over to <#${rulesId}> to read the rules and verify!` : '')
       )
+      .setImage('https://media1.tenor.com/m/V_zC24-B97cAAAAC/zenitsu-demon-slayer.gif')
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setColor(0xEDC231)
-      .setFooter({ text: `Member #${member.guild.memberCount}` })
+      .setFooter({ text: `Member #${member.guild.memberCount} • Thunder breathing active` })
       .setTimestamp();
     await welcomeCh.send({ embeds: [welcomeEmbed] }).catch(() => {});
   }

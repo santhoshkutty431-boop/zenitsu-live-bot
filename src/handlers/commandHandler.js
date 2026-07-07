@@ -2484,11 +2484,24 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
       saveDb();
 
+      const emojiMap = {
+        ticket_purchase: '<a:nyanbang1:1444716412185739274>',
+        ticket_support: '<a:animeshooting:1444716441008869486>',
+        ticket_bug: '🐛',
+        ticket_ai: '<a:TDK_TomThinkUwU:1444716341134364733>'
+      };
+      const animEmoji = emojiMap[customId] || '🎫';
+
       const ticketEmbed = new EmbedBuilder()
-        .setTitle(t.title)
-        .setDescription(t.desc)
+        .setTitle(`${animEmoji} ${t.title}`)
+        .setDescription(
+          `⚡ **Thunder Breathing: Ticket Initialized** ⚡\n\n` +
+          t.desc + `\n\n` +
+          `⚡ ─── ⚡ ─── ⚡ ─── ⚡`
+        )
         .setColor(t.color)
-        .setFooter({ text: `Ticket: ${ticketCh.name}` })
+        .setImage('https://media1.tenor.com/m/V8G4820rM01C8AAAAd/zenitsu-demon-slayer.gif')
+        .setFooter({ text: `Ticket: ${ticketCh.name} • Lightning speed support` })
         .setTimestamp();
       const closeRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger)

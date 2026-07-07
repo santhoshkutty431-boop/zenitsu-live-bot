@@ -29,9 +29,11 @@ function buildIntroPanel(guild) {
       { name: '🔐 Permissions', value: 'Secure whitelist tiers so only trusted people configure the bot.', inline: true },
     )
     .setColor(0xEDC231)
-    .setThumbnail(guild.client.user.displayAvatarURL())
     .setFooter({ text: 'Tip: click ⚡ Quick Setup to auto-configure everything for this server.' })
     .setTimestamp();
+
+  const avatar = guild.client?.user?.displayAvatarURL?.();
+  if (avatar && /^https?:\/\//.test(avatar)) embed.setThumbnail(avatar);
 
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('intro_quicksetup').setLabel('⚡ Quick Setup').setStyle(ButtonStyle.Success),
