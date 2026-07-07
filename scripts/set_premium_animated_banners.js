@@ -3,7 +3,7 @@ const path = require('path');
 const https = require('https');
 const Database = require('better-sqlite3');
 
-const GUILD_ID = '1445422164814729249';
+const GUILD_IDS = ['1444533392518680719', '1445422164814729249'];
 const DB_PATH = path.resolve(__dirname, '../data/zenitsu.db');
 
 const welcomeGifUrl = 'https://i.giphy.com/f31DK1KpGabeVaif2J.gif';
@@ -51,15 +51,19 @@ async function main() {
 
   const stmt = db.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
   
-  // Set welcome keys
-  stmt.run(GUILD_ID, 'welcomeFileData', JSON.stringify(welcomeBase64));
-  stmt.run(GUILD_ID, 'welcomeFileMime', JSON.stringify('image/gif'));
-  stmt.run(GUILD_ID, 'welcomeImage', JSON.stringify(`https://zenitsu-live-bot.onrender.com/uploads/${GUILD_ID}/welcome`));
+  for (const guildId of GUILD_IDS) {
+    // Set welcome keys
+    stmt.run(guildId, 'welcomeFileData', JSON.stringify(welcomeBase64));
+    stmt.run(guildId, 'welcomeFileMime', JSON.stringify('image/gif'));
+    stmt.run(guildId, 'welcomeImage', JSON.stringify(`https://zenitsu-live-bot.onrender.com/uploads/${guildId}/welcome`));
 
-  // Set ticket keys
-  stmt.run(GUILD_ID, 'ticketFileData', JSON.stringify(ticketBase64));
-  stmt.run(GUILD_ID, 'ticketFileMime', JSON.stringify('image/gif'));
-  stmt.run(GUILD_ID, 'ticketImage', JSON.stringify(`https://zenitsu-live-bot.onrender.com/uploads/${GUILD_ID}/ticket`));
+    // Set ticket keys
+    stmt.run(guildId, 'ticketFileData', JSON.stringify(ticketBase64));
+    stmt.run(guildId, 'ticketFileMime', JSON.stringify('image/gif'));
+    stmt.run(guildId, 'ticketImage', JSON.stringify(`https://zenitsu-live-bot.onrender.com/uploads/${guildId}/ticket`));
+    
+    console.log(`Saved banners for guild: ${guildId}`);
+  }
 
   console.log('Successfully saved premium animated welcome and ticket banners to the database.');
   db.close();
