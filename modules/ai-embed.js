@@ -60,7 +60,7 @@ The JSON schema you must output is:
   "poll": {
     "question": "String (the core question being voted on, required if isPoll is true)",
     "options": ["String" (array of option texts, e.g. ["UID Bypass", "Basic Panel"]. Max 10 options, required if isPoll is true)],
-    "durationMinutes": number (default: 60, number of minutes the poll should run, parsed from user description or defaulting to 60)
+    "durationMinutes": number (default: 60, number of minutes the poll should run. Carefully calculate this based on the provided Active Time Context and the user's requested expiration time/day. If the user doesn't specify an expiration, default to 60)
   }
 }
 
@@ -138,8 +138,16 @@ async function handleAiEmbed(interaction, db, saveDb, logToChannel, ID) {
     }
   }
 
-  // 2. Query AI with special system prompt and channel lists
-  const query = AI_EMBED_PROMPT + channelsHelp + '\nUser request: ' + prompt;
+  // 2. Query AI with special system prompt, active time context, and channel lists
+  const now = new Date();
+  const timeContext = `\nActive Time Context (use this to calculate durationMinutes if the user specifies a relative/absolute expiration date/time):
+- Current Time: ${now.toString()}
+- UTC Time: ${now.toUTCString()}
+- Day of the Week: ${now.toLocaleDateString('en-US', { weekday: 'long' })}
+- Date: ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+`;
+
+  const query = AI_EMBED_PROMPT + timeContext + channelsHelp + '\nUser request: ' + prompt;
   const modelKey = db.aiDefaultModel || 'gemini';
 
   const result = await queryAI(interaction.user.id, query, modelKey, null, {
