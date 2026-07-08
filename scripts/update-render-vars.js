@@ -50,7 +50,8 @@ const keysToSend = [
   'AI_ANALYTICS_CHANNEL_ID',
   'DASHBOARD_PASSCODE',
   'DASHBOARD_COOKIE_SECRET',
-  'IS_PRIMARY_INSTANCE'
+  'IS_PRIMARY_INSTANCE',
+  'DB_MODE'
 ];
 
 const envPayload = [];
