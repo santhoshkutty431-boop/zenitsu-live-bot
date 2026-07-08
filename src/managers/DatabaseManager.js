@@ -583,6 +583,13 @@ Writer:            ${writerStatus}
       }
     }
 
+    if (db.welcomeFileData && (!db.welcomeImage || !db.welcomeImage.includes('/uploads/'))) {
+      db.welcomeImage = `https://zenitsu-live-bot.onrender.com/uploads/${guildId}/welcome`;
+    }
+    if (db.ticketFileData && (!db.ticketImage || !db.ticketImage.includes('/uploads/'))) {
+      db.ticketImage = `https://zenitsu-live-bot.onrender.com/uploads/${guildId}/ticket`;
+    }
+
     this._guildCache.set(guildId, db);
     return db;
   }
