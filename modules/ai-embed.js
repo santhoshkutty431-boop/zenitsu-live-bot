@@ -59,7 +59,7 @@ The JSON schema you must output is:
   "isPoll": boolean (true if the user requested a poll/voting, false otherwise),
   "poll": {
     "question": "String (the core question being voted on, required if isPoll is true)",
-    "options": ["String" (array of option texts, e.g. ["UID Bypass", "Basic Panel"]. Max 10 options, required if isPoll is true)],
+    "options": ["String" (array of option texts. MUST BE derived from the user request. NEVER use placeholder text. Default to ["Yes", "No"] if the user requests a poll but does not specify options. Max 10 options, required if isPoll is true)],
     "durationMinutes": number (default: 60, number of minutes the poll should run. Carefully calculate this based on the provided Active Time Context and the user's requested expiration time/day. If the user doesn't specify an expiration, default to 60)
   }
 }
@@ -70,8 +70,10 @@ Design guidelines:
 - Only include fields if they structure the information better.
 - Ignore invalid image/thumbnail URLs in the description, or use placeholders if requested.
 - IMPORTANT CHANNEL MENTIONING RULE: If the user mentions any channel name that matches one in the list of available channels (provided below), you MUST use its exact mention tag (e.g., <#CHANNEL_ID>) in the description or fields instead of writing the plain text channel name. E.g., if "feedback" is listed as "<#123456>", replace "#feedback" or "feedback channel" with "<#123456>".
+- CRITICAL POLL RULE: If the user request mentions or implies a poll, but doesn't specify what options/choices to vote on, you MUST default the poll options to ["Yes", "No"]. NEVER copy example values like "UID Bypass" or "Basic Panel" into your JSON response.
 
-User request: `;
+User request: 
+`;
 
 // ─── PARSE & VALIDATE AI RESPONSE ───────────────────────────────────────────
 
