@@ -677,20 +677,20 @@ client.on('messageCreate', async message => {
   // 2. AI Ticket FAQ Responder
   await handleAiTicketSupport(message, db, saveDb);
 
-  // ── Feedback channel formatting ──────────────────────────────────────────
-  if (message.channel.id === ID.FEEDBACK) {
-    await message.delete().catch(() => {});
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL({ dynamic: true }) })
-      .setDescription(message.content || '*Image feedback*')
-      .setColor(0xEDC231)
-      .setTimestamp()
-      .setFooter({ text: 'ZENITSU LIVE Feedback' });
-    if (message.attachments.size > 0) embed.setImage(message.attachments.first().url);
-    const sent = await message.channel.send({ embeds: [embed] }).catch(() => null);
-    if (sent) { await sent.react('👍').catch(() => {}); await sent.react('👎').catch(() => {}); }
-    return;
-  }
+  // ── Feedback channel formatting disabled (Users send direct messages and images) ──
+  // if (message.channel.id === ID.FEEDBACK) {
+  //   await message.delete().catch(() => {});
+  //   const embed = new EmbedBuilder()
+  //     .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL({ dynamic: true }) })
+  //     .setDescription(message.content || '*Image feedback*')
+  //     .setColor(0xEDC231)
+  //     .setTimestamp()
+  //     .setFooter({ text: 'ZENITSU LIVE Feedback' });
+  //   if (message.attachments.size > 0) embed.setImage(message.attachments.first().url);
+  //   const sent = await message.channel.send({ embeds: [embed] }).catch(() => null);
+  //   if (sent) { await sent.react('👍').catch(() => {}); await sent.react('👎').catch(() => {}); }
+  //   return;
+  // }
 
   // ── Auto-Moderation (Enterprise Security Module) ────────────────────────
   if (db.protectmeActive && !staffCheck(message.member)) {
