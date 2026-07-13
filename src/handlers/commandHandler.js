@@ -928,7 +928,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         }
 
         const { executeAiAction } = require('../../modules/ai-action-executor');
-        const actionResult = await executeAiAction(interaction, result.response, runtime, db, ID, logToChannel, isDeveloper, isOwner, staffCheck);
+        const actionResult = await executeAiAction(interaction, result.response, runtime, db, saveDb, ID, logToChannel, isDeveloper, isOwner, staffCheck);
         result.response = actionResult.cleanText;
 
         const aiEmbed = new EmbedBuilder()
@@ -2866,7 +2866,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         }
 
         const { executeAiAction } = require('../../modules/ai-action-executor');
-        const actionResult = await executeAiAction(interaction, result.response, runtime, db, ID, logToChannel, isDeveloper, isOwner, staffCheck);
+        const actionResult = await executeAiAction(interaction, result.response, runtime, db, saveDb, ID, logToChannel, isDeveloper, isOwner, staffCheck);
         result.response = actionResult.cleanText;
 
         const aiEmbed = new EmbedBuilder()

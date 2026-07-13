@@ -1,6 +1,6 @@
 const { PermissionFlagsBits } = require('discord.js');
 
-async function executeAiAction(interaction, responseText, runtime, db, ID, logToChannel, isDeveloper, isOwner, staffCheck) {
+async function executeAiAction(interaction, responseText, runtime, db, saveDb, ID, logToChannel, isDeveloper, isOwner, staffCheck) {
   const match = responseText.match(/\|\|ACTION:(.*?)\|\|/);
   if (!match) {
     return { cleanText: responseText };
@@ -20,18 +20,19 @@ async function executeAiAction(interaction, responseText, runtime, db, ID, logTo
 
   console.log('[AI ACTION] Parsed action:', action);
 
-  // Authorization check (ONLY Owner, Developer, or Whitelisted users can trigger actions via AI)
+  // Authorization check (ONLY Owner, Developer, or Whitelisted users with AI_ACTIONS capability can trigger actions via AI)
   const guildId = interaction.guildId;
   const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
-  const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id]) ||
-                            (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+  const isWhitelistedUserWithAiActions = 
+    (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_ACTIONS')) ||
+    (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
 
   const isAuthorized = isOwner(interaction.user.id) || 
                        isDeveloper(interaction.user.id) || 
-                       isWhitelistedUser;
+                       isWhitelistedUserWithAiActions;
 
   if (!isAuthorized) {
-    return { cleanText: cleanText + '\n⚠️ *Action blocked: Only the Owner, Developer, or Whitelisted users are authorized to perform actions via AI.*' };
+    return { cleanText: cleanText + '\n⚠️ *Action blocked: Only the Owner, Developer, or Whitelisted users with the AI_ACTIONS capability are authorized to perform actions via AI.*' };
   }
 
   try {
@@ -93,7 +94,7 @@ async function executeAiAction(interaction, responseText, runtime, db, ID, logTo
         const reason = action.reason || 'Warned by ZENITSU AI';
         const user = await interaction.client.users.fetch(action.userId).catch(() => null);
         if (!user) return { cleanText: cleanText + `\n⚠️ *Action failed: User not found.*` };
-        const newCase = caseManager.createCase(db, {
+        const newCase = caseManager.createCase(db, saveDb, {
           guildId: guild.id,
           userId: action.userId,
           userTag: user.tag,
