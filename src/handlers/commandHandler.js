@@ -894,12 +894,23 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const prompt = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
       try {
+        const userRoles = [];
+        if (isOwner(interaction.user.id)) userRoles.push('Owner');
+        if (isDeveloper(interaction.user.id)) userRoles.push('Developer');
+        if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
+        if (staffCheck(interaction.member)) userRoles.push('Staff');
+        if (userRoles.length === 0) userRoles.push('Member');
+
         const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
           applicationId: interaction.client.application?.id || 'default',
           guildId: interaction.guildId || 'dm',
           channelId: interaction.channelId || 'none',
           threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
-          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
+          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0',
+          userName: interaction.user.username,
+          userDisplayName: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
+          userRoles: userRoles,
+          isDeveloper: isDeveloper(interaction.user.id) || isOwner(interaction.user.id)
         });
 
         if (result.error) {
@@ -2811,12 +2822,23 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const modelKey = db.aiDefaultModel || 'gemini';
       try {
+        const userRoles = [];
+        if (isOwner(interaction.user.id)) userRoles.push('Owner');
+        if (isDeveloper(interaction.user.id)) userRoles.push('Developer');
+        if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
+        if (staffCheck(interaction.member)) userRoles.push('Staff');
+        if (userRoles.length === 0) userRoles.push('Member');
+
         const result = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
           applicationId: interaction.client.application?.id || 'default',
           guildId: interaction.guildId || 'dm',
           channelId: interaction.channelId || 'none',
           threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
-          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0'
+          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0',
+          userName: interaction.user.username,
+          userDisplayName: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
+          userRoles: userRoles,
+          isDeveloper: isDeveloper(interaction.user.id) || isOwner(interaction.user.id)
         });
 
         if (result.error) {

@@ -157,12 +157,31 @@ async function handleAiTicketSupport(message, db, saveDb) {
   const query = `${TICKET_FAQ_PROMPT}\n\n[CRITICAL DIALECT & FORMATTING DIRECTIVES: ${langDirective}]\n\nUser Question: ${message.content}`;
   const modelKey = db.aiDefaultModel || 'gemini';
 
+  const userRoles = [];
+  if (message.author.id === message.guild.ownerId) userRoles.push('Owner');
+  const dbService = message.client.runtime.getService('DatabaseManager');
+  const globalDb = dbService ? dbService.getGlobal() : {};
+  const developerIds = globalDb.developerIds || ['1444538003824447621'];
+  const isDev = developerIds.includes(message.author.id);
+  if (isDev) userRoles.push('Developer');
+  if (message.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
+  const isStaffMember = message.member && (
+    message.member.permissions.has(PermissionFlagsBits.ManageMessages) ||
+    message.member.permissions.has(PermissionFlagsBits.Administrator)
+  );
+  if (isStaffMember) userRoles.push('Staff');
+  if (userRoles.length === 0) userRoles.push('Member');
+
   const result = await queryAI(message.author.id, query, modelKey, userLang, {
     applicationId: message.client.application?.id || 'default',
     guildId: message.guild.id,
     channelId: message.channel.id,
     threadId: message.channel.isThread() ? message.channel.id : 'none',
-    shardId: message.client.shard?.ids?.[0]?.toString() || '0'
+    shardId: message.client.shard?.ids?.[0]?.toString() || '0',
+    userName: message.author.username,
+    userDisplayName: message.member?.displayName || message.author.globalName || message.author.username,
+    userRoles: userRoles,
+    isDeveloper: isDev || message.author.id === message.guild.ownerId
   });
   if (result.error) return;
 

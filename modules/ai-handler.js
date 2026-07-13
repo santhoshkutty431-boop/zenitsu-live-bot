@@ -193,15 +193,29 @@ const MODELS = {
 
 // ─── PROVIDER IMPLEMENTATIONS ────────────────────────────────────────────────
 
-async function callGemini(model, messages) {
+function getActivePrompt(context) {
+  let activePrompt = SYSTEM_PROMPT;
+  if (context && context.userName) {
+    activePrompt += `\n\nActive User Context:
+- User Name: ${context.userName}
+- Display Name: ${context.userDisplayName || context.userName}
+- Server Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
+- Is Server Developer/Owner: ${context.isDeveloper ? 'YES (This is your creator/developer! Respond with special recognition and absolute respect!)' : 'NO'}
+`;
+  }
+  return activePrompt;
+}
+
+async function callGemini(model, messages, context) {
   const apiKey  = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set in environment variables.');
 
   // Convert OpenAI-style messages to Gemini format
   const contents = [];
+  const activePrompt = getActivePrompt(context);
 
   // Add system prompt as first user message (Gemini doesn't have system role)
-  contents.push({ role: 'user', parts: [{ text: SYSTEM_PROMPT }] });
+  contents.push({ role: 'user', parts: [{ text: activePrompt }] });
   contents.push({ role: 'model', parts: [{ text: 'Understood! I am ZENITSU AI, ready to assist.' }] });
 
   for (const msg of messages) {
@@ -224,17 +238,18 @@ async function callGemini(model, messages) {
   return res.candidates[0].content.parts[0].text;
 }
 
-async function callOpenAI(model, messages) {
+async function callOpenAI(model, messages, context) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not set in environment variables.');
 
+  const activePrompt = getActivePrompt(context);
   const res = await httpsPost(
     'api.openai.com',
     '/v1/chat/completions',
     { 'Authorization': `Bearer ${apiKey}` },
     {
       model:       model.name,
-      messages:    [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+      messages:    [{ role: 'system', content: activePrompt }, ...messages],
       max_tokens:  1024,
       temperature: 0.7,
     }
@@ -244,17 +259,18 @@ async function callOpenAI(model, messages) {
   return res.choices[0].message.content;
 }
 
-async function callGroq(model, messages) {
+async function callGroq(model, messages, context) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('GROQ_API_KEY not set in environment variables.');
 
+  const activePrompt = getActivePrompt(context);
   const res = await httpsPost(
     'api.groq.com',
     '/openai/v1/chat/completions',
     { 'Authorization': `Bearer ${apiKey}` },
     {
       model:       model.name,
-      messages:    [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+      messages:    [{ role: 'system', content: activePrompt }, ...messages],
       max_tokens:  1024,
       temperature: 0.7,
     }
@@ -407,9 +423,9 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
       const t0 = Date.now();
       try {
         let response;
-        if      (model.provider === 'google') response = await callGemini(model, messages);
-        else if (model.provider === 'openai') response = await callOpenAI(model, messages);
-        else if (model.provider === 'groq')   response = await callGroq(model, messages);
+        if      (model.provider === 'google') response = await callGemini(model, messages, context);
+        else if (model.provider === 'openai') response = await callOpenAI(model, messages, context);
+        else if (model.provider === 'groq')   response = await callGroq(model, messages, context);
         else throw new Error('Unknown provider');
 
         responseText = response;
