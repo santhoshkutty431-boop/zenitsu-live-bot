@@ -920,6 +920,10 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           });
         }
 
+        const { executeAiAction } = require('../../modules/ai-action-executor');
+        const actionResult = await executeAiAction(interaction, result.response, runtime, db, ID, logToChannel, isDeveloper, isOwner, staffCheck);
+        result.response = actionResult.cleanText;
+
         const aiEmbed = new EmbedBuilder()
           .setAuthor({
             name:    'ZENITSU AI',
@@ -2847,6 +2851,10 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
             content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
           });
         }
+
+        const { executeAiAction } = require('../../modules/ai-action-executor');
+        const actionResult = await executeAiAction(interaction, result.response, runtime, db, ID, logToChannel, isDeveloper, isOwner, staffCheck);
+        result.response = actionResult.cleanText;
 
         const aiEmbed = new EmbedBuilder()
           .setAuthor({ name: 'ZENITSU AI', iconURL: interaction.client.user.displayAvatarURL() })
