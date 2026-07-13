@@ -894,9 +894,15 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const prompt = interaction.options.getString('prompt');
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
       try {
+        const guildId = interaction.guildId;
+        const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
+        const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id]) ||
+                                  (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+
         const userRoles = [];
         if (isOwner(interaction.user.id)) userRoles.push('Owner');
         if (isDeveloper(interaction.user.id)) userRoles.push('Developer');
+        if (isWhitelistedUser) userRoles.push('Whitelisted');
         if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
         if (staffCheck(interaction.member)) userRoles.push('Staff');
         if (userRoles.length === 0) userRoles.push('Member');
@@ -2826,9 +2832,15 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
       const modelKey = db.aiDefaultModel || 'gemini';
       try {
+        const guildId = interaction.guildId;
+        const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
+        const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id]) ||
+                                  (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+
         const userRoles = [];
         if (isOwner(interaction.user.id)) userRoles.push('Owner');
         if (isDeveloper(interaction.user.id)) userRoles.push('Developer');
+        if (isWhitelistedUser) userRoles.push('Whitelisted');
         if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
         if (staffCheck(interaction.member)) userRoles.push('Staff');
         if (userRoles.length === 0) userRoles.push('Member');

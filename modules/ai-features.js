@@ -157,6 +157,10 @@ async function handleAiTicketSupport(message, db, saveDb) {
   const query = `${TICKET_FAQ_PROMPT}\n\n[CRITICAL DIALECT & FORMATTING DIRECTIVES: ${langDirective}]\n\nUser Question: ${message.content}`;
   const modelKey = db.aiDefaultModel || 'gemini';
 
+  const guildWhitelist = db.guildWhitelists && db.guildWhitelists[message.guild.id] ? db.guildWhitelists[message.guild.id] : null;
+  const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[message.author.id]) ||
+                            (db.roleWhitelist && db.roleWhitelist.includes(message.author.id));
+
   const userRoles = [];
   if (message.author.id === message.guild.ownerId) userRoles.push('Owner');
   const dbService = message.client.runtime.getService('DatabaseManager');
@@ -164,6 +168,7 @@ async function handleAiTicketSupport(message, db, saveDb) {
   const developerIds = globalDb.developerIds || ['1444538003824447621'];
   const isDev = developerIds.includes(message.author.id);
   if (isDev) userRoles.push('Developer');
+  if (isWhitelistedUser) userRoles.push('Whitelisted');
   if (message.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
   const isStaffMember = message.member && (
     message.member.permissions.has(PermissionFlagsBits.ManageMessages) ||

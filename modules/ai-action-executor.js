@@ -20,14 +20,18 @@ async function executeAiAction(interaction, responseText, runtime, db, ID, logTo
 
   console.log('[AI ACTION] Parsed action:', action);
 
-  // Authorization check
+  // Authorization check (ONLY Owner, Developer, or Whitelisted users can trigger actions via AI)
+  const guildId = interaction.guildId;
+  const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
+  const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id]) ||
+                            (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+
   const isAuthorized = isOwner(interaction.user.id) || 
                        isDeveloper(interaction.user.id) || 
-                       interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
-                       staffCheck(interaction.member);
+                       isWhitelistedUser;
 
   if (!isAuthorized) {
-    return { cleanText: cleanText + '\n⚠️ *Action blocked: Insufficient permissions.*' };
+    return { cleanText: cleanText + '\n⚠️ *Action blocked: Only the Owner, Developer, or Whitelisted users are authorized to perform actions via AI.*' };
   }
 
   try {
