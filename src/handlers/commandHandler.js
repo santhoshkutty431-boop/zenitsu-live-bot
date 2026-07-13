@@ -25,7 +25,8 @@ const CAPABILITY_LABELS = {
   'MODERATION_EXECUTE': '👮 Execute Moderation Actions',
   'EMBED_MANAGE':       '📢 Manage Embeds & Announcements',
   'TICKET_CONFIG':      '🎫 Configure Ticket System',
-  'AI_EXECUTE':         '🧠 DEV-AI — Do Anything via Prompt'
+  'AI_EXECUTE':         '🧠 DEV-AI — Do Anything via Prompt',
+  'AI_ACTIONS':         '⚡ AI-ACTIONS — AI Moderation/Tool Execution'
 };
 
 const TIER_DESCRIPTIONS = {
@@ -2963,7 +2964,8 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
     { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
     { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
     { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
-    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' }
+    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' },
+    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' }
   ];
 
   const selectOptions = systemCapabilities.map(c => ({
@@ -2985,7 +2987,7 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
     .setCustomId(`edit_user_caps_select:${targetUserId}`)
     .setPlaceholder('Select capabilities')
     .setMinValues(0)
-    .setMaxValues(6)
+    .setMaxValues(8)
     .addOptions(selectOptions);
 
   const deleteBtn = new ButtonBuilder()
@@ -3082,7 +3084,8 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
     { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
     { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
-    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' }
+    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' },
+    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' }
   ];
 
   const capOptions = systemCapabilities.map(c => ({
@@ -3116,7 +3119,7 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     .setCustomId(`edit_role_caps_select:${roleId}:${currentTier}`)
     .setPlaceholder('Select capabilities')
     .setMinValues(0)
-    .setMaxValues(6)
+    .setMaxValues(8)
     .addOptions(capOptions);
 
   const deleteBtn = new ButtonBuilder()

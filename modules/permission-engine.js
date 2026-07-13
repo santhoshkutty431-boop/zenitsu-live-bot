@@ -206,7 +206,7 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
   } else if (db.roleWhitelist && db.roleWhitelist.includes(userId)) {
     // Legacy fallback: legacy whitelisted users get ALL capabilities
     isWhitelistedUser = true;
-    userCaps = ['AI_CONFIG', 'SECURITY_CONFIG', 'MODERATION_EXECUTE', 'ROLE_ASSIGN', 'EMBED_MANAGE', 'TICKET_CONFIG'];
+    userCaps = ['AI_CONFIG', 'SECURITY_CONFIG', 'MODERATION_EXECUTE', 'ROLE_ASSIGN', 'EMBED_MANAGE', 'TICKET_CONFIG', 'AI_EXECUTE', 'AI_ACTIONS'];
   }
 
   // Check if command is BOT_DEVELOPER or SERVER_OWNER
