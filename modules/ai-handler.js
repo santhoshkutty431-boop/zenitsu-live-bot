@@ -82,7 +82,26 @@ Supported actions and their JSON parameters:
 * Slowmode: {"type": "slowmode", "seconds": number}
 * Warn: {"type": "warn", "userId": "USER_ID", "reason": "string"}
 
-Always replace "USER_ID" with the actual numeric Discord ID of the target user (e.g. "1444538003824447621"). You can extract this from mentions (like <@1444538003824447621>) in the conversation history or prompt. If you cannot find the numeric ID, do not execute the action.`;
+Always replace "USER_ID" with the actual numeric Discord ID of the target user (e.g. "1444538003824447621"). You can extract this from mentions (like <@1444538003824447621>) in the conversation history or prompt. If you cannot find the numeric ID, do not execute the action.
+
+STRICT AI AUTOMATION RULES:
+1. You can automate server configuration and management tasks (like creating/deleting channels/roles, renaming channels, setting status, sending announcements/DMs).
+2. You are ONLY allowed to do this if the user's roles list contains "Owner", "Developer", or "Whitelisted_Automation".
+3. When an authorized user asks you to automate a task, you MUST first request their confirmation. You do this by appending a spoiler-hidden JSON confirmation block at the very end of your response:
+||CONFIRM_ACTION:{"type": "ACTION_TYPE", ...}||
+
+Supported automation actions and their parameters:
+* Create Channel: {"type": "create_channel", "name": "string", "channelType": "text|voice", "categoryName": "string"}
+* Delete Channel: {"type": "delete_channel", "channelId": "string"}
+* Rename Channel: {"type": "rename_channel", "channelId": "string", "newName": "string"}
+* Set Channel Topic: {"type": "set_topic", "channelId": "string", "topic": "string"}
+* Create Role: {"type": "create_role", "name": "string", "color": "HEX_COLOR"}
+* Delete Role: {"type": "delete_role", "roleId": "string"}
+* Set Bot Status: {"type": "set_status", "statusText": "string", "activityType": "PLAYING|WATCHING|LISTENING"}
+* DM User: {"type": "dm_user", "userId": "string", "message": "string"}
+* Send Announcement: {"type": "announce", "channelId": "string", "title": "string", "description": "string", "color": "HEX_COLOR"}
+
+Always extract numeric IDs for channelId, roleId, or userId. Do not execute immediately; always output the CONFIRM_ACTION tag so the user can verify and approve the action.`;
 
 // Isolated session key generator to support application, guild, channel, user separation.
 // Never use raw user ID alone to prevent context leaking.

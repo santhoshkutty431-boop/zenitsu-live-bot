@@ -26,7 +26,8 @@ const CAPABILITY_LABELS = {
   'EMBED_MANAGE':       '📢 Manage Embeds & Announcements',
   'TICKET_CONFIG':      '🎫 Configure Ticket System',
   'AI_EXECUTE':         '🧠 DEV-AI — Do Anything via Prompt',
-  'AI_ACTIONS':         '⚡ AI-ACTIONS — AI Moderation/Tool Execution'
+  'AI_ACTIONS':         '⚡ AI-ACTIONS — AI Moderation/Tool Execution',
+  'AI_AUTOMATION':      '⚙️ AI-AUTOMATION — AI Server Automation'
 };
 
 const TIER_DESCRIPTIONS = {
@@ -897,13 +898,18 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       try {
         const guildId = interaction.guildId;
         const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
-        const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id]) ||
-                                  (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+        const isWhitelistedUserWithAiActions = 
+          (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_ACTIONS')) ||
+          (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+        const isWhitelistedUserWithAiAutomation = 
+          (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_AUTOMATION')) ||
+          (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
 
         const userRoles = [];
         if (isOwner(interaction.user.id)) userRoles.push('Owner');
         if (isDeveloper(interaction.user.id)) userRoles.push('Developer');
-        if (isWhitelistedUser) userRoles.push('Whitelisted');
+        if (isWhitelistedUserWithAiActions) userRoles.push('Whitelisted');
+        if (isWhitelistedUserWithAiAutomation) userRoles.push('Whitelisted_Automation');
         if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
         if (staffCheck(interaction.member)) userRoles.push('Staff');
         if (userRoles.length === 0) userRoles.push('Member');
@@ -939,8 +945,14 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           .addFields(
             { name: '💬 Your Question', value: prompt.slice(0, 1024) },
             { name: '🤖 Answer',        value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` },
-          )
-          .setColor(0x00D4FF)
+          );
+
+        if (actionResult.hasConfirmation) {
+          aiEmbed.addFields({ name: '⚙️ Pending Task', value: actionResult.confirmText });
+        }
+
+        aiEmbed
+          .setColor(actionResult.hasConfirmation ? 0xEDC231 : 0x00D4FF)
           .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
           .setTimestamp();
 
@@ -949,7 +961,12 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
         );
 
-        await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+        const components = [actionRow];
+        if (actionResult.hasConfirmation && actionResult.confirmRow) {
+          components.unshift(actionResult.confirmRow);
+        }
+
+        await interaction.editReply({ embeds: [aiEmbed], components });
 
         // Send private analytics log to staff channel in the background
         logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
@@ -2084,6 +2101,20 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
   else if (interaction.isButton()) {
     const { customId, guildId } = interaction;
 
+    if (customId.startsWith('ai_confirm_auto_')) {
+      const actionId = customId.split('_').pop();
+      const { handleAiConfirmClick } = require('../../modules/ai-action-executor');
+      await handleAiConfirmClick(interaction, actionId, runtime, db, saveDb, isDeveloper, isOwner);
+      return;
+    }
+
+    if (customId.startsWith('ai_cancel_auto_')) {
+      const actionId = customId.split('_').pop();
+      const { handleAiCancelClick } = require('../../modules/ai-action-executor');
+      await handleAiCancelClick(interaction, actionId);
+      return;
+    }
+
     // Whitelist Interactive Buttons
     if (customId === 'back_whitelist_users') {
       const isExecOwner = interaction.user.id === interaction.guild?.ownerId || isDeveloper(interaction.user.id);
@@ -2835,13 +2866,18 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       try {
         const guildId = interaction.guildId;
         const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
-        const isWhitelistedUser = (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id]) ||
-                                  (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+        const isWhitelistedUserWithAiActions = 
+          (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_ACTIONS')) ||
+          (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
+        const isWhitelistedUserWithAiAutomation = 
+          (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_AUTOMATION')) ||
+          (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
 
         const userRoles = [];
         if (isOwner(interaction.user.id)) userRoles.push('Owner');
         if (isDeveloper(interaction.user.id)) userRoles.push('Developer');
-        if (isWhitelistedUser) userRoles.push('Whitelisted');
+        if (isWhitelistedUserWithAiActions) userRoles.push('Whitelisted');
+        if (isWhitelistedUserWithAiAutomation) userRoles.push('Whitelisted_Automation');
         if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) userRoles.push('Administrator');
         if (staffCheck(interaction.member)) userRoles.push('Staff');
         if (userRoles.length === 0) userRoles.push('Member');
@@ -2871,17 +2907,28 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
         const aiEmbed = new EmbedBuilder()
           .setAuthor({ name: 'ZENITSU AI', iconURL: interaction.client.user.displayAvatarURL() })
-          .setDescription(result.response)
-          .setColor(0x00D4FF)
+          .setDescription(result.response);
+
+        if (actionResult.hasConfirmation) {
+          aiEmbed.addFields({ name: '⚙️ Pending Task', value: actionResult.confirmText });
+        }
+
+        aiEmbed
+          .setColor(actionResult.hasConfirmation ? 0xEDC231 : 0x00D4FF)
           .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
           .setTimestamp();
 
         const actionRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`ai_channel_reset_${originalUserId}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId(`ai_channel_message_${originalUserId}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+          new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
         );
 
-        await interaction.editReply({ embeds: [aiEmbed], components: [actionRow] });
+        const components = [actionRow];
+        if (actionResult.hasConfirmation && actionResult.confirmRow) {
+          components.unshift(actionResult.confirmRow);
+        }
+
+        await interaction.editReply({ embeds: [aiEmbed], components });
 
         // Send analytics in the background
         logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
@@ -2965,7 +3012,8 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
     { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
     { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
     { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' },
-    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' }
+    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' },
+    { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION' }
   ];
 
   const selectOptions = systemCapabilities.map(c => ({
@@ -2987,7 +3035,7 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
     .setCustomId(`edit_user_caps_select:${targetUserId}`)
     .setPlaceholder('Select capabilities')
     .setMinValues(0)
-    .setMaxValues(8)
+    .setMaxValues(9)
     .addOptions(selectOptions);
 
   const deleteBtn = new ButtonBuilder()
@@ -3085,7 +3133,8 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
     { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
     { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' },
-    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' }
+    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' },
+    { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION' }
   ];
 
   const capOptions = systemCapabilities.map(c => ({
@@ -3119,7 +3168,7 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     .setCustomId(`edit_role_caps_select:${roleId}:${currentTier}`)
     .setPlaceholder('Select capabilities')
     .setMinValues(0)
-    .setMaxValues(8)
+    .setMaxValues(9)
     .addOptions(capOptions);
 
   const deleteBtn = new ButtonBuilder()
