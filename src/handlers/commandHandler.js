@@ -228,6 +228,57 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
+    // /invite
+    if (cmd === 'invite') {
+      const clientId = interaction.client.application?.id || config.clientId;
+      const botInviteUrl = `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=8&scope=bot%20applications.commands`;
+      const serverInviteUrl = db.serverInviteLink || null;
+
+      const inviteEmbed = new EmbedBuilder()
+        .setTitle('⚡ ZENITSU AI — Invite Links')
+        .setColor(0x00D4FF)
+        .setThumbnail(interaction.client.user.displayAvatarURL())
+        .addFields(
+          {
+            name: '🤖 Add ZENITSU AI to Your Server',
+            value: `[Click here to invite the bot](${botInviteUrl})\n> ⚠️ Bot is **private** — adding it to a server does NOT grant access. The server must be whitelisted by **KUTTY**.`,
+          }
+        );
+
+      if (serverInviteUrl) {
+        inviteEmbed.addFields({
+          name: '🏠 Join ZENITSU LIVE Server',
+          value: `[Click here to join](${serverInviteUrl})`,
+        });
+      } else if (isMainGuild) {
+        // Owner is in the home server — let them set it
+        inviteEmbed.addFields({
+          name: '🏠 ZENITSU LIVE Server Link',
+          value: '> Server invite link not set yet.\n> Use `/set-server-invite` to configure it.',
+        });
+      }
+
+      inviteEmbed
+        .setFooter({ text: 'ZENITSU AI • Built by KUTTY' })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [inviteEmbed] });
+    }
+
+    // /set-server-invite
+    if (cmd === 'set-server-invite') {
+      if (!isDeveloper(interaction.user.id) && !isOwner(interaction.user.id)) {
+        return interaction.reply({ content: '❌ Only the Bot Owner or Developer can set the server invite link.', ephemeral: true });
+      }
+      const link = interaction.options.getString('link');
+      if (!link.match(/^https:\/\/discord\.gg\/[a-zA-Z0-9]+$/)) {
+        return interaction.reply({ content: '❌ Invalid link format. Use a permanent Discord invite like `https://discord.gg/xxxxxx`.', ephemeral: true });
+      }
+      db.serverInviteLink = link;
+      saveDb();
+      return interaction.reply({ content: `✅ Server invite link set to: ${link}\n\nUsers can now use \`/invite\` to get it, and the AI will also know to share it.`, ephemeral: true });
+    }
+
     // /rank
     else if (cmd === 'rank') {
       const target = interaction.options.getUser('user') || interaction.user;
@@ -919,6 +970,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           guildId:       interaction.guildId || 'dm',
           guildName:     interaction.guild?.name || 'Unknown Server',
           isMainGuild:   interaction.guildId === config.guildId,
+          serverInviteLink: db.serverInviteLink || null,
           channelId:     interaction.channelId || 'none',
           threadId:      interaction.channel?.isThread() ? interaction.channelId : 'none',
           shardId:       interaction.client.shard?.ids?.[0]?.toString() || '0',
@@ -2889,6 +2941,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           guildId:       interaction.guildId || 'dm',
           guildName:     interaction.guild?.name || 'Unknown Server',
           isMainGuild:   interaction.guildId === config.guildId,
+          serverInviteLink: db.serverInviteLink || null,
           channelId:     interaction.channelId || 'none',
           threadId:      interaction.channel?.isThread() ? interaction.channelId : 'none',
           shardId:       interaction.client.shard?.ids?.[0]?.toString() || '0',

@@ -532,6 +532,15 @@ const commands = [
     .setName('system-health')
     .setDescription('Report the database and synchronization system health (Dev only)'),
 
+  new SlashCommandBuilder()
+    .setName('invite')
+    .setDescription('Get the invite link for ZENITSU AI bot and the ZENITSU LIVE Discord server'),
+
+  new SlashCommandBuilder()
+    .setName('set-server-invite')
+    .setDescription('Set the permanent ZENITSU LIVE server invite link (Owner/Dev only)')
+    .addStringOption(o => o.setName('link').setDescription('The permanent Discord invite link (e.g. https://discord.gg/xxxxx)').setRequired(true)),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild));
