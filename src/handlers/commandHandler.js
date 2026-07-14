@@ -916,14 +916,16 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
         const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
           applicationId: interaction.client.application?.id || 'default',
-          guildId: interaction.guildId || 'dm',
-          channelId: interaction.channelId || 'none',
-          threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
-          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0',
-          userName: interaction.user.username,
+          guildId:       interaction.guildId || 'dm',
+          guildName:     interaction.guild?.name || 'Unknown Server',
+          isMainGuild:   interaction.guildId === config.guildId,
+          channelId:     interaction.channelId || 'none',
+          threadId:      interaction.channel?.isThread() ? interaction.channelId : 'none',
+          shardId:       interaction.client.shard?.ids?.[0]?.toString() || '0',
+          userName:        interaction.user.username,
           userDisplayName: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
-          userRoles: userRoles,
-          isDeveloper: isDeveloper(interaction.user.id) || isOwner(interaction.user.id)
+          userRoles:     userRoles,
+          isDeveloper:   isDeveloper(interaction.user.id) || isOwner(interaction.user.id)
         });
 
         if (result.error) {
@@ -2884,14 +2886,16 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
         const result = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
           applicationId: interaction.client.application?.id || 'default',
-          guildId: interaction.guildId || 'dm',
-          channelId: interaction.channelId || 'none',
-          threadId: interaction.channel?.isThread() ? interaction.channelId : 'none',
-          shardId: interaction.client.shard?.ids?.[0]?.toString() || '0',
-          userName: interaction.user.username,
+          guildId:       interaction.guildId || 'dm',
+          guildName:     interaction.guild?.name || 'Unknown Server',
+          isMainGuild:   interaction.guildId === config.guildId,
+          channelId:     interaction.channelId || 'none',
+          threadId:      interaction.channel?.isThread() ? interaction.channelId : 'none',
+          shardId:       interaction.client.shard?.ids?.[0]?.toString() || '0',
+          userName:        interaction.user.username,
           userDisplayName: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
-          userRoles: userRoles,
-          isDeveloper: isDeveloper(interaction.user.id) || isOwner(interaction.user.id)
+          userRoles:     userRoles,
+          isDeveloper:   isDeveloper(interaction.user.id) || isOwner(interaction.user.id)
         });
 
         if (result.error) {
