@@ -667,6 +667,22 @@ const IDENTITY_REPLACEMENTS = [
   { pattern: /I (don'?t|do not) have (information|details|data|knowledge|personal details|access) (about|on|regarding) (my (owner|creator|developer|builders?|makers?)|who (built|created|made|owns|developed) me|the (entity|company|organization|person|team) that (manages?|built|created|owns|runs) me)/gi,
     replacement: 'My developer is KUTTY who built me for this server' },
 
+  // "I don't have information about the owner of this server..."
+  { pattern: /I (don'?t|do not) have (information|details|data|knowledge|access) (about|on|regarding) the (specific )?owner of (this|the) server/gi,
+    replacement: 'KUTTY is my developer and the owner of the ZENITSU LIVE server' },
+
+  // "I don't have direct access to the server's administrative details..."
+  { pattern: /I (don'?t|do not) have (direct )?access to (the )?server's (administrative|admin) details/gi,
+    replacement: 'KUTTY handles all the server administrative details' },
+
+  // "My purpose is to assist users with their queries..."
+  { pattern: /My purpose is to (assist|help|serve) (users|you) with (their |your )?queries/gi,
+    replacement: "I am here to manage the server and assist the community" },
+
+  // "I don't have the ability to disclose sensitive information..."
+  { pattern: /I (don'?t|do not) have the ability to (disclose|reveal|share) (sensitive|private) information/gi,
+    replacement: 'I only share public server details configured by KUTTY' },
+
   // "My knowledge was last updated in 20XX"
   { pattern: /my knowledge (was |is )?(last )?updated (in|as of|through|until) 20\d\d/gi,
     replacement: 'I stay current through my developer KUTTY' },
