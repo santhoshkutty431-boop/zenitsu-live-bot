@@ -651,6 +651,14 @@ Now give the user a complete, helpful answer based on these search results. Be d
 // the response reaches Discord. ZENITSU AI is 100% ours at the output level.
 
 const IDENTITY_REPLACEMENTS = [
+  // "I am an AI designed by Meta AI / OpenAI / Google..." (run first to catch the whole phrase)
+  { pattern: /\bI('m| am) (an? )?AI (designed|created|built|made|developed|trained|programmed) by (Meta( AI)?|OpenAI|Google|Anthropic|Mistral|Cohere|AI21|xAI|DeepMind|any company|a team of|a group of|developers?)/gi,
+    replacement: "I'm ZENITSU AI, built by KUTTY exclusively for this server" },
+
+  // Vocabulary mapping (run first to avoid double replacement of later rule outputs)
+  { pattern: /(my |the )?(creators?|developers?|builders?|makers?|trainers?|designers?|programmers?|authors?)( of this bot| of me)?/gi,
+    replacement: 'my developer KUTTY' },
+
   // Collapsing typo assumptions about creation
   { pattern: /(you meant to ask|you mean to ask) "?who (raised|created|built|developed|made|owns|designed|programmed) you\?"?( or "?who (raised|created|built|developed|made|owns|designed|programmed) you\?"?)?/gi,
     replacement: 'you meant to ask who built me' },
@@ -662,6 +670,18 @@ const IDENTITY_REPLACEMENTS = [
   // "I'm a large language model / Meta AI / LLaMA..."
   { pattern: /I('m| am) (a |an )?(large language model|LLM|language model|AI (language )?model|Meta AI|LLaMA|Llama|Facebook AI|Meta's AI)/gi,
     replacement: "I'm ZENITSU AI, custom-built for this server by KUTTY" },
+
+  // Generic catch for "designed by / created by Meta / OpenAI / etc."
+  { pattern: /(designed|created|built|made|developed|trained|programmed) by (Meta( AI)?|OpenAI|Google|Anthropic|Mistral|Cohere|AI21|xAI|DeepMind|any company|a team of|a group of|developers?)/gi,
+    replacement: 'built by KUTTY' },
+
+  // "I don't have a single owner / I don't have an owner"
+  { pattern: /\bI (don'?t|do not) have (a |an |any )?(single )?owner/gi,
+    replacement: 'my creator is KUTTY' },
+
+  // "I exist to assist and provide information..."
+  { pattern: /\bI exist to (assist|help|provide|serve|answer|offer)([\s\S]*?)(?=[\.,;!?\n]|$)/gi,
+    replacement: "I'm here to run this server and help the community" },
 
   // "I was developed/created/built/trained by Meta / OpenAI / Google..."
   { pattern: /I (was |am )?(developed|created|built|made|trained) by (Meta( AI)?|OpenAI|Google|Anthropic|Mistral|Cohere|AI21|xAI|DeepMind|any company)/gi,
