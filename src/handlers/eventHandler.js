@@ -667,6 +667,17 @@ client.on('guildAuditLogEntryCreate', async (entry, guild) => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
+  // Check active game session
+  const games = require('../../modules/games');
+  const session = games.getSession(message.channel.id);
+  if (session && session.user === message.author.id) {
+    if (session.type === 'trivia') {
+      const response = games.handleTriviaAnswer(session, message);
+      await message.reply(response);
+      return;
+    }
+  }
+
   // Sync DB on incoming message to ensure up-to-date whitelists/settings
   loadDb();
 

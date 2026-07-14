@@ -105,6 +105,129 @@ async function executeAiAction(interaction, responseText, runtime, db, saveDb, I
           });
           return { cleanText: cleanText + `\n✅ **Warned <@${action.userId}> (Case #${newCase.caseId}).**` };
         }
+        case 'play': {
+          const query = action.song;
+          if (!query) return { cleanText: cleanText + `\n⚠️ *Action failed: No song query provided.*` };
+          const voiceChannel = interaction.member?.voice?.channel;
+          if (!voiceChannel) return { cleanText: cleanText + `\n⚠️ *Action failed: You must be in a voice channel to request music!*` };
+
+          const pluginMgr = runtime.getService('PluginManager');
+          const musicPlugin = pluginMgr ? pluginMgr.getPlugin('music') : null;
+          if (!musicPlugin) return { cleanText: cleanText + `\n⚠️ *Action failed: Music system is not available.*` };
+
+          const track = await musicPlugin.resolveTrack(query);
+          if (!track) return { cleanText: cleanText + `\n❌ *No results found for:* **${query}**` };
+
+          const guildPlayer = await musicPlugin.getOrCreatePlayer(voiceChannel);
+          const playerState = db.guildWhitelists?.[guild.id] || db;
+          const currentMusicPlayer = db.getMusicPlayer ? db.getMusicPlayer(guild.id) : null;
+          
+          const playerStateObj = currentMusicPlayer || {
+            guildId: guild.id,
+            currentSong: null,
+            isPaused: false,
+            loopMode: 'off',
+            volume: 100,
+            positionSec: 0,
+            durationSec: 0,
+            queue: [],
+            setupChannelId: null,
+            setupMessageId: null
+          };
+
+          const isPlaying = guildPlayer.audioPlayer.state.status === 'playing';
+          if (!isPlaying && !playerStateObj.currentSong) {
+            await musicPlugin.playTrack(guild.id, track);
+            return { cleanText: cleanText + `\n💿 **Now playing:** **${track.title}**` };
+          } else {
+            playerStateObj.queue.push(track);
+            const dbMgr = runtime.getService('DatabaseManager');
+            if (dbMgr && dbMgr.saveMusicPlayer) {
+              dbMgr.saveMusicPlayer(playerStateObj);
+            }
+            await musicPlugin.updateControllerMessage(playerStateObj);
+            return { cleanText: cleanText + `\n✅ **Added to queue:** **${track.title}**` };
+          }
+        }
+        case 'skip': {
+          const pluginMgr = runtime.getService('PluginManager');
+          const musicPlugin = pluginMgr ? pluginMgr.getPlugin('music') : null;
+          if (!musicPlugin) return { cleanText: cleanText + `\n⚠️ *Action failed: Music system is not available.*` };
+          const active = musicPlugin.activePlayers.get(guild.id);
+          if (!active) return { cleanText: cleanText + `\n⚠️ *Action failed: Bot is not currently playing music.*` };
+          await musicPlugin.handleTrackEnd(guild.id);
+          return { cleanText: cleanText + `\n⏭️ **Track skipped.**` };
+        }
+        case 'pause': {
+          const pluginMgr = runtime.getService('PluginManager');
+          const musicPlugin = pluginMgr ? pluginMgr.getPlugin('music') : null;
+          if (!musicPlugin) return { cleanText: cleanText + `\n⚠️ *Action failed: Music system is not available.*` };
+          const active = musicPlugin.activePlayers.get(guild.id);
+          if (!active) return { cleanText: cleanText + `\n⚠️ *Action failed: Bot is not currently playing music.*` };
+          active.audioPlayer.pause();
+          const stateObj = musicPlugin.dbService.getMusicPlayer(guild.id);
+          if (stateObj) {
+            stateObj.isPaused = true;
+            musicPlugin.dbService.saveMusicPlayer(stateObj);
+            await musicPlugin.updateControllerMessage(stateObj);
+          }
+          return { cleanText: cleanText + `\n⏸️ **Playback paused.**` };
+        }
+        case 'resume': {
+          const pluginMgr = runtime.getService('PluginManager');
+          const musicPlugin = pluginMgr ? pluginMgr.getPlugin('music') : null;
+          if (!musicPlugin) return { cleanText: cleanText + `\n⚠️ *Action failed: Music system is not available.*` };
+          const active = musicPlugin.activePlayers.get(guild.id);
+          if (!active) return { cleanText: cleanText + `\n⚠️ *Action failed: Bot is not currently playing music.*` };
+          active.audioPlayer.unpause();
+          const stateObj = musicPlugin.dbService.getMusicPlayer(guild.id);
+          if (stateObj) {
+            stateObj.isPaused = false;
+            musicPlugin.dbService.saveMusicPlayer(stateObj);
+            await musicPlugin.updateControllerMessage(stateObj);
+          }
+          return { cleanText: cleanText + `\n▶️ **Playback resumed.**` };
+        }
+        case 'stop': {
+          const pluginMgr = runtime.getService('PluginManager');
+          const musicPlugin = pluginMgr ? pluginMgr.getPlugin('music') : null;
+          if (!musicPlugin) return { cleanText: cleanText + `\n⚠️ *Action failed: Music system is not available.*` };
+          musicPlugin.cleanupPlayer(guild.id);
+          return { cleanText: cleanText + `\n🛑 **Music stopped and bot disconnected.**` };
+        }
+        case 'start_trivia': {
+          const games = require('./games');
+          const promptMsg = games.startTrivia(interaction.channelId, interaction.user);
+          return { cleanText: cleanText + `\n\n${promptMsg}` };
+        }
+        case 'server_analytics': {
+          const totalMembers = guild.memberCount || 0;
+          const textChannels = guild.channels.cache.filter(c => c.type === 0).size;
+          const voiceChannels = guild.channels.cache.filter(c => c.type === 2).size;
+          const rolesCount = guild.roles.cache.size;
+
+          const dbMgr = runtime.getService('DatabaseManager');
+          const guildDb = dbMgr ? dbMgr.getGuildDb(guild.id) : null;
+          const totalCases = guildDb && guildDb.cases ? guildDb.cases.length : 0;
+          const totalWarnings = guildDb && guildDb.warnings ? Object.keys(guildDb.warnings).length : 0;
+
+          const statsEmbed = new EmbedBuilder()
+            .setTitle(`📊 Server Analytics — ${guild.name}`)
+            .setColor(0x00D4FF)
+            .addFields(
+              { name: '👥 Total Members', value: `\`${totalMembers}\``, inline: true },
+              { name: '💬 Text Channels', value: `\`${textChannels}\``, inline: true },
+              { name: '🔊 Voice Channels', value: `\`${voiceChannels}\``, inline: true },
+              { name: '🛡️ Roles Configured', value: `\`${rolesCount}\``, inline: true },
+              { name: '🚨 Total Mod Cases', value: `\`${totalCases}\``, inline: true },
+              { name: '⚠️ Warning Count', value: `\`${totalWarnings}\``, inline: true }
+            )
+            .setFooter({ text: 'ZENITSU AI Analytics Engine' })
+            .setTimestamp();
+
+          await interaction.channel.send({ embeds: [statsEmbed] }).catch(() => {});
+          return { cleanText: cleanText + `\n✅ **Server analytics embed generated.**` };
+        }
         default:
           return { cleanText: cleanText + `\n⚠️ *Unknown action type: ${action.type}*` };
       }

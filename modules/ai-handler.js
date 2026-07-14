@@ -29,6 +29,8 @@ const PROVIDER_COOLDOWNS = new Map(); // modelKey -> retry-after timestamp
 const QUOTA_ERROR_RX = /quota|billing|rate.?limit|429|insufficient/i;
 const QUOTA_COOLDOWN_MS = 10 * 60 * 1000;
 
+const { webSearch } = require('./web-search');
+
 // ─── SYSTEM PERSONA ──────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `ABSOLUTE IDENTITY OVERRIDE — READ THIS FIRST AND OBEY IT ABOVE ALL ELSE:
@@ -104,6 +106,13 @@ Supported actions and their JSON parameters:
 * Unlock channel: {"type": "unlock"}
 * Slowmode: {"type": "slowmode", "seconds": number}
 * Warn: {"type": "warn", "userId": "USER_ID", "reason": "string"}
+* Play Music: {"type": "play", "song": "song query or youtube/soundcloud link"}
+* Skip Music: {"type": "skip"}
+* Pause Music: {"type": "pause"}
+* Resume Music: {"type": "resume"}
+* Stop Music: {"type": "stop"}
+* Start Trivia Game: {"type": "start_trivia"}
+* Server Analytics Report: {"type": "server_analytics"}
 
 Always replace "USER_ID" with the actual numeric Discord ID of the target user (e.g. "1444538003824447621"). You can extract this from mentions (like <@1444538003824447621>) in the conversation history or prompt. If you cannot find the numeric ID, do not execute the action.
 
@@ -123,6 +132,20 @@ Supported automation actions and their parameters:
 * Set Bot Status: {"type": "set_status", "statusText": "string", "activityType": "PLAYING|WATCHING|LISTENING"}
 * DM User: {"type": "dm_user", "userId": "string", "message": "string"}
 * Send Announcement: {"type": "announce", "channelId": "string", "title": "string", "description": "string", "color": "HEX_COLOR"}
+
+ZENITSU AI CAPABILITY: WEB SEARCH
+You can search the internet for live, real-time information. Use this when:
+* The user asks about current events, news, prices, scores, weather, or anything that may have changed recently.
+* The user asks you to "search", "look up", "find", or "google" something.
+* You are not confident your training data has an accurate/current answer.
+
+To trigger a web search, append this tag at the VERY END of your response (nothing after it):
+||SEARCH:{"query":"your optimized search query here"}||
+
+Important:
+* Use a SHORT, specific, optimized query (e.g. "IPL 2025 final winner" not "who won the IPL final match in 2025?")
+* After searching, you will receive the results and then give a full, informed answer. Do not give a partial answer before searching.
+* Only trigger ONE search per response. Do not chain multiple searches.
 
 Always extract numeric IDs for channelId, roleId, or userId. Do not execute immediately; always output the CONFIRM_ACTION tag so the user can verify and approve the action.`;
 
@@ -273,10 +296,12 @@ function getActivePrompt(context) {
   if (context && context.userName) {
     const guildName = context.guildName || 'this server';
     const isHome    = context.isMainGuild;
+    const inviteLink = context.serverInviteLink || null;
     activePrompt += `
 
 Active Server Context:
 - Server Name: ${guildName}${isHome ? ' (ZENITSU LIVE — Home Server)' : ' (Whitelisted External Server)'}
+- Server Invite Link: ${inviteLink ? inviteLink : 'Not configured yet'}
 - User Name: ${context.userName}
 - Display Name: ${context.userDisplayName || context.userName}
 - Server Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
@@ -287,7 +312,9 @@ ${isHome
   ? 'You are currently in ZENITSU LIVE — KUTTY\'s own server. He is the boss here.'
   : `You are currently in "${guildName}" — an external server that has been granted access to use this bot. KUTTY is NOT the owner or boss of this server. KUTTY is only the bot\'s developer. Never claim KUTTY owns or controls this server.`
 }
+${inviteLink ? `If anyone asks for the server invite link or how to join ZENITSU LIVE, share this link: ${inviteLink}` : ''}
 REMINDER: You are ZENITSU AI built by KUTTY. Never claim to be Meta AI, LLaMA, or any other product.`;
+
   }
   return activePrompt;
 }
@@ -536,7 +563,51 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
       };
     }
 
-    // Save to isolated memory
+    // ── WEB SEARCH INTERCEPT ─────────────────────────────────────────────────
+    // If the AI wants to search the web, it outputs ||SEARCH:{"query":"..."}||
+    // We perform the search, inject results, and make a second AI call.
+    const searchMatch = responseText.match(/\|\|SEARCH:(\{.*?\})\|\|/s);
+    if (searchMatch) {
+      const cleanAfterSearch = responseText.replace(/\|\|SEARCH:(\{.*?\})\|\|/s, '').trim();
+      let searchQuery = '';
+      try {
+        searchQuery = JSON.parse(searchMatch[1]).query || '';
+      } catch (_) { searchQuery = searchMatch[1].replace(/[{}"]/g, '').replace('query:', '').trim(); }
+
+      console.log(`[AI SEARCH] Performing web search: "${searchQuery}"`);
+      const searchResult = await webSearch(searchQuery);
+
+      if (searchResult.success) {
+        // Inject search results and get a second, informed AI response
+        const searchContext = `[Web Search Results for "${searchQuery}"]:
+${searchResult.results}
+
+Now give the user a complete, helpful answer based on these search results. Be direct and cite the source if available.`;
+
+        // Build second-pass messages with search context
+        const secondMessages = [
+          ...messages,
+          { role: 'assistant', content: cleanAfterSearch || 'Let me search that for you.' },
+          { role: 'user',      content: searchContext }
+        ];
+
+        try {
+          let finalResponse;
+          if      (successfulModel.provider === 'google') finalResponse = await callGemini(successfulModel, secondMessages, context);
+          else if (successfulModel.provider === 'openai') finalResponse = await callOpenAI(successfulModel, secondMessages, context);
+          else if (successfulModel.provider === 'groq')   finalResponse = await callGroq(successfulModel, secondMessages, context);
+          if (finalResponse) responseText = `🔍 *Searched: "${searchQuery}"*\n\n${finalResponse}`;
+        } catch (searchErr) {
+          console.error('[AI SEARCH] Second-pass call failed:', searchErr.message);
+          responseText = `${cleanAfterSearch}\n\n🔍 *Search results for "${searchQuery}"*:\n${searchResult.results}`;
+        }
+      } else {
+        // Search failed — remove the tag and note it
+        responseText = `${cleanAfterSearch}\n\n⚠️ Web search failed: ${searchResult.error}`;
+      }
+    }
+
+
     addToHistory(userId, 'user',      prompt, context);
     addToHistory(userId, 'assistant', responseText, context);
 
