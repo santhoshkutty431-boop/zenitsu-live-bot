@@ -160,11 +160,14 @@ async function executeAiAction(interaction, responseText, runtime, db, saveDb, I
       new ButtonBuilder().setCustomId(`ai_cancel_auto_${actionId}`).setLabel('🔴 Cancel').setStyle(ButtonStyle.Danger)
     );
 
+    const jsonPreview = JSON.stringify(action, null, 2);
+    const confirmText = `⚠️ **Pending Automation Request**:\n\`\`\`json\n${jsonPreview.slice(0, 700)}${jsonPreview.length > 700 ? '\n...(truncated)' : ''}\n\`\`\``.slice(0, 1024);
+
     return {
       cleanText,
       hasConfirmation: true,
       confirmRow,
-      confirmText: `\n\n⚠️ **Pending Automation Request**:\n*The AI wants to automate the following task:*\n\`\`\`json\n${JSON.stringify(action, null, 2)}\n\`\`\``
+      confirmText
     };
   }
 
