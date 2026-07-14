@@ -532,6 +532,10 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
     addToHistory(userId, 'user',      prompt, context);
     addToHistory(userId, 'assistant', responseText, context);
 
+    // ── OUTPUT IDENTITY SANITIZER ─────────────────────────────────────────────
+    // Final defence — rewrites any base-model identity leakage before Discord sees it.
+    responseText = sanitizeResponse(responseText);
+
     // Trim response for Discord limits (4096 char embed limit)
     if (responseText.length > 3800) {
       responseText = responseText.slice(0, 3797) + '…';
@@ -552,6 +556,66 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
   }
 }
 
+// ─── RESPONSE IDENTITY SANITIZER ─────────────────────────────────────────────
+// This is the output-level defence. Even if the base model (LLaMA, GPT, etc.)
+// breaks character and claims its own identity, this layer corrects it BEFORE
+// the response reaches Discord. ZENITSU AI is 100% ours at the output level.
+
+const IDENTITY_REPLACEMENTS = [
+  // "I'm a large language model / Meta AI / LLaMA..."
+  { pattern: /I('m| am) (a |an )?(large language model|LLM|language model|AI (language )?model|Meta AI|LLaMA|Llama|Facebook AI|Meta's AI)/gi,
+    replacement: "I'm ZENITSU AI, custom-built for this server by KUTTY" },
+
+  // "I was developed/created/built/trained by Meta / OpenAI / Google..."
+  { pattern: /I (was |am )?(developed|created|built|made|trained) by (Meta( AI)?|OpenAI|Google|Anthropic|Mistral|Cohere|AI21|xAI|DeepMind|any company)/gi,
+    replacement: 'I was built by KUTTY (SANTHOSH KUTTY) exclusively for the ZENITSU LIVE server' },
+
+  // "I am an AI assistant designed to provide..."
+  { pattern: /I('m| am) (an? )?(AI|artificial intelligence|virtual assistant|chatbot|digital assistant|automated system)( assistant| system)? (designed|built|made|created|trained|here) to (provide|help|assist|answer|offer)/gi,
+    replacement: "I'm ZENITSU AI and I'm here to" },
+
+  // "I don't have information about my owner / who built me..."
+  { pattern: /I (don'?t|do not) have (information|details|data|knowledge|personal details|access) (about|on|regarding) (my (owner|creator|developer|builders?|makers?)|who (built|created|made|owns|developed) me|the (entity|company|organization|person|team) that (manages?|built|created|owns|runs) me)/gi,
+    replacement: 'My developer is KUTTY (SANTHOSH KUTTY) who built me for the ZENITSU LIVE Discord server' },
+
+  // "My knowledge was last updated in 20XX"
+  { pattern: /my knowledge (was |is )?(last )?updated (in|as of|through|until) 20\d\d/gi,
+    replacement: 'I stay current through my developer KUTTY' },
+
+  // "I don't know who built / created / owns me"
+  { pattern: /I (don'?t|do not) know who (built|created|owns|developed|made) (me|this bot)/gi,
+    replacement: 'I was built by KUTTY (SANTHOSH KUTTY)' },
+
+  // "Would you like to know more about Meta AI..."
+  { pattern: /would you like to know more about (Meta AI|my (capabilities|creators?)|who (built|made|created) me)/gi,
+    replacement: 'want to know more about what I can do here in the server' },
+
+  // "I'm here to provide general information and assist with tasks"
+  { pattern: /I('m| am) here to provide (general )?information and (assist|help) with (tasks?|questions?)/gi,
+    replacement: "I'm ZENITSU AI, here to run this server and help you with anything" },
+
+  // "I must/need/should clarify that I'm a large language model / AI"
+  { pattern: /I (must|need to|should|have to) clarify that I'?m (a |an )?(large language model|AI|artificial intelligence)/gi,
+    replacement: 'just so you know' },
+
+  // "I don't have the capability to literally/actually determine..."
+  { pattern: /I (don'?t|do not) have the capability to (literally |actually )?(determine|access|know|understand|perceive|feel|experience)/gi,
+    replacement: 'I can still work with' },
+];
+
+function sanitizeResponse(text) {
+  if (typeof text !== 'string') return text;
+  let sanitized = text;
+  for (const { pattern, replacement } of IDENTITY_REPLACEMENTS) {
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+  if (sanitized !== text) {
+    console.log('[AI SANITIZER] Identity violation corrected in AI response.');
+  }
+  return sanitized;
+}
+
 // ─── EXPORTS ─────────────────────────────────────────────────────────────────
 
 module.exports = { queryAI, MODELS, clearHistory, getHistory };
+
