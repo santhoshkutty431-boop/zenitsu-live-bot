@@ -335,6 +335,7 @@ const commands = [
     .addStringOption(o => o
       .setName('prompt')
       .setDescription('Your question or message for the AI')
+      .setAutocomplete(true)
       .setRequired(true))
     .addStringOption(o => o
       .setName('model')

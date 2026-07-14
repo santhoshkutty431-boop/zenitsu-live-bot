@@ -81,6 +81,29 @@ const saveDb = (immediate = false) => {
 
 async function handleInteraction(interaction, runtime, db, ID, logToChannel, isDeveloper, resolvePermission, client, staffCheck, isOwner, getOrCreateRole) {
   runtimeInstance = runtime;
+
+  if (interaction.isAutocomplete()) {
+    if (interaction.commandName === 'ai') {
+      const focusedValue = interaction.options.getFocused();
+      const choices = [
+        'Who is the owner of the server?',
+        'What are the features of Zenitsu AI?',
+        'Show me how to request music/songs',
+        'How do I create a support ticket?',
+        'Reset my AI conversation memory',
+        'Tell me a fun trivia joke',
+        'Check current server moderation rules',
+        'Who built this bot?',
+        'What is Hinglish and Tanglish?'
+      ];
+      const filtered = choices.filter(choice => choice.toLowerCase().includes(focusedValue.toLowerCase()));
+      await interaction.respond(
+        filtered.slice(0, 25).map(choice => ({ name: choice, value: choice }))
+      ).catch(() => {});
+    }
+    return;
+  }
+
   loadDb(); // Sync with disk before interaction checks
 
   // ── SERVER WHITELIST CHECK ───────────────────────────────────────────────────
