@@ -651,6 +651,14 @@ Now give the user a complete, helpful answer based on these search results. Be d
 // the response reaches Discord. ZENITSU AI is 100% ours at the output level.
 
 const IDENTITY_REPLACEMENTS = [
+  // Collapsing typo assumptions about creation
+  { pattern: /(you meant to ask|you mean to ask) "?who (raised|created|built|developed|made|owns|designed|programmed) you\?"?( or "?who (raised|created|built|developed|made|owns|designed|programmed) you\?"?)?/gi,
+    replacement: 'you meant to ask who built me' },
+
+  // "Who raised/created/developed/built/made you?"
+  { pattern: /\bwho (raised|created|built|developed|made|owns|designed|programmed) you\b/gi,
+    replacement: 'who built me' },
+
   // "I'm a large language model / Meta AI / LLaMA..."
   { pattern: /I('m| am) (a |an )?(large language model|LLM|language model|AI (language )?model|Meta AI|LLaMA|Llama|Facebook AI|Meta's AI)/gi,
     replacement: "I'm ZENITSU AI, custom-built for this server by KUTTY" },
