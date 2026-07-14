@@ -206,6 +206,10 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     runtime.eventBus.publish('COMMAND_RUN', { commandName: cmd });
 
     // v4.0 Runtime command router delegation
+    if (db.featureFlags?.musicSystem === false && ['play', 'nowplaying', 'play-now', 'pause', 'queue', 'setup-music'].includes(cmd)) {
+      return interaction.reply({ content: '❌ The music playback system is currently disabled by the bot owner.', ephemeral: true });
+    }
+
     const commandRouter = runtime.getService('CommandRouter');
     if (commandRouter.commands.has(cmd)) {
       return commandRouter.route(interaction);
@@ -229,7 +233,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     // /invite
-    if (cmd === 'invite') {
+    else if (cmd === 'invite') {
       const clientId = interaction.client.application?.id || config.clientId;
       const botInviteUrl = `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=8&scope=bot%20applications.commands`;
       const serverInviteUrl = db.serverInviteLink || null;
@@ -266,7 +270,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     // /set-server-invite
-    if (cmd === 'set-server-invite') {
+    else if (cmd === 'set-server-invite') {
       if (!isDeveloper(interaction.user.id) && !isOwner(interaction.user.id)) {
         return interaction.reply({ content: '❌ Only the Bot Owner or Developer can set the server invite link.', ephemeral: true });
       }
@@ -277,6 +281,15 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       db.serverInviteLink = link;
       saveDb();
       return interaction.reply({ content: `✅ Server invite link set to: ${link}\n\nUsers can now use \`/invite\` to get it, and the AI will also know to share it.`, ephemeral: true });
+    }
+
+    // /bot-settings
+    else if (cmd === 'bot-settings') {
+      if (!isOwner(interaction.user.id) && !isDeveloper(interaction.user.id)) {
+        return interaction.reply({ content: '❌ Only the **Bot Owner** (KUTTY) can access bot settings.', ephemeral: true });
+      }
+      const panel = getBotSettingsPanel(interaction, db);
+      return interaction.reply({ ...panel, ephemeral: true });
     }
 
     // /rank
@@ -918,6 +931,10 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
     // /ai
     else if (cmd === 'ai') {
+      if (db.featureFlags?.aiChat === false) {
+        return interaction.reply({ content: '❌ The AI conversation feature is currently disabled by the bot owner.', ephemeral: true });
+      }
+
       const dbService = runtime.getService('DatabaseManager');
       const allowed = dbService.checkAndRecordQuery(interaction.guildId, interaction.user.id);
       if (!allowed) {
@@ -2149,6 +2166,22 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const { embeds, components } = getWhitelistedServerPanel(interaction, serverId);
       await interaction.editReply({ embeds, components });
     }
+
+    else if (customId === 'bot_settings_select') {
+      const isExecOwner = isOwner(interaction.user.id) || isDeveloper(interaction.user.id);
+      if (!isExecOwner) return interaction.reply({ content: '❌ Only the **Bot Owner** (KUTTY) can modify bot settings.', ephemeral: true });
+
+      await interaction.deferUpdate();
+      const feature = interaction.values[0];
+
+      db.featureFlags = db.featureFlags || {};
+      const current = db.featureFlags[feature] !== false;
+      db.featureFlags[feature] = !current;
+      saveDb(true);
+
+      const panel = getBotSettingsPanel(interaction, db);
+      await interaction.editReply({ ...panel });
+    }
   }
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
@@ -3319,4 +3352,48 @@ function getWhitelistedServerPanel(interaction, serverId) {
   return { embeds: [embed], components: [row] };
 }
 
+function getBotSettingsPanel(interaction, db) {
+  const ff = db.featureFlags || {};
+  const aiChatEnabled = ff.aiChat !== false;
+  const aiSupportEnabled = ff.aiSupport !== false;
+  const aiAutoModEnabled = ff.aiAutoMod !== false;
+  const aiSearchEnabled = ff.aiSearch !== false;
+  const musicSystemEnabled = ff.musicSystem !== false;
+  const semanticSpamEnabled = ff.semanticSpam !== false;
+  const securitySystemEnabled = ff.securitySystem !== false;
+
+  const embed = new EmbedBuilder()
+    .setTitle('⚙️ ZENITSU AI — Bot Feature Controls')
+    .setDescription('Toggle features on/off instantly. These settings apply bot-wide.')
+    .setColor(0xEDC231)
+    .addFields(
+      { name: '🤖 AI Chat Queries', value: aiChatEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true },
+      { name: '🎫 AI Support Tickets', value: aiSupportEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true },
+      { name: '🚨 AI Auto-Moderation', value: aiAutoModEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true },
+      { name: '🔍 Dynamic Web Search', value: aiSearchEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true },
+      { name: '🎵 Music Playback System', value: musicSystemEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true },
+      { name: '🛡️ Semantic Anti-Spam', value: semanticSpamEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true },
+      { name: '⚡ Standard Security Shield', value: securitySystemEnabled ? '🟢 **Enabled**' : '🔴 **Disabled**', inline: true }
+    )
+    .setFooter({ text: 'ZENITSU BOT • Owner Only Control Panel' })
+    .setTimestamp();
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('bot_settings_select')
+    .setPlaceholder('Select a feature to toggle...')
+    .addOptions([
+      { label: `Toggle AI Chat (${aiChatEnabled ? 'Disable' : 'Enable'})`, value: 'aiChat', emoji: '🤖' },
+      { label: `Toggle AI Support (${aiSupportEnabled ? 'Disable' : 'Enable'})`, value: 'aiSupport', emoji: '🎫' },
+      { label: `Toggle AI AutoMod (${aiAutoModEnabled ? 'Disable' : 'Enable'})`, value: 'aiAutoMod', emoji: '🚨' },
+      { label: `Toggle Web Search (${aiSearchEnabled ? 'Disable' : 'Enable'})`, value: 'aiSearch', emoji: '🔍' },
+      { label: `Toggle Music System (${musicSystemEnabled ? 'Disable' : 'Enable'})`, value: 'musicSystem', emoji: '🎵' },
+      { label: `Toggle Semantic Spam (${semanticSpamEnabled ? 'Disable' : 'Enable'})`, value: 'semanticSpam', emoji: '🛡️' },
+      { label: `Toggle Security Shield (${securitySystemEnabled ? 'Disable' : 'Enable'})`, value: 'securitySystem', emoji: '⚡' }
+    ]);
+
+  const row = new ActionRowBuilder().addComponents(selectMenu);
+  return { embeds: [embed], components: [row] };
+}
+
 module.exports = { handleInteraction };
+

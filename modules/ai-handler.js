@@ -569,15 +569,24 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
     const searchMatch = responseText.match(/\|\|SEARCH:(\{.*?\})\|\|/s);
     if (searchMatch) {
       const cleanAfterSearch = responseText.replace(/\|\|SEARCH:(\{.*?\})\|\|/s, '').trim();
-      let searchQuery = '';
-      try {
-        searchQuery = JSON.parse(searchMatch[1]).query || '';
-      } catch (_) { searchQuery = searchMatch[1].replace(/[{}"]/g, '').replace('query:', '').trim(); }
+      
+      const runtime = global.__zenitsuRuntime;
+      const dbMgr = runtime ? runtime.getService('DatabaseManager') : null;
+      const db = dbMgr && context.guildId ? dbMgr.getGuildDb(context.guildId) : null;
+      const searchEnabled = !db || !db.featureFlags || db.featureFlags.aiSearch !== false;
 
-      console.log(`[AI SEARCH] Performing web search: "${searchQuery}"`);
-      const searchResult = await webSearch(searchQuery);
+      if (!searchEnabled) {
+        responseText = cleanAfterSearch;
+      } else {
+        let searchQuery = '';
+        try {
+          searchQuery = JSON.parse(searchMatch[1]).query || '';
+        } catch (_) { searchQuery = searchMatch[1].replace(/[{}"]/g, '').replace('query:', '').trim(); }
 
-      if (searchResult.success) {
+        console.log(`[AI SEARCH] Performing web search: "${searchQuery}"`);
+        const searchResult = await webSearch(searchQuery);
+
+        if (searchResult.success) {
         // Inject search results and get a second, informed AI response
         const searchContext = `[Web Search Results for "${searchQuery}"]:
 ${searchResult.results}
@@ -601,9 +610,10 @@ Now give the user a complete, helpful answer based on these search results. Be d
           console.error('[AI SEARCH] Second-pass call failed:', searchErr.message);
           responseText = `${cleanAfterSearch}\n\n🔍 *Search results for "${searchQuery}"*:\n${searchResult.results}`;
         }
-      } else {
-        // Search failed — remove the tag and note it
-        responseText = `${cleanAfterSearch}\n\n⚠️ Web search failed: ${searchResult.error}`;
+        } else {
+          // Search failed — remove the tag and note it
+          responseText = `${cleanAfterSearch}\n\n⚠️ Web search failed: ${searchResult.error}`;
+        }
       }
     }
 

@@ -682,11 +682,15 @@ client.on('messageCreate', async message => {
   loadDb();
 
   // 1. AI Context-based Moderation
-  const aiModViolated = await handleAiModeration(message, db, saveDb, logToChannel, ID);
-  if (aiModViolated) return;
+  if (db.featureFlags?.aiAutoMod !== false) {
+    const aiModViolated = await handleAiModeration(message, db, saveDb, logToChannel, ID);
+    if (aiModViolated) return;
+  }
 
   // 2. AI Ticket FAQ Responder
-  await handleAiTicketSupport(message, db, saveDb);
+  if (db.featureFlags?.aiSupport !== false) {
+    await handleAiTicketSupport(message, db, saveDb);
+  }
 
   // ── Feedback channel: Enforce image attachments only ─────────────────────
   if (message.channel.id === ID.FEEDBACK) {
@@ -709,14 +713,15 @@ client.on('messageCreate', async message => {
   }
 
   // ── Auto-Moderation (Enterprise Security Module) ────────────────────────
-  if (db.protectmeActive && !staffCheck(message.member)) {
+  if (db.featureFlags?.securitySystem !== false && db.protectmeActive && !staffCheck(message.member)) {
     const { violated } = await handleMessageSecurity(message, db, saveDb, logToChannel, ID);
     if (violated) return;
 
     // ── Semantic anti-spam (embedding similarity vs. known scam patterns) ──
     // Only runs when protectmeActive; skipped for staff. Best-effort — never blocks.
-    try {
-      const dbService = runtimeInstance?.getService('DatabaseManager');
+    if (db.featureFlags?.semanticSpam !== false) {
+      try {
+        const dbService = runtimeInstance?.getService('DatabaseManager');
       if (dbService && typeof dbService.listSpamSignatures === 'function') {
         const verdict = await semanticSpam.checkMessage(message, {
           dbService, staffCheck, logger: runtimeInstance.logger
@@ -746,8 +751,7 @@ client.on('messageCreate', async message => {
       runtimeInstance?.logger?.warn(`Semantic spam check failed: ${err.message}`);
     }
   }
-
-
+}
 
   // ── [13] XP System ────────────────────────────────────────────────────────
   const userId = message.author.id;
