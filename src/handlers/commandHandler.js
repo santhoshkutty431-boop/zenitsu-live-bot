@@ -1028,8 +1028,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           .setTimestamp();
 
         const actionRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId(`ai_channel_message_${interaction.user.id}`).setLabel('🤖 Message AI').setStyle(ButtonStyle.Primary)
+          new ButtonBuilder().setCustomId(`ai_channel_reset_${interaction.user.id}`).setLabel('💬 Reset Memory').setStyle(ButtonStyle.Danger)
         );
 
         const components = [actionRow];
