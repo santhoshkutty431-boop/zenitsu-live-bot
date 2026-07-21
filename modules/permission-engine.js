@@ -220,7 +220,7 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
 
   // Whitelisted User Check
   if (isWhitelistedUser) {
-    if (!requiredCap || userCaps.includes(requiredCap) || (cmd === 'dev-ai' && ['AI_EXECUTE', 'DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'].some(c => userCaps.includes(c)))) {
+    if (!requiredCap || userCaps.includes(requiredCap)) {
       return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
     }
   }
@@ -249,8 +249,8 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
     // Whitelisted Role checks
     if (requiredTier === 'ADMIN') {
       if (hasAdminRole || isDiscordAdmin) {
-        if (!requiredCap || memberRoleCaps.includes(requiredCap) || (cmd === 'dev-ai' && ['AI_EXECUTE', 'DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'].some(c => memberRoleCaps.includes(c)))) return { allowed: true, tier: 'WHITELISTED_ROLE' };
-        if (isWhitelistedUser && (userCaps.includes(requiredCap) || (cmd === 'dev-ai' && ['AI_EXECUTE', 'DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'].some(c => userCaps.includes(c))))) {
+        if (!requiredCap || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (isWhitelistedUser && (userCaps.includes(requiredCap) || !requiredCap)) {
           return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
         }
         return { allowed: false, requiredTier, reason: 'MISSING_CAPABILITY', capability: requiredCap };
@@ -292,17 +292,14 @@ function hasCapability(member, userId, db, capability) {
 
   if (guildWhitelist.users?.[userId]) {
     const caps = guildWhitelist.users[userId];
-    if (caps.includes('AI_EXECUTE') || caps.includes(capability)) return true;
-  }
-  if (db.roleWhitelist && db.roleWhitelist.includes(userId)) {
-    return true;
+    if (caps.includes(capability)) return true;
   }
 
   if (member && member.roles) {
     db.roleCapabilities = db.roleCapabilities || {};
     for (const [roleId] of member.roles.cache) {
       const caps = db.roleCapabilities[roleId] || [];
-      if (caps.includes('AI_EXECUTE') || caps.includes(capability)) return true;
+      if (caps.includes(capability)) return true;
     }
   }
 
