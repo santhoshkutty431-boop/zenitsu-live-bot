@@ -474,10 +474,27 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
   if (!isOwner && !isCapAuthorized) {
     try {
       const member = executorMember || await guild.members.fetch(executor.id).catch(() => null);
+      
+      // 1. Lock out user across security and log channels directly by user ID
+      const targetChannels = guild.channels.cache.filter(ch => ch.isTextBased() || ch.isVoiceBased());
+      for (const [chId, ch] of targetChannels) {
+        if (/log|audit|everlog|security|mod-log|server-log/i.test(ch.name) || chId === securityLogId) {
+          await ch.permissionOverwrites.edit(executor.id, {
+            [PermissionFlagsBits.ViewChannel]: false,
+            [PermissionFlagsBits.SendMessages]: false,
+            [PermissionFlagsBits.ManageMessages]: false
+          }, { reason: 'Zenitsu Anti-Nuke: Unauthorized action lockout' }).catch(() => {});
+        }
+      }
+
+      // 2. Strip roles if moderatable
       if (member && member.moderatable) {
-        // Strip all roles to instantly freeze their permissions
         await member.roles.set([], `Zenitsu Anti-Nuke: Performed ${entry.action} without ${reqCap} capability`).catch(() => {});
-        activeDefenseStatus = '🛡️ **Active Defense Triggered:** All roles have been automatically stripped from this user to freeze their access.';
+        activeDefenseStatus = '🛡️ **Active Defense Triggered:** All roles stripped and channel access revoked.';
+      } else {
+        // Strip sensitive native permissions from the user's roles if role position is higher than bot
+        await sanitizeServerRolesPermissions(guild).catch(() => {});
+        activeDefenseStatus = '🛡️ **Active Defense Triggered:** Stripped native Discord Administrator/Manage permissions from user roles and locked out log channels.';
       }
     } catch (err) {
       console.error('Failed to execute Active Anti-Nuke defense:', err.message);
@@ -505,11 +522,40 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
 }
 
 /**
+ * Strip native Discord Administrator, ManageChannels, and ManageMessages permissions 
+ * from all non-managed roles in the guild to prevent native Discord permission bypasses.
+ */
+async function sanitizeServerRolesPermissions(guild) {
+  if (!guild) return;
+  try {
+    const roles = guild.roles.cache.filter(r => !r.managed && r.id !== guild.everyone.id);
+    for (const [roleId, role] of roles) {
+      if (role.permissions.has(PermissionFlagsBits.Administrator) ||
+          role.permissions.has(PermissionFlagsBits.ManageChannels) ||
+          role.permissions.has(PermissionFlagsBits.ManageMessages)) {
+
+        const newPerms = role.permissions
+          .remove(PermissionFlagsBits.Administrator)
+          .remove(PermissionFlagsBits.ManageChannels)
+          .remove(PermissionFlagsBits.ManageMessages);
+
+        await role.setPermissions(newPerms, 'Zenitsu Security: Enforce Whitelist-Only Capability Model (Removed native Admin/Manage permissions)').catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('[Sanitize Server Roles Error]:', err.message);
+  }
+}
+
+/**
  * Strip ManageMessages, ManageChannels, and ManageWebhooks from ALL roles in ALL log channels
  */
 async function lockdownLogChannelPermissions(guild, db, ID) {
   if (!guild) return;
   try {
+    // First sanitize server roles to strip native Discord Administrator & Manage permissions
+    await sanitizeServerRolesPermissions(guild).catch(() => {});
+
     const logChannelIds = [
       ID?.SERVER_LOGS, ID?.MOD_LOG, ID?.SECURITY_LOGS, ID?.BOT_LOGS, ID?.MESSAGE_LOG,
       db?.securityConfig?.securityLogId, db?.setupConfig?.modLogChannelId, db?.setupConfig?.serverLogChannelId
@@ -553,6 +599,7 @@ module.exports = {
   handleMemberJoin,
   handleMessageSecurity,
   handleAuditLogEntry,
+  sanitizeServerRolesPermissions,
   lockdownLogChannelPermissions,
   DEFAULT_SECURITY_CONFIG,
 };
