@@ -365,7 +365,6 @@ async function executeAction(guild, action, ctx) {
 
   return resultMsg;
 }
-}
 
 function planIsDestructive(plan) {
   return plan.actions.some(a => TOOLS[a.tool]?.destructive);
