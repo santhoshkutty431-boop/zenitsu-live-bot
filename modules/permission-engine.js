@@ -246,8 +246,6 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
     const hasAdminRole = roleWhitelist.admin && roleWhitelist.admin.some(roleId => member.roles.cache.has(roleId));
     const hasStaffRole = roleWhitelist.staff && roleWhitelist.staff.some(roleId => member.roles.cache.has(roleId));
     const hasMemberRole = roleWhitelist.member && roleWhitelist.member.some(roleId => member.roles.cache.has(roleId));
-
-    const isDiscordAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
     // Collect capabilities from all roles of the member
     const memberRoleCaps = [];
     member.roles.cache.forEach(role => {
