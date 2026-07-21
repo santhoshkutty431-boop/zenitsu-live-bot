@@ -3148,10 +3148,10 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
   }));
 
   const embed = new EmbedBuilder()
-    .setTitle('⚙️ Edit Whitelisted User Capabilities')
+    .setTitle('⚙️ Edit Whitelisted User (13 System Capabilities Available)')
     .setDescription(
       `**User**: <@${targetUserId}> (\`${targetUserId}\`)\n\n` +
-      `Use the dropdown menu below to select/deselect capabilities for this user. Press back to return.`
+      `Use the dropdown menu below to select/deselect from **13 system capabilities** for this user. (Scroll inside dropdown menu to view all). Press back to return.`
     )
     .setColor(0xEDC231)
     .setTimestamp();
@@ -3280,11 +3280,11 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
   ];
 
   const embed = new EmbedBuilder()
-    .setTitle('⚙️ Edit Whitelisted Role')
+    .setTitle('⚙️ Edit Whitelisted Role (13 System Capabilities Available)')
     .setDescription(
       `**Role**: <@&${roleId}> (\`${roleId}\`)\n` +
       `**Assigned Tier**: \`${currentTier.toUpperCase()}\`\n\n` +
-      `Modify the tier and custom capabilities below.`
+      `Modify the tier and custom capabilities below. Use the dropdown to select/deselect from **13 system capabilities** (scroll inside the dropdown menu to see all).`
     )
     .setColor(0xEDC231)
     .setTimestamp();
