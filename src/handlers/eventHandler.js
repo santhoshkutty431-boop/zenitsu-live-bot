@@ -333,17 +333,15 @@ client.on('messageDelete', async msg => {
       const isAuthorizedToManageLogs = executor && (executor.id === msg.guild.ownerId || hasCapability(executorMember, executor.id, db, 'LOG_MANAGE'));
 
       if (!isAuthorizedToManageLogs) {
-        // 1. Re-post deleted message to preserve log trail integrity
-        const restoreEmbed = new EmbedBuilder()
-          .setTitle('🛡️ RESTORED LOG MESSAGE (Anti-Log Tampering)')
-          .setDescription(`**Channel:** ${msg.channel}\n**Original Author:** ${msg.author ? `<@${msg.author.id}>` : 'Unknown'}\n**Attempted Deletion By:** ${executor ? `<@${executor.id}> (\`${executor.tag}\`)` : 'Unknown User'}\n\n**Restored Content:**\n${msg.content || '*[Embed or Media content]*'}`)
-          .setColor(0xFF0000)
-          .setFooter({ text: 'Log Protection System | LOG_MANAGE Capability Required' })
-          .setTimestamp();
+        // Permission system is the primary prevention — this is a fallback for edge cases
+        // (e.g. bot was briefly offline when a role gained permissions)
 
-        await msg.channel.send({ embeds: [restoreEmbed] }).catch(() => {});
+        // 1. Re-run permission lockdown immediately to prevent future deletions
+        const { sanitizeServerRolesPermissions, lockdownLogChannelPermissions } = require('../../modules/security');
+        await sanitizeServerRolesPermissions(msg.guild).catch(() => {});
+        await lockdownLogChannelPermissions(msg.guild, db, ID).catch(() => {});
 
-        // 2. DM the offender a warning popup — no role strip, no lockout
+        // 2. DM the offender: ⛔ You Cannot Do This
         if (executor && !executor.bot && executor.id !== msg.guild.ownerId) {
           try {
             const offenderUser = await client.users.fetch(executor.id).catch(() => null);
@@ -352,27 +350,27 @@ client.on('messageDelete', async msg => {
                 .setTitle('⛔ You Cannot Do This')
                 .setDescription(
                   `**You attempted to delete a message in a protected log channel.**\n\n` +
-                  `🔒 Log channels are read-only. Only users with the **LOG_MANAGE** capability granted by the server owner can manage log messages.\n\n` +
+                  `🔒 Log channels are **read-only**. You do not have permission to delete messages here.\n\n` +
                   `**Server:** ${msg.guild.name}\n` +
                   `**Channel:** #${msg.channel.name}\n\n` +
-                  `⚠️ This action has been logged and reported to the moderation team.`
+                  `⚠️ This action has been logged and your channel permissions have been re-locked.`
                 )
                 .setColor(0xFF4500)
                 .setFooter({ text: 'Zenitsu Security System' })
                 .setTimestamp();
               await offenderUser.send({ embeds: [warnEmbed] }).catch(() => {});
             }
-          } catch { /* user has DMs closed — skip silently */ }
+          } catch { /* DMs closed — skip */ }
 
-          // 3. Post mod-log alert
+          // 3. Alert in mod-log
           const alertEmbed = new EmbedBuilder()
-            .setTitle('🚨 Log Channel Tampering Attempt Blocked')
+            .setTitle('🚨 Log Channel Tampering Attempt Detected')
             .setDescription(
               `**Offender:** <@${executor.id}> (\`${executor.tag}\`)\n` +
               `**Targeted Log Channel:** ${msg.channel}\n\n` +
-              `**Actions Executed:**\n` +
-              `• 🔄 **Restored deleted message** to preserve log trail.\n` +
-              `• 📨 **Sent warning DM** to offender: "You cannot do this."`
+              `**Actions Taken:**\n` +
+              `• 🔒 **Re-locked permissions** on all log channels.\n` +
+              `• 📨 **Sent warning DM:** "⛔ You cannot do this."`
             )
             .setColor(0xFF0000)
             .setTimestamp();
@@ -718,6 +716,12 @@ client.on('roleUpdate', async (oldRole, newRole) => {
             await logToReports(newRole.guild, alertEmbed);
             await logToChannel(newRole.guild, ID.MOD_LOG, alertEmbed);
           }
+
+          // Always re-run sanitize + log lockdown after ANY role permission change
+          // This ensures Administrator/ManageMessages can never stick on any role
+          const { sanitizeServerRolesPermissions, lockdownLogChannelPermissions } = require('../../modules/security');
+          await sanitizeServerRolesPermissions(newRole.guild).catch(() => {});
+          await lockdownLogChannelPermissions(newRole.guild, db, ID).catch(() => {});
         }
       }
     }
