@@ -473,31 +473,26 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
 
   if (!isOwner && !isCapAuthorized) {
     try {
-      const member = executorMember || await guild.members.fetch(executor.id).catch(() => null);
-      
-      // 1. Lock out user across security and log channels directly by user ID
-      const targetChannels = guild.channels.cache.filter(ch => ch.isTextBased() || ch.isVoiceBased());
-      for (const [chId, ch] of targetChannels) {
-        if (/log|audit|everlog|security|mod-log|server-log/i.test(ch.name) || chId === securityLogId) {
-          await ch.permissionOverwrites.edit(executor.id, {
-            [PermissionFlagsBits.ViewChannel]: false,
-            [PermissionFlagsBits.SendMessages]: false,
-            [PermissionFlagsBits.ManageMessages]: false
-          }, { reason: 'Zenitsu Anti-Nuke: Unauthorized action lockout' }).catch(() => {});
-        }
+      // Send a DM warning to the offender — "You cannot do this"
+      const offenderUser = await guild.client.users.fetch(executor.id).catch(() => null);
+      if (offenderUser) {
+        const warnEmbed = new EmbedBuilder()
+          .setTitle('⛔ You Cannot Do This')
+          .setDescription(
+            `**You performed an action in \`${guild.name}\` that requires a capability you do not have.**\n\n` +
+            `🔒 This server uses a whitelist-based capability system. Only users explicitly granted the **\`${reqCap || 'required'}\`** capability by the server owner can perform this action.\n\n` +
+            `**Action Attempted:** \`${entry.action}\`\n` +
+            `**Server:** ${guild.name}\n\n` +
+            `⚠️ This action has been logged and reported to the moderation team.`
+          )
+          .setColor(0xFF4500)
+          .setFooter({ text: 'Zenitsu Security System' })
+          .setTimestamp();
+        await offenderUser.send({ embeds: [warnEmbed] }).catch(() => {});
       }
-
-      // 2. Strip roles if moderatable
-      if (member && member.moderatable) {
-        await member.roles.set([], `Zenitsu Anti-Nuke: Performed ${entry.action} without ${reqCap} capability`).catch(() => {});
-        activeDefenseStatus = '🛡️ **Active Defense Triggered:** All roles stripped and channel access revoked.';
-      } else {
-        // Strip sensitive native permissions from the user's roles if role position is higher than bot
-        await sanitizeServerRolesPermissions(guild).catch(() => {});
-        activeDefenseStatus = '🛡️ **Active Defense Triggered:** Stripped native Discord Administrator/Manage permissions from user roles and locked out log channels.';
-      }
+      activeDefenseStatus = '📨 **Warning DM Sent:** User notified with "⛔ You cannot do this."';
     } catch (err) {
-      console.error('Failed to execute Active Anti-Nuke defense:', err.message);
+      console.error('Failed to send anti-nuke warning DM:', err.message);
     }
   }
 

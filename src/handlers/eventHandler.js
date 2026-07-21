@@ -338,34 +338,41 @@ client.on('messageDelete', async msg => {
           .setTitle('🛡️ RESTORED LOG MESSAGE (Anti-Log Tampering)')
           .setDescription(`**Channel:** ${msg.channel}\n**Original Author:** ${msg.author ? `<@${msg.author.id}>` : 'Unknown'}\n**Attempted Deletion By:** ${executor ? `<@${executor.id}> (\`${executor.tag}\`)` : 'Unknown User'}\n\n**Restored Content:**\n${msg.content || '*[Embed or Media content]*'}`)
           .setColor(0xFF0000)
-          .setFooter({ text: 'Log Protection System | Granted LOG_MANAGE Capability Required' })
+          .setFooter({ text: 'Log Protection System | LOG_MANAGE Capability Required' })
           .setTimestamp();
 
         await msg.channel.send({ embeds: [restoreEmbed] }).catch(() => {});
 
-        // 2. Active Defense: Instantly revoke channel access & lock out unauthorized users attempting log tampering
+        // 2. DM the offender a warning popup — no role strip, no lockout
         if (executor && !executor.bot && executor.id !== msg.guild.ownerId) {
-          // Instantly block the offender from viewing or managing the log channel
-          await msg.channel.permissionOverwrites.edit(executor.id, {
-            ViewChannel: false,
-            SendMessages: false,
-            ManageMessages: false
-          }, { reason: 'Zenitsu Active Defense: Unauthorized log tampering without LOG_MANAGE capability' }).catch(() => {});
+          try {
+            const offenderUser = await client.users.fetch(executor.id).catch(() => null);
+            if (offenderUser) {
+              const warnEmbed = new EmbedBuilder()
+                .setTitle('⛔ You Cannot Do This')
+                .setDescription(
+                  `**You attempted to delete a message in a protected log channel.**\n\n` +
+                  `🔒 Log channels are read-only. Only users with the **LOG_MANAGE** capability granted by the server owner can manage log messages.\n\n` +
+                  `**Server:** ${msg.guild.name}\n` +
+                  `**Channel:** #${msg.channel.name}\n\n` +
+                  `⚠️ This action has been logged and reported to the moderation team.`
+                )
+                .setColor(0xFF4500)
+                .setFooter({ text: 'Zenitsu Security System' })
+                .setTimestamp();
+              await offenderUser.send({ embeds: [warnEmbed] }).catch(() => {});
+            }
+          } catch { /* user has DMs closed — skip silently */ }
 
-          if (executorMember && executorMember.moderatable) {
-            await executorMember.timeout(3600000, 'Zenitsu Security: Log tampering attempt without LOG_MANAGE capability').catch(() => {});
-            await executorMember.roles.set([], 'Zenitsu Security: Attempted unauthorized message deletion in log channel without LOG_MANAGE capability').catch(() => {});
-          }
-
+          // 3. Post mod-log alert
           const alertEmbed = new EmbedBuilder()
-            .setTitle('🚨 Active Defense: Log Channel Tampering Blocked')
+            .setTitle('🚨 Log Channel Tampering Attempt Blocked')
             .setDescription(
               `**Offender:** <@${executor.id}> (\`${executor.tag}\`)\n` +
               `**Targeted Log Channel:** ${msg.channel}\n\n` +
               `**Actions Executed:**\n` +
               `• 🔄 **Restored deleted message** to preserve log trail.\n` +
-              `• 🔒 **Revoked Log Channel Access**: User ID locked out (\`ViewChannel: FALSE\`, \`ManageMessages: FALSE\`).\n` +
-              `• ${executorMember?.moderatable ? '⚡ **Timed out for 1 hour & stripped all roles**.' : '⚠️ **Channel access revoked** (Role higher than bot hierarchy).'}`
+              `• 📨 **Sent warning DM** to offender: "You cannot do this."`
             )
             .setColor(0xFF0000)
             .setTimestamp();
