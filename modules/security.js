@@ -528,7 +528,8 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
 async function sanitizeServerRolesPermissions(guild) {
   if (!guild) return;
   try {
-    const roles = guild.roles.cache.filter(r => !r.managed && r.id !== guild.everyone.id);
+    const everyoneId = guild.roles.everyone?.id;
+    const roles = guild.roles.cache.filter(r => !r.managed && r.id !== everyoneId);
     for (const [roleId, role] of roles) {
       if (role.permissions.has(PermissionFlagsBits.Administrator) ||
           role.permissions.has(PermissionFlagsBits.ManageChannels) ||
