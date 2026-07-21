@@ -29,6 +29,7 @@ const CAPABILITY_LABELS = {
   'EDIT_CATEGORY':      '📁 Edit Categories & Channels',
   'DELETE_CHANNEL':     '🗑️ Delete Channels',
   'DELETE_CATEGORY':    '🗑️ Delete Categories',
+  'LOG_MANAGE':         '📜 Log Channel Management & Deletion',
   'AI_EXECUTE':         '🧠 DEV-AI — Do Anything via Prompt',
   'AI_ACTIONS':         '⚡ AI-ACTIONS — AI Moderation/Tool Execution',
   'AI_AUTOMATION':      '⚙️ AI-AUTOMATION — AI Server Automation'
@@ -54,7 +55,8 @@ const CAPABILITY_DESCRIPTIONS = {
   'SERVER_CONFIG': '⚙️ **Server Setup & Configuration** (Allows `/setup-server`, `/setup-music`)',
   'EDIT_CATEGORY': '📁 **Edit Categories & Channels** (Allows creating, configuring, and renaming categories & channels)',
   'DELETE_CHANNEL': '🗑️ **Delete Channels** (Allows deleting text & voice channels)',
-  'DELETE_CATEGORY': '🗑️ **Delete Categories** (Allows deleting category folders & child channels)'
+  'DELETE_CATEGORY': '🗑️ **Delete Categories** (Allows deleting category folders & child channels)',
+  'LOG_MANAGE': '📜 **Log Channel Management & Deletion** (Allows purging or deleting messages in server log channels)'
 };
 
 
@@ -673,8 +675,9 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     else if (cmd === 'purge') {
       const logChannelIds = [ID.SERVER_LOGS, ID.MOD_LOG, ID.SECURITY_LOGS, ID.BOT_LOGS, ID.MESSAGE_LOG, db.securityConfig?.securityLogId].filter(Boolean);
       const isLogChannel = logChannelIds.includes(interaction.channel.id) || /log|audit|everlog|security|mod-log|server-log/i.test(interaction.channel.name);
-      if (isLogChannel && interaction.user.id !== interaction.guild.ownerId) {
-        return interaction.reply({ content: '🔒 **Access Denied**: Log channel messages cannot be purged or deleted by anyone except the **Server Creator** (Server Owner).', ephemeral: true });
+      const isAuthorizedToManageLogs = interaction.user.id === interaction.guild.ownerId || hasCapability(interaction.member, interaction.user.id, db, 'LOG_MANAGE');
+      if (isLogChannel && !isAuthorizedToManageLogs) {
+        return interaction.reply({ content: '🔒 **Access Denied**: Log channel messages cannot be purged or deleted unless granted the `LOG_MANAGE` capability by the **Server Creator**.', ephemeral: true });
       }
 
       const amount = interaction.options.getInteger('amount') || 50;
@@ -692,8 +695,9 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
       const logChannelIds = [ID.SERVER_LOGS, ID.MOD_LOG, ID.SECURITY_LOGS, ID.BOT_LOGS, ID.MESSAGE_LOG, db.securityConfig?.securityLogId].filter(Boolean);
       const isLogChannel = logChannelIds.includes(targetChannel.id) || /log|audit|everlog|security|mod-log|server-log/i.test(targetChannel.name);
-      if (isLogChannel && interaction.user.id !== interaction.guild.ownerId) {
-        return interaction.reply({ content: '🔒 **Access Denied**: Log channels cannot be cleared or recreated by anyone except the **Server Creator** (Server Owner).', ephemeral: true });
+      const isAuthorizedToManageLogs = interaction.user.id === interaction.guild.ownerId || hasCapability(interaction.member, interaction.user.id, db, 'LOG_MANAGE');
+      if (isLogChannel && !isAuthorizedToManageLogs) {
+        return interaction.reply({ content: '🔒 **Access Denied**: Log channels cannot be cleared or recreated unless granted the `LOG_MANAGE` capability by the **Server Creator**.', ephemeral: true });
       }
       await interaction.deferReply({ ephemeral: true });
       try {
@@ -3272,6 +3276,7 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     { label: '📁 Edit Categories & Channels', value: 'EDIT_CATEGORY', description: 'Create & rename channels/categories via DEV-AI' },
     { label: '🗑️ Delete Channels', value: 'DELETE_CHANNEL', description: 'Delete text/voice channels via DEV-AI' },
     { label: '🗑️ Delete Categories', value: 'DELETE_CATEGORY', description: 'Delete category folders via DEV-AI' },
+    { label: '📜 Log Channel Management & Deletion', value: 'LOG_MANAGE', description: 'Purge/delete messages in server log channels' },
     { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE', description: 'Full AI natural-language automation (/dev-ai)' },
     { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS', description: 'AI moderation tools & direct AI actions' },
     { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION', description: 'AI background automations' }
@@ -3291,11 +3296,11 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
   ];
 
   const embed = new EmbedBuilder()
-    .setTitle('⚙️ Edit Whitelisted Role (13 System Capabilities Available)')
+    .setTitle('⚙️ Edit Whitelisted Role (14 System Capabilities Available)')
     .setDescription(
       `**Role**: <@&${roleId}> (\`${roleId}\`)\n` +
       `**Assigned Tier**: \`${currentTier.toUpperCase()}\`\n\n` +
-      `Modify the tier and custom capabilities below. Use the dropdown to select/deselect from **13 system capabilities** (scroll inside the dropdown menu to see all).`
+      `Modify the tier and custom capabilities below. Use the dropdown to select/deselect from **14 system capabilities** (scroll inside the dropdown menu to see all).`
     )
     .setColor(0xEDC231)
     .setTimestamp();
