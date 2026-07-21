@@ -1,6 +1,29 @@
 const { PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { hasCapability } = require('./permission-engine');
 
 const PENDING_AUTOMATIONS = new Map();
+
+const ACTION_CAPABILITY_MAP = {
+  'create_channel': 'EDIT_CATEGORY',
+  'delete_channel': 'DELETE_CHANNEL',
+  'rename_channel': 'EDIT_CATEGORY',
+  'set_topic': 'EDIT_CATEGORY',
+  'delete_category': 'DELETE_CATEGORY',
+  'create_category': 'EDIT_CATEGORY',
+  'edit_category': 'EDIT_CATEGORY',
+  'create_role': 'ROLE_ASSIGN',
+  'delete_role': 'ROLE_ASSIGN',
+  'mute': 'MODERATION_EXECUTE',
+  'unmute': 'MODERATION_EXECUTE',
+  'kick': 'MODERATION_EXECUTE',
+  'ban': 'MODERATION_EXECUTE',
+  'unban': 'MODERATION_EXECUTE',
+  'purge': 'MODERATION_EXECUTE',
+  'lock': 'MODERATION_EXECUTE',
+  'unlock': 'MODERATION_EXECUTE',
+  'slowmode': 'MODERATION_EXECUTE',
+  'warn': 'MODERATION_EXECUTE'
+};
 
 async function executeAiAction(interaction, responseText, runtime, db, saveDb, ID, logToChannel, isDeveloper, isOwner, staffCheck) {
   // Check for immediate moderation actions first
@@ -20,19 +43,13 @@ async function executeAiAction(interaction, responseText, runtime, db, saveDb, I
 
     console.log('[AI ACTION] Parsed action:', action);
 
-    // Authorization check (ONLY Owner, Developer, or Whitelisted users with AI_ACTIONS capability can trigger actions via AI)
-    const guildId = interaction.guildId;
-    const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
-    const isWhitelistedUserWithAiActions = 
-      (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_ACTIONS')) ||
-      (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
-
-    const isAuthorized = isOwner(interaction.user.id) || 
-                         isDeveloper(interaction.user.id) || 
-                         isWhitelistedUserWithAiActions;
-
-    if (!isAuthorized) {
-      return { cleanText: cleanText + '\n⚠️ *Action blocked: Only the Owner, Developer, or Whitelisted users with the AI_ACTIONS capability are authorized to perform actions via AI.*' };
+    // Capability check per action type
+    const reqCap = ACTION_CAPABILITY_MAP[action.type];
+    if (reqCap) {
+      const member = interaction.member || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+      if (!hasCapability(member, interaction.user.id, db, reqCap)) {
+        return { cleanText: cleanText + `\n⚠️ *Action blocked: You lack the required whitelist capability "${reqCap}" to perform "${action.type}".*` };
+      }
     }
 
     try {
@@ -304,18 +321,12 @@ async function handleAiConfirmClick(interaction, actionId, runtime, db, saveDb, 
   }
 
   // Double check authorization on button click
-  const guildId = interaction.guildId;
-  const guildWhitelist = db.guildWhitelists && db.guildWhitelists[guildId] ? db.guildWhitelists[guildId] : null;
-  const isWhitelistedUserWithAiAutomation = 
-    (guildWhitelist && guildWhitelist.users && guildWhitelist.users[interaction.user.id] && guildWhitelist.users[interaction.user.id].includes('AI_AUTOMATION')) ||
-    (db.roleWhitelist && db.roleWhitelist.includes(interaction.user.id));
-
-  // Only Owner and Developer can execute create_guild or setup_server_template actions
-  const isSpecialAction = action.type === 'create_guild' || action.type === 'setup_server_template';
-  const isAuthorized = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || (!isSpecialAction && isWhitelistedUserWithAiAutomation);
-
-  if (!isAuthorized) {
-    return interaction.reply({ content: '❌ You are not authorized to approve this automation.', ephemeral: true });
+  const reqCap = ACTION_CAPABILITY_MAP[pending.action?.type];
+  if (reqCap) {
+    const member = interaction.member || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+    if (!hasCapability(member, interaction.user.id, db, reqCap)) {
+      return interaction.reply({ content: `❌ You lack the required whitelist capability "${reqCap}" to execute "${pending.action?.type}".`, ephemeral: true });
+    }
   }
 
   await interaction.deferUpdate();
