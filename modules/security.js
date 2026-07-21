@@ -504,10 +504,55 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
   await logToChannel(guild, securityLogId, embed);
 }
 
+/**
+ * Strip ManageMessages, ManageChannels, and ManageWebhooks from ALL roles in ALL log channels
+ */
+async function lockdownLogChannelPermissions(guild, db, ID) {
+  if (!guild) return;
+  try {
+    const logChannelIds = [
+      ID?.SERVER_LOGS, ID?.MOD_LOG, ID?.SECURITY_LOGS, ID?.BOT_LOGS, ID?.MESSAGE_LOG,
+      db?.securityConfig?.securityLogId, db?.setupConfig?.modLogChannelId, db?.setupConfig?.serverLogChannelId
+    ].filter(Boolean);
+
+    const logChannels = guild.channels.cache.filter(ch => 
+      logChannelIds.includes(ch.id) || /log|audit|everlog|security|mod-log|server-log/i.test(ch.name)
+    );
+
+    for (const [chId, channel] of logChannels) {
+      if (!channel.permissionOverwrites) continue;
+
+      // 1. Lock down @everyone role
+      const everyoneRole = guild.roles.everyone;
+      if (everyoneRole) {
+        await channel.permissionOverwrites.edit(everyoneRole.id, {
+          [PermissionFlagsBits.ManageMessages]: false,
+          [PermissionFlagsBits.ManageChannels]: false,
+          [PermissionFlagsBits.ManageWebhooks]: false,
+          [PermissionFlagsBits.SendMessages]: false
+        }, { reason: 'Zenitsu Security: Lock down log channel permissions' }).catch(() => {});
+      }
+
+      // 2. Lock down all staff and admin roles in the server
+      const roles = guild.roles.cache.filter(r => r.id !== everyoneRole?.id && !r.managed);
+      for (const [roleId, role] of roles) {
+        await channel.permissionOverwrites.edit(roleId, {
+          [PermissionFlagsBits.ManageMessages]: false,
+          [PermissionFlagsBits.ManageChannels]: false,
+          [PermissionFlagsBits.ManageWebhooks]: false
+        }, { reason: 'Zenitsu Security: Remove message deletion and edit permissions in log channel' }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('[Lockdown Log Permissions Error]:', err.message);
+  }
+}
+
 // ─── EXPORTS ─────────────────────────────────────────────────────────────────
 module.exports = {
   handleMemberJoin,
   handleMessageSecurity,
   handleAuditLogEntry,
+  lockdownLogChannelPermissions,
   DEFAULT_SECURITY_CONFIG,
 };

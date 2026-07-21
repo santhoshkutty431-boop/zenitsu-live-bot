@@ -721,7 +721,27 @@ client.on('roleUpdate', async (oldRole, newRole) => {
 
 // ─── LOGGER: CHANNEL UPDATES ────────────────────────────────────────────────
 client.on('channelUpdate', async (oldCh, newCh) => {
-  if (newCh.guild) await logChannelUpdate(oldCh, newCh, ID, db);
+  if (newCh.guild) {
+    await logChannelUpdate(oldCh, newCh, ID, db);
+
+    const isLogChannel = /log|audit|everlog|security|mod-log|server-log/i.test(newCh.name) ||
+      [ID.SERVER_LOGS, ID.MOD_LOG, ID.SECURITY_LOGS, ID.BOT_LOGS, ID.MESSAGE_LOG].includes(newCh.id);
+
+    if (isLogChannel) {
+      const { lockdownLogChannelPermissions } = require('../../modules/security');
+      await lockdownLogChannelPermissions(newCh.guild, db, ID).catch(() => {});
+    }
+  }
+});
+
+client.on('channelCreate', async (channel) => {
+  if (channel.guild) {
+    const isLogChannel = /log|audit|everlog|security|mod-log|server-log/i.test(channel.name);
+    if (isLogChannel) {
+      const { lockdownLogChannelPermissions } = require('../../modules/security');
+      await lockdownLogChannelPermissions(channel.guild, db, ID).catch(() => {});
+    }
+  }
 });
 
 // ─── ANTI-NUKE: AUDIT LOG MONITORING ────────────────────────────────────────

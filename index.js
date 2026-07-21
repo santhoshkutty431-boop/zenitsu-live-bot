@@ -424,6 +424,14 @@ runtime.bootstrap().then(() => {
       log.error('Failed to initialize active polls', { error: err.message });
     }
 
+    // Automatically enforce strict Log Channel permission lockdown for all guilds on startup
+    const { lockdownLogChannelPermissions } = require('./modules/security');
+    for (const [guildId, guild] of client.guilds.cache) {
+      lockdownLogChannelPermissions(guild, db, ID).catch(err => {
+        log.warn(`Log channel lockdown failed for guild ${guildId}:`, { error: err.message });
+      });
+    }
+
     // Set dynamic owner ID
     try {
       const app = await client.application.fetch();
