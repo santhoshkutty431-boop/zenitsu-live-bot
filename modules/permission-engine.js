@@ -284,23 +284,32 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
 
 function hasCapability(member, userId, db, capability) {
   if (isDeveloper(userId)) return true;
-  if (member && member.id === member.guild?.ownerId) return true;
 
   const guildId = member?.guild?.id;
   db.guildWhitelists = db.guildWhitelists || {};
   const guildWhitelist = (guildId && db.guildWhitelists[guildId]) || { users: {}, roles: {} };
 
+  // 1. Direct user capabilities (assigned via /whitelist)
   if (guildWhitelist.users?.[userId]) {
     const caps = guildWhitelist.users[userId];
     if (caps.includes(capability)) return true;
   }
 
+  // 2. Role capabilities (assigned via /whitelist-role)
   if (member && member.roles) {
     db.roleCapabilities = db.roleCapabilities || {};
     for (const [roleId] of member.roles.cache) {
       const caps = db.roleCapabilities[roleId] || [];
       if (caps.includes(capability)) return true;
     }
+  }
+
+  // 3. If whitelists are explicitly configured for this server, strict capability checks apply to everyone
+  const hasUserWhitelists = Object.keys(guildWhitelist.users || {}).length > 0;
+  const hasRoleWhitelists = Object.keys(db.roleCapabilities || {}).length > 0;
+  
+  if (!hasUserWhitelists && !hasRoleWhitelists && member && member.id === member.guild?.ownerId) {
+    return true;
   }
 
   return false;
