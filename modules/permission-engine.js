@@ -263,20 +263,18 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
     // Whitelisted Role checks
     if (requiredTier === 'ADMIN') {
       if (hasAdminRole || isDiscordAdmin) {
-        if (!requiredCap || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
-        if (isWhitelistedUser && (userCaps.includes(requiredCap) || !requiredCap)) {
-          return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
-        }
+        if (requiredCap && memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (isWhitelistedUser && userCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
+        if (!requiredCap && (memberRoleCaps.length > 0 || isDiscordAdmin)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
         return { allowed: false, requiredTier, reason: 'MISSING_CAPABILITY', capability: requiredCap };
       }
     }
 
     if (requiredTier === 'STAFF') {
       if (hasAdminRole || hasStaffRole || isDiscordAdmin) {
-        if (!requiredCap || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
-        if (isWhitelistedUser && (userCaps.includes(requiredCap) || !requiredCap)) {
-          return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
-        }
+        if (requiredCap && memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (isWhitelistedUser && userCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
+        if (!requiredCap && (memberRoleCaps.length > 0 || isDiscordAdmin)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
         return { allowed: false, requiredTier, reason: 'MISSING_CAPABILITY', capability: requiredCap };
       }
     }
