@@ -438,15 +438,20 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('lockdown')
-    .setDescription('Toggle emergency lockdown status (Bot Developer only)')
-    .addStringOption(o => o
-      .setName('action')
-      .setDescription('Lockdown state')
-      .setRequired(true)
-      .addChoices(
-        { name: '🛑 Enable Lockdown', value: 'on' },
-        { name: '🟢 Lift Lockdown', value: 'off' }
-      )),
+    .setDescription('🛡️ Emergency Anti-Nuke Panic Switch — Lock/Unlock entire server')
+    .addStringOption(option =>
+      option.setName('action')
+        .setDescription('Lockdown action to perform')
+        .setRequired(true)
+        .addChoices(
+          { name: '🔒 Enable Emergency Lockdown', value: 'enable' },
+          { name: '🔓 Disable Lockdown & Restore', value: 'disable' },
+          { name: 'ℹ️ Check Current Status',     value: 'status' }
+        ))
+    .addStringOption(option =>
+      option.setName('reason')
+        .setDescription('Reason for lockdown')
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('setup')
@@ -546,6 +551,44 @@ const commands = [
     .setName('bot-settings')
     .setDescription('Toggle bot features on/off (Owner only)'),
 
+  new SlashCommandBuilder()
+    .setName('announce')
+    .setDescription('📢 Send a premium animated announcement with Nitro-style emojis (free!)')
+    .addStringOption(o => o.setName('type')
+      .setDescription('Type of announcement — auto-fills emoji + color')
+      .setRequired(true)
+      .addChoices(
+        { name: '📢 General Announcement', value: 'general' },
+        { name: '📜 Rules Update',          value: 'rules'   },
+        { name: '⚠️  Warning / Alert',      value: 'warning' },
+        { name: '🎉 Event / Giveaway',       value: 'event'   },
+        { name: '🔔 New Update / Patch',     value: 'update'  },
+        { name: '🛡️  Server News',           value: 'news'    },
+        { name: '🔥 Hype / Special',         value: 'hype'    },
+        { name: '🔨 Ban / Moderation',       value: 'ban'     },
+      ))
+    .addStringOption(o => o.setName('title')
+      .setDescription('Title of the announcement')
+      .setRequired(true))
+    .addStringOption(o => o.setName('message')
+      .setDescription('Main announcement body text')
+      .setRequired(true))
+    .addChannelOption(o => o.setName('channel')
+      .setDescription('Channel to post announcement in (defaults to current)')
+      .setRequired(false))
+    .addStringOption(o => o.setName('mention')
+      .setDescription('Ping before announcement: @everyone, @here, or Role ID')
+      .setRequired(false))
+    .addStringOption(o => o.setName('image')
+      .setDescription('Optional banner image URL to attach')
+      .setRequired(false))
+    .addStringOption(o => o.setName('button_label')
+      .setDescription('Optional button label (e.g. Read More)')
+      .setRequired(false))
+    .addStringOption(o => o.setName('button_url')
+      .setDescription('Optional button URL (requires button_label)')
+      .setRequired(false)),
+
 ].map(command => command
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setContexts(InteractionContextType.Guild));
@@ -576,6 +619,7 @@ const PERMISSION_GATES = {
   'nick':             PermissionFlagsBits.ManageNicknames,
   'role':             PermissionFlagsBits.ManageRoles,
   'embed':            PermissionFlagsBits.ManageMessages,
+  'announce':         PermissionFlagsBits.ManageMessages,
   'ai-embed':         PermissionFlagsBits.ManageMessages,
   'say':              PermissionFlagsBits.ManageMessages,
   'ai-channel':       PermissionFlagsBits.ManageGuild,
@@ -617,21 +661,20 @@ const rest = new REST({ version: '10' }).setToken(config.token || 'placeholder_t
       return;
     }
 
-    // 1. GLOBAL deploy — makes commands available on EVERY server the bot is
-    //    in (required for multi-server). Propagation can take up to ~1 hour.
+    // 1. GLOBAL deploy — makes commands available on EVERY server the bot is in
     const globalData = await rest.put(
       Routes.applicationCommands(config.clientId),
       { body: commandsJson },
     );
-    console.log(`Successfully reloaded ${globalData.length} GLOBAL application (/) commands (all servers).`);
+    console.log(`Successfully reloaded ${globalData.length} GLOBAL application (/) commands.`);
 
-    // 2. GUILD deploy — instant update on the main server for fast iteration.
+    // 2. Clear old GUILD-specific commands if present (to avoid duplicate slash commands in UI)
     if (config.guildId) {
-      const data = await rest.put(
+      await rest.put(
         Routes.applicationGuildCommands(config.clientId, config.guildId),
-        { body: commandsJson },
+        { body: [] },
       );
-      console.log(`Also reloaded ${data.length} commands on main guild ${config.guildId} (instant).`);
+      console.log(`Cleared duplicate guild-specific commands on guild ${config.guildId} so commands only appear ONCE.`);
     }
   } catch (error) {
     console.error(error);

@@ -73,7 +73,7 @@ const COMMAND_REGISTRY = {
   // Owner bypasses; otherwise ONLY users the owner whitelisted with the
   // AI_EXECUTE capability. Discord admins without that capability are denied.
   'dev-ai': { tier: 'ADMIN', capability: 'AI_EXECUTE' },
-  'setup-server': { tier: 'ADMIN', capability: null }
+  'setup-server': { tier: 'ADMIN', capability: 'SERVER_CONFIG' }
 };
 
 function setDynamicOwnerId(id) {
@@ -220,7 +220,7 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
 
   // Whitelisted User Check
   if (isWhitelistedUser) {
-    if (!requiredCap || userCaps.includes(requiredCap)) {
+    if (!requiredCap || userCaps.includes(requiredCap) || (cmd === 'dev-ai' && ['AI_EXECUTE', 'DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'].some(c => userCaps.includes(c)))) {
       return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
     }
   }
@@ -249,8 +249,8 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
     // Whitelisted Role checks
     if (requiredTier === 'ADMIN') {
       if (hasAdminRole || isDiscordAdmin) {
-        if (!requiredCap || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
-        if (isWhitelistedUser && userCaps.includes(requiredCap)) {
+        if (!requiredCap || memberRoleCaps.includes(requiredCap) || (cmd === 'dev-ai' && ['AI_EXECUTE', 'DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'].some(c => memberRoleCaps.includes(c)))) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (isWhitelistedUser && (userCaps.includes(requiredCap) || (cmd === 'dev-ai' && ['AI_EXECUTE', 'DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'].some(c => userCaps.includes(c))))) {
           return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
         }
         return { allowed: false, requiredTier, reason: 'MISSING_CAPABILITY', capability: requiredCap };
@@ -259,8 +259,8 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
 
     if (requiredTier === 'STAFF') {
       if (hasAdminRole || hasStaffRole || isDiscordAdmin) {
-        if (!requiredCap || requiredCap === 'MODERATION_EXECUTE' || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
-        if (isWhitelistedUser && userCaps.includes(requiredCap)) {
+        if (!requiredCap || memberRoleCaps.includes(requiredCap)) return { allowed: true, tier: 'WHITELISTED_ROLE' };
+        if (isWhitelistedUser && (userCaps.includes(requiredCap) || !requiredCap)) {
           return { allowed: true, tier: 'WHITELISTED_USER', capabilities: userCaps };
         }
         return { allowed: false, requiredTier, reason: 'MISSING_CAPABILITY', capability: requiredCap };
@@ -282,11 +282,39 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
   return { allowed: false, requiredTier, reason: 'DENIED' };
 }
 
+function hasCapability(member, userId, db, capability) {
+  if (isDeveloper(userId)) return true;
+  if (member && member.id === member.guild?.ownerId) return true;
+
+  const guildId = member?.guild?.id;
+  db.guildWhitelists = db.guildWhitelists || {};
+  const guildWhitelist = (guildId && db.guildWhitelists[guildId]) || { users: {}, roles: {} };
+
+  if (guildWhitelist.users?.[userId]) {
+    const caps = guildWhitelist.users[userId];
+    if (caps.includes('AI_EXECUTE') || caps.includes(capability)) return true;
+  }
+  if (db.roleWhitelist && db.roleWhitelist.includes(userId)) {
+    return true;
+  }
+
+  if (member && member.roles) {
+    db.roleCapabilities = db.roleCapabilities || {};
+    for (const [roleId] of member.roles.cache) {
+      const caps = db.roleCapabilities[roleId] || [];
+      if (caps.includes('AI_EXECUTE') || caps.includes(capability)) return true;
+    }
+  }
+
+  return false;
+}
+
 module.exports = {
   COMMAND_REGISTRY,
   setDynamicOwnerId,
   isDeveloper,
   resolvePermission,
+  hasCapability,
   invalidatePermCache,
   generateAuditId,
   verifyPermissionSchema

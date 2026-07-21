@@ -31,16 +31,42 @@ const TOOLS = {
   set_permission:  { destructive: false, params: 'target, role, permissions, allow', desc: 'Grant/deny permissions for a role on a channel OR category. target = channel or category name. permissions = comma list of: view, send, attach, react, connect, speak, manage, mention. allow = true|false' },
   create_channel:  { destructive: false, params: 'name, type',              desc: 'Create a text or voice channel (type=text|voice)' },
   rename_channel:  { destructive: false, params: 'channel, name',            desc: 'Rename a channel' },
+  create_category: { destructive: false, params: 'name',                    desc: 'Create a new category folder' },
+  edit_category:   { destructive: false, params: 'category, name',          desc: 'Rename a category folder' },
   create_role:     { destructive: false, params: 'name, color',             desc: 'Create a role (color = hex like #FF0000 or name)' },
   assign_role:     { destructive: false, params: 'user, role',              desc: 'Give a role to a member' },
   remove_role:     { destructive: false, params: 'user, role',              desc: 'Remove a role from a member' },
   warn:            { destructive: false, params: 'user, reason',            desc: 'Warn a member (logs a case)' },
   // Destructive — require confirmation
   delete_channel:  { destructive: true,  params: 'channel',                  desc: 'Delete a channel permanently' },
+  delete_category: { destructive: true,  params: 'category',                 desc: 'Delete a category folder permanently' },
   purge:           { destructive: true,  params: 'channel, count',           desc: 'Bulk-delete recent messages (1-100)' },
   timeout:         { destructive: true,  params: 'user, minutes, reason',    desc: 'Timeout (mute) a member for N minutes' },
   kick:            { destructive: true,  params: 'user, reason',             desc: 'Kick a member' },
   ban:             { destructive: true,  params: 'user, reason',             desc: 'Ban a member' },
+};
+
+const TOOL_CAPABILITIES = {
+  delete_channel:  'DELETE_CHANNEL',
+  delete_category: 'DELETE_CATEGORY',
+  create_category: 'EDIT_CATEGORY',
+  edit_category:   'EDIT_CATEGORY',
+  create_channel:  'EDIT_CATEGORY',
+  rename_channel:  'EDIT_CATEGORY',
+  set_slowmode:    'EDIT_CATEGORY',
+  lock_channel:    'EDIT_CATEGORY',
+  unlock_channel:  'EDIT_CATEGORY',
+  restrict_channel:'EDIT_CATEGORY',
+  set_permission:  'EDIT_CATEGORY',
+  create_role:     'ROLE_ASSIGN',
+  assign_role:     'ROLE_ASSIGN',
+  remove_role:     'ROLE_ASSIGN',
+  warn:            'MODERATION_EXECUTE',
+  purge:           'MODERATION_EXECUTE',
+  timeout:         'MODERATION_EXECUTE',
+  kick:            'MODERATION_EXECUTE',
+  ban:             'MODERATION_EXECUTE',
+  post_message:    'EMBED_MANAGE',
 };
 
 function buildSystemPrompt() {
@@ -151,148 +177,194 @@ async function planActions(runtime, userId, prompt) {
 // ── EXECUTION ────────────────────────────────────────────────────────────────
 async function executeAction(guild, action, ctx) {
   const p = action.params || {};
-  switch (action.tool) {
-    case 'post_message': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch?.isTextBased?.()) throw new Error(`channel "${p.channel}" not found`);
-      await ch.send({ content: String(p.text || '').slice(0, 2000) });
-      return `Posted to #${ch.name}`;
+
+  // Capability enforcement
+  const { hasCapability } = require('./permission-engine');
+  const reqCap = TOOL_CAPABILITIES[action.tool];
+  if (reqCap && ctx?.actorId) {
+    const member = guild.members.cache.get(ctx.actorId) || await guild.members.fetch(ctx.actorId).catch(() => null);
+    if (!hasCapability(member, ctx.actorId, ctx.db, reqCap)) {
+      throw new Error(`Unauthorized: You lack the required whitelist capability "${reqCap}" for tool "${action.tool}"`);
     }
-    case 'set_slowmode': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch) throw new Error(`channel "${p.channel}" not found`);
-      const s = Math.max(0, Math.min(21600, parseInt(p.seconds, 10) || 0));
-      await ch.setRateLimitPerUser(s);
-      return `Slowmode on #${ch.name} → ${s}s`;
-    }
-    case 'lock_channel': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch) throw new Error(`channel "${p.channel}" not found`);
-      await ch.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
-      return `Locked #${ch.name}`;
-    }
-    case 'unlock_channel': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch) throw new Error(`channel "${p.channel}" not found`);
-      await ch.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
-      return `Unlocked #${ch.name}`;
-    }
-    case 'restrict_channel': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch) throw new Error(`channel "${p.channel}" not found`);
-      const mode = String(p.mode || 'normal').toLowerCase();
-      const map = {
-        media_only: { SendMessages: true,  AttachFiles: true,  EmbedLinks: false, AddReactions: true },
-        text_only:  { SendMessages: true,  AttachFiles: false, EmbedLinks: false },
-        read_only:  { SendMessages: false, AttachFiles: false, AddReactions: false },
-        normal:     { SendMessages: null,  AttachFiles: null,  EmbedLinks: null,  AddReactions: null },
-      };
-      await ch.permissionOverwrites.edit(guild.roles.everyone, map[mode] || map.normal);
-      return `#${ch.name} → ${mode}`;
-    }
-    case 'set_permission': {
-      const ch = await resolveChannel(guild, p.target);
-      if (!ch) throw new Error(`channel/category "${p.target}" not found`);
-      const role = await resolveRole(guild, p.role);
-      if (!role) throw new Error(`role "${p.role}" not found`);
-      // Map friendly permission words to Discord flags.
-      const FLAG = {
-        view: 'ViewChannel', see: 'ViewChannel', read: 'ViewChannel',
-        send: 'SendMessages', write: 'SendMessages', message: 'SendMessages', msg: 'SendMessages',
-        attach: 'AttachFiles', upload: 'AttachFiles', photo: 'AttachFiles', file: 'AttachFiles',
-        react: 'AddReactions', reaction: 'AddReactions',
-        connect: 'Connect', join: 'Connect',
-        speak: 'Speak', talk: 'Speak',
-        manage: 'ManageChannels',
-        mention: 'MentionEveryone',
-        embed: 'EmbedLinks', link: 'EmbedLinks',
-      };
-      const allow = !(String(p.allow).toLowerCase() === 'false' || p.allow === false);
-      const perms = String(p.permissions || 'view').split(/[,\s]+/).filter(Boolean);
-      const edit = {};
-      const applied = [];
-      for (const word of perms) {
-        const flag = FLAG[word.toLowerCase()];
-        if (flag) { edit[flag] = allow; applied.push(flag); }
-      }
-      if (!applied.length) throw new Error(`no recognizable permissions in "${p.permissions}"`);
-      await ch.permissionOverwrites.edit(role, edit);
-      const label = ch.type === ChannelType.GuildCategory ? `category "${ch.name}"` : `#${ch.name}`;
-      return `${allow ? 'Granted' : 'Denied'} ${applied.join(', ')} for @${role.name} on ${label}`;
-    }
-    case 'create_channel': {
-      const type = /voice/i.test(p.type) ? ChannelType.GuildVoice : ChannelType.GuildText;
-      const ch = await guild.channels.create({ name: String(p.name || 'new-channel').slice(0, 90), type });
-      return `Created ${type === ChannelType.GuildVoice ? '🔊' : '#'}${ch.name}`;
-    }
-    case 'rename_channel': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch) throw new Error(`channel "${p.channel}" not found`);
-      const old = ch.name;
-      await ch.setName(String(p.name || old).slice(0, 90));
-      return `Renamed #${old} → #${ch.name}`;
-    }
-    case 'create_role': {
-      const role = await guild.roles.create({ name: String(p.name || 'new-role').slice(0, 90), color: parseColor(p.color) });
-      return `Created role @${role.name}`;
-    }
-    case 'assign_role': {
-      const m = await resolveMember(guild, p.user); const r = await resolveRole(guild, p.role);
-      if (!m) throw new Error(`user "${p.user}" not found`); if (!r) throw new Error(`role "${p.role}" not found`);
-      await m.roles.add(r);
-      return `Gave @${r.name} to ${m.user.username}`;
-    }
-    case 'remove_role': {
-      const m = await resolveMember(guild, p.user); const r = await resolveRole(guild, p.role);
-      if (!m) throw new Error(`user "${p.user}" not found`); if (!r) throw new Error(`role "${p.role}" not found`);
-      await m.roles.remove(r);
-      return `Removed @${r.name} from ${m.user.username}`;
-    }
-    case 'warn': {
-      const m = await resolveMember(guild, p.user);
-      if (!m) throw new Error(`user "${p.user}" not found`);
-      const { createCase, CaseType } = require('./case-manager');
-      createCase(ctx.db, ctx.saveDb, { type: CaseType.WARN, guildId: guild.id, userId: m.id, userTag: m.user.tag, modId: ctx.actorId, modTag: ctx.actorTag, reason: p.reason || 'No reason' });
-      await m.send(`⚠️ You were warned in **${guild.name}**: ${p.reason || 'No reason'}`).catch(() => {});
-      return `Warned ${m.user.username}`;
-    }
-    case 'delete_channel': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch) throw new Error(`channel "${p.channel}" not found`);
-      const n = ch.name; await ch.delete('DEV-AI');
-      return `Deleted #${n}`;
-    }
-    case 'purge': {
-      const ch = await resolveChannel(guild, p.channel);
-      if (!ch?.isTextBased?.()) throw new Error(`channel "${p.channel}" not found`);
-      const n = Math.max(1, Math.min(100, parseInt(p.count, 10) || 50));
-      const del = await ch.bulkDelete(n, true);
-      return `Purged ${del.size} messages in #${ch.name}`;
-    }
-    case 'timeout': {
-      const m = await resolveMember(guild, p.user);
-      if (!m) throw new Error(`user "${p.user}" not found`);
-      const mins = Math.max(1, Math.min(40320, parseInt(p.minutes, 10) || 10));
-      await m.timeout(mins * 60000, p.reason || 'DEV-AI');
-      return `Timed out ${m.user.username} for ${mins}m`;
-    }
-    case 'kick': {
-      const m = await resolveMember(guild, p.user);
-      if (!m) throw new Error(`user "${p.user}" not found`);
-      if (!m.kickable) throw new Error(`cannot kick ${m.user.username} (role hierarchy)`);
-      const u = m.user.username; await m.kick(p.reason || 'DEV-AI');
-      return `Kicked ${u}`;
-    }
-    case 'ban': {
-      const m = await resolveMember(guild, p.user);
-      const target = m ? m.id : cleanId(p.user);
-      if (!target) throw new Error(`user "${p.user}" not found`);
-      await guild.members.ban(target, { reason: p.reason || 'DEV-AI' });
-      return `Banned ${m ? m.user.username : target}`;
-    }
-    default:
-      throw new Error(`unknown tool "${action.tool}"`);
   }
+
+  const resultMsg = await (async () => {
+    switch (action.tool) {
+      case 'post_message': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch?.isTextBased?.()) throw new Error(`channel "${p.channel}" not found`);
+        await ch.send({ content: String(p.text || '').slice(0, 2000) });
+        return `Posted to #${ch.name}`;
+      }
+      case 'set_slowmode': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch) throw new Error(`channel "${p.channel}" not found`);
+        const s = Math.max(0, Math.min(21600, parseInt(p.seconds, 10) || 0));
+        await ch.setRateLimitPerUser(s);
+        return `Slowmode on #${ch.name} → ${s}s`;
+      }
+      case 'lock_channel': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch) throw new Error(`channel "${p.channel}" not found`);
+        await ch.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
+        return `Locked #${ch.name}`;
+      }
+      case 'unlock_channel': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch) throw new Error(`channel "${p.channel}" not found`);
+        await ch.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
+        return `Unlocked #${ch.name}`;
+      }
+      case 'restrict_channel': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch) throw new Error(`channel "${p.channel}" not found`);
+        const mode = String(p.mode || 'normal').toLowerCase();
+        const map = {
+          media_only: { SendMessages: true,  AttachFiles: true,  EmbedLinks: false, AddReactions: true },
+          text_only:  { SendMessages: true,  AttachFiles: false, EmbedLinks: false },
+          read_only:  { SendMessages: false, AttachFiles: false, AddReactions: false },
+          normal:     { SendMessages: null,  AttachFiles: null,  EmbedLinks: null,  AddReactions: null },
+        };
+        await ch.permissionOverwrites.edit(guild.roles.everyone, map[mode] || map.normal);
+        return `#${ch.name} → ${mode}`;
+      }
+      case 'set_permission': {
+        const ch = await resolveChannel(guild, p.target);
+        if (!ch) throw new Error(`channel/category "${p.target}" not found`);
+        const role = await resolveRole(guild, p.role);
+        if (!role) throw new Error(`role "${p.role}" not found`);
+        const FLAG = {
+          view: 'ViewChannel', see: 'ViewChannel', read: 'ViewChannel',
+          send: 'SendMessages', write: 'SendMessages', message: 'SendMessages', msg: 'SendMessages',
+          attach: 'AttachFiles', upload: 'AttachFiles', photo: 'AttachFiles', file: 'AttachFiles',
+          react: 'AddReactions', reaction: 'AddReactions',
+          connect: 'Connect', join: 'Connect',
+          speak: 'Speak', talk: 'Speak',
+          manage: 'ManageChannels',
+          mention: 'MentionEveryone',
+          embed: 'EmbedLinks', link: 'EmbedLinks',
+        };
+        const allow = !(String(p.allow).toLowerCase() === 'false' || p.allow === false);
+        const perms = String(p.permissions || 'view').split(/[,\s]+/).filter(Boolean);
+        const edit = {};
+        const applied = [];
+        for (const word of perms) {
+          const flag = FLAG[word.toLowerCase()];
+          if (flag) { edit[flag] = allow; applied.push(flag); }
+        }
+        if (!applied.length) throw new Error(`no recognizable permissions in "${p.permissions}"`);
+        await ch.permissionOverwrites.edit(role, edit);
+        const label = ch.type === ChannelType.GuildCategory ? `category "${ch.name}"` : `#${ch.name}`;
+        return `${allow ? 'Granted' : 'Denied'} ${applied.join(', ')} for @${role.name} on ${label}`;
+      }
+      case 'create_channel': {
+        const type = /voice/i.test(p.type) ? ChannelType.GuildVoice : ChannelType.GuildText;
+        const ch = await guild.channels.create({ name: String(p.name || 'new-channel').slice(0, 90), type });
+        return `Created ${type === ChannelType.GuildVoice ? '🔊' : '#'}${ch.name}`;
+      }
+      case 'rename_channel': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch) throw new Error(`channel "${p.channel}" not found`);
+        const old = ch.name;
+        await ch.setName(String(p.name || old).slice(0, 90));
+        return `Renamed #${old} → #${ch.name}`;
+      }
+      case 'create_category': {
+        const cat = await guild.channels.create({
+          name: String(p.name || 'new-category').slice(0, 90),
+          type: ChannelType.GuildCategory
+        });
+        return `Created category 📁 "${cat.name}"`;
+      }
+      case 'edit_category': {
+        const cat = await resolveChannel(guild, p.category || p.target);
+        if (!cat || cat.type !== ChannelType.GuildCategory) throw new Error(`category "${p.category || p.target}" not found`);
+        const old = cat.name;
+        await cat.setName(String(p.name || old).slice(0, 90));
+        return `Renamed category 📁 "${old}" → "${cat.name}"`;
+      }
+      case 'create_role': {
+        const role = await guild.roles.create({ name: String(p.name || 'new-role').slice(0, 90), color: parseColor(p.color) });
+        return `Created role @${role.name}`;
+      }
+      case 'assign_role': {
+        const m = await resolveMember(guild, p.user); const r = await resolveRole(guild, p.role);
+        if (!m) throw new Error(`user "${p.user}" not found`); if (!r) throw new Error(`role "${p.role}" not found`);
+        await m.roles.add(r);
+        return `Gave @${r.name} to ${m.user.username}`;
+      }
+      case 'remove_role': {
+        const m = await resolveMember(guild, p.user); const r = await resolveRole(guild, p.role);
+        if (!m) throw new Error(`user "${p.user}" not found`); if (!r) throw new Error(`role "${p.role}" not found`);
+        await m.roles.remove(r);
+        return `Removed @${r.name} from ${m.user.username}`;
+      }
+      case 'warn': {
+        const m = await resolveMember(guild, p.user);
+        if (!m) throw new Error(`user "${p.user}" not found`);
+        const { createCase, CaseType } = require('./case-manager');
+        createCase(ctx.db, ctx.saveDb, { type: CaseType.WARN, guildId: guild.id, userId: m.id, userTag: m.user.tag, modId: ctx.actorId, modTag: ctx.actorTag, reason: p.reason || 'No reason' });
+        await m.send(`⚠️ You were warned in **${guild.name}**: ${p.reason || 'No reason'}`).catch(() => {});
+        return `Warned ${m.user.username}`;
+      }
+      case 'delete_channel': {
+        const ch = await resolveChannel(guild, p.channel, false);
+        if (!ch) throw new Error(`channel "${p.channel}" not found`);
+        const n = ch.name; await ch.delete('DEV-AI');
+        return `Deleted #${n}`;
+      }
+      case 'delete_category': {
+        const cat = await resolveChannel(guild, p.category || p.channel);
+        if (!cat || cat.type !== ChannelType.GuildCategory) throw new Error(`category "${p.category || p.channel}" not found`);
+        const n = cat.name; await cat.delete('DEV-AI');
+        return `Deleted category 📁 "${n}"`;
+      }
+      case 'purge': {
+        const ch = await resolveChannel(guild, p.channel);
+        if (!ch?.isTextBased?.()) throw new Error(`channel "${p.channel}" not found`);
+        const n = Math.max(1, Math.min(100, parseInt(p.count, 10) || 50));
+        const del = await ch.bulkDelete(n, true);
+        return `Purged ${del.size} messages in #${ch.name}`;
+      }
+      case 'timeout': {
+        const m = await resolveMember(guild, p.user);
+        if (!m) throw new Error(`user "${p.user}" not found`);
+        const mins = Math.max(1, Math.min(40320, parseInt(p.minutes, 10) || 10));
+        await m.timeout(mins * 60000, p.reason || 'DEV-AI');
+        return `Timed out ${m.user.username} for ${mins}m`;
+      }
+      case 'kick': {
+        const m = await resolveMember(guild, p.user);
+        if (!m) throw new Error(`user "${p.user}" not found`);
+        if (!m.kickable) throw new Error(`cannot kick ${m.user.username} (role hierarchy)`);
+        const u = m.user.username; await m.kick(p.reason || 'DEV-AI');
+        return `Kicked ${u}`;
+      }
+      case 'ban': {
+        const m = await resolveMember(guild, p.user);
+        const target = m ? m.id : cleanId(p.user);
+        if (!target) throw new Error(`user "${p.user}" not found`);
+        await guild.members.ban(target, { reason: p.reason || 'DEV-AI' });
+        return `Banned ${m ? m.user.username : target}`;
+      }
+      default:
+        throw new Error(`unknown tool "${action.tool}"`);
+    }
+  })();
+
+  const { logWhitelistAudit } = require('./logger');
+  const { generateAuditId } = require('./permission-engine');
+  logWhitelistAudit(guild, {
+    actor: ctx?.actorId,
+    capability: reqCap || 'DEV_AI',
+    action: `Tool \`${action.tool}\``,
+    target: p.channel || p.target || p.category || p.user || p.name || 'Server',
+    auditId: generateAuditId(),
+    details: resultMsg
+  }, ctx?.db, { MOD_LOG: 'mod-log' }).catch(() => {});
+
+  return resultMsg;
+}
 }
 
 function planIsDestructive(plan) {

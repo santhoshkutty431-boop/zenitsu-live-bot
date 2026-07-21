@@ -25,6 +25,10 @@ const CAPABILITY_LABELS = {
   'MODERATION_EXECUTE': '👮 Execute Moderation Actions',
   'EMBED_MANAGE':       '📢 Manage Embeds & Announcements',
   'TICKET_CONFIG':      '🎫 Configure Ticket System',
+  'SERVER_CONFIG':      '⚙️ Server Setup & Configuration',
+  'EDIT_CATEGORY':      '📁 Edit Categories & Channels',
+  'DELETE_CHANNEL':     '🗑️ Delete Channels',
+  'DELETE_CATEGORY':    '🗑️ Delete Categories',
   'AI_EXECUTE':         '🧠 DEV-AI — Do Anything via Prompt',
   'AI_ACTIONS':         '⚡ AI-ACTIONS — AI Moderation/Tool Execution',
   'AI_AUTOMATION':      '⚙️ AI-AUTOMATION — AI Server Automation'
@@ -46,7 +50,11 @@ const CAPABILITY_DESCRIPTIONS = {
   'ROLE_ASSIGN': '🔐 **Manage Roles & Whitelists** (Allows `/role`, `/whitelist-role`)',
   'MODERATION_EXECUTE': '👮 **Execute Moderation Actions** (Allows `/warn`, `/kick`, `/mute`, `/timeout`, `/ban`, `/tempban`, `/unban`, `/purge`, `/lock`, `/unlock`, `/slowmode`)',
   'EMBED_MANAGE': '📢 **Manage Embeds & Announcements** (Allows `/say`, `/embed`, `/ai-embed`, `/clear-channel`)',
-  'TICKET_CONFIG': '🎫 **Configure Ticket System** (Allows `/setup-panel`, `/setup-music`)'
+  'TICKET_CONFIG': '🎫 **Configure Ticket System** (Allows `/setup-panel`, `/setup-music`)',
+  'SERVER_CONFIG': '⚙️ **Server Setup & Configuration** (Allows `/setup-server`, `/setup-music`)',
+  'EDIT_CATEGORY': '📁 **Edit Categories & Channels** (Allows creating, configuring, and renaming categories & channels)',
+  'DELETE_CHANNEL': '🗑️ **Delete Channels** (Allows deleting text & voice channels)',
+  'DELETE_CATEGORY': '🗑️ **Delete Categories** (Allows deleting category folders & child channels)'
 };
 
 
@@ -3117,20 +3125,25 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
   const userCaps = db.guildWhitelists?.[guildId]?.users?.[targetUserId] || [];
   
   const systemCapabilities = [
-    { label: '🤖 AI Configuration', value: 'AI_CONFIG' },
-    { label: '🛡️ Security & Anti-Raid Settings', value: 'SECURITY_CONFIG' },
-    { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE' },
-    { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
-    { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
-    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
-    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' },
-    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' },
-    { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION' }
+    { label: '🤖 AI Configuration', value: 'AI_CONFIG', description: 'Allows /ai-channel, /ai-model' },
+    { label: '🛡️ Security & Anti-Raid Settings', value: 'SECURITY_CONFIG', description: 'Allows /security, /setup-logs' },
+    { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE', description: 'Allows /warn, /kick, /mute, /ban, /timeout, /purge' },
+    { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN', description: 'Allows /role, /whitelist-role' },
+    { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE', description: 'Allows /say, /embed, /ai-embed' },
+    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG', description: 'Allows /setup-panel' },
+    { label: '⚙️ Server Setup & Configuration', value: 'SERVER_CONFIG', description: 'Allows /setup-server, /setup-music' },
+    { label: '📁 Edit Categories & Channels', value: 'EDIT_CATEGORY', description: 'Create & rename channels/categories via DEV-AI' },
+    { label: '🗑️ Delete Channels', value: 'DELETE_CHANNEL', description: 'Delete text/voice channels via DEV-AI' },
+    { label: '🗑️ Delete Categories', value: 'DELETE_CATEGORY', description: 'Delete category folders via DEV-AI' },
+    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE', description: 'Full AI natural-language automation (/dev-ai)' },
+    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS', description: 'AI moderation tools & direct AI actions' },
+    { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION', description: 'AI background automations' }
   ];
 
   const selectOptions = systemCapabilities.map(c => ({
     label: c.label,
     value: c.value,
+    description: c.description,
     default: userCaps.includes(c.value)
   }));
 
@@ -3147,7 +3160,7 @@ function getWhitelistedUserPanel(interaction, db, targetUserId) {
     .setCustomId(`edit_user_caps_select:${targetUserId}`)
     .setPlaceholder('Select capabilities')
     .setMinValues(0)
-    .setMaxValues(9)
+    .setMaxValues(13)
     .addOptions(selectOptions);
 
   const deleteBtn = new ButtonBuilder()
@@ -3238,20 +3251,25 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
   const roleCapabilities = db.roleCapabilities?.[roleId] || [];
   
   const systemCapabilities = [
-    { label: '🤖 AI Configuration', value: 'AI_CONFIG' },
-    { label: '🛡️ Security & Anti-Raid Settings', value: 'SECURITY_CONFIG' },
-    { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE' },
-    { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN' },
-    { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE' },
-    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG' },
-    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE' },
-    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS' },
-    { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION' }
+    { label: '🤖 AI Configuration', value: 'AI_CONFIG', description: 'Allows /ai-channel, /ai-model' },
+    { label: '🛡️ Security & Anti-Raid Settings', value: 'SECURITY_CONFIG', description: 'Allows /security, /setup-logs' },
+    { label: '⚔️ Moderation Execution', value: 'MODERATION_EXECUTE', description: 'Allows /warn, /kick, /mute, /ban, /timeout, /purge' },
+    { label: '🔑 Whitelisted Role Management', value: 'ROLE_ASSIGN', description: 'Allows /role, /whitelist-role' },
+    { label: '📣 Custom Embeds & Say Command', value: 'EMBED_MANAGE', description: 'Allows /say, /embed, /ai-embed' },
+    { label: '🎫 Ticket Panel Setup', value: 'TICKET_CONFIG', description: 'Allows /setup-panel' },
+    { label: '⚙️ Server Setup & Configuration', value: 'SERVER_CONFIG', description: 'Allows /setup-server, /setup-music' },
+    { label: '📁 Edit Categories & Channels', value: 'EDIT_CATEGORY', description: 'Create & rename channels/categories via DEV-AI' },
+    { label: '🗑️ Delete Channels', value: 'DELETE_CHANNEL', description: 'Delete text/voice channels via DEV-AI' },
+    { label: '🗑️ Delete Categories', value: 'DELETE_CATEGORY', description: 'Delete category folders via DEV-AI' },
+    { label: '🧠 DEV-AI: Do Anything (/dev-ai)', value: 'AI_EXECUTE', description: 'Full AI natural-language automation (/dev-ai)' },
+    { label: '⚡ AI-ACTIONS: AI Moderation/Tool Execution', value: 'AI_ACTIONS', description: 'AI moderation tools & direct AI actions' },
+    { label: '⚙️ AI-AUTOMATION: AI Server Automation', value: 'AI_AUTOMATION', description: 'AI background automations' }
   ];
 
   const capOptions = systemCapabilities.map(c => ({
     label: c.label,
     value: c.value,
+    description: c.description,
     default: roleCapabilities.includes(c.value)
   }));
 
@@ -3280,7 +3298,7 @@ function getWhitelistedRolePanel(interaction, db, roleId, currentTier) {
     .setCustomId(`edit_role_caps_select:${roleId}:${currentTier}`)
     .setPlaceholder('Select capabilities')
     .setMinValues(0)
-    .setMaxValues(9)
+    .setMaxValues(13)
     .addOptions(capOptions);
 
   const deleteBtn = new ButtonBuilder()

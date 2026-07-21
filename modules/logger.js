@@ -340,6 +340,26 @@ async function logSecurityIncident(guild, title, description, fields, db, ID) {
   await sendLog(guild, securityLogId, embed, db);
 }
 
+async function logWhitelistAudit(guild, { actor, capability, action, target, auditId, details }, db, ID) {
+  const modLogId = db?.logging?.modLogId || ID?.MOD_LOG;
+  const embed = new EmbedBuilder()
+    .setTitle(`🛡️ Whitelist Action Executed — ${capability || 'PRIVILEGED'}`)
+    .setDescription(
+      `**Executor**: ${actor ? `<@${actor.id || actor}>` : 'System/Unknown'}\n` +
+      `**Action**: ${action}\n` +
+      `**Target**: ${target || 'N/A'}\n` +
+      `**Audit ID**: \`${auditId || 'WL-AUDIT'}\``
+    )
+    .setColor(0xEDC231)
+    .setTimestamp();
+
+  if (details) {
+    embed.addFields({ name: '📝 Action Details', value: String(details).slice(0, 1024) });
+  }
+
+  await sendLog(guild, modLogId, embed, db);
+}
+
 // ─── EXPORTS ─────────────────────────────────────────────────────────────────
 module.exports = {
   sendLog,
@@ -353,4 +373,5 @@ module.exports = {
   logChannelUpdate,
   logGuildMemberRoleUpdate,
   logSecurityIncident,
+  logWhitelistAudit,
 };
