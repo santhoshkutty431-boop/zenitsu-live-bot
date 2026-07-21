@@ -311,6 +311,50 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
 client.on('messageDelete', async msg => {
   if (!msg.guild) return;
 
+  // Log channel check
+  const logChannelIds = [
+    ID.SERVER_LOGS, ID.MOD_LOG, ID.SECURITY_LOGS, ID.BOT_LOGS, ID.MESSAGE_LOG,
+    db.securityConfig?.securityLogId, db.setupConfig?.modLogChannelId, db.setupConfig?.serverLogChannelId
+  ].filter(Boolean);
+
+  const isLogChannel = logChannelIds.includes(msg.channel.id) || 
+                       /log|audit|everlog|security|mod-log|server-log/i.test(msg.channel.name);
+
+  if (isLogChannel) {
+    try {
+      const fetchedLogs = await msg.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MessageDelete }).catch(() => null);
+      const entry = fetchedLogs?.entries?.first();
+      const executor = (entry && entry.extra?.channel?.id === msg.channel.id && (Date.now() - entry.createdTimestamp < 5000))
+        ? entry.executor
+        : msg.author;
+
+      const isServerCreator = executor && executor.id === msg.guild.ownerId;
+
+      if (!isServerCreator) {
+        // 1. Re-post deleted message to preserve log trail integrity
+        const restoreEmbed = new EmbedBuilder()
+          .setTitle('🛡️ RESTORED LOG MESSAGE (Anti-Log Tampering)')
+          .setDescription(`**Channel:** ${msg.channel}\n**Original Author:** ${msg.author ? `<@${msg.author.id}>` : 'Unknown'}\n**Attempted Deletion By:** ${executor ? `<@${executor.id}> (\`${executor.tag}\`)` : 'Unknown User'}\n\n**Restored Content:**\n${msg.content || '*[Embed or Media content]*'}`)
+          .setColor(0xFF0000)
+          .setFooter({ text: 'Log Protection System | Exclusive Creator Deletion Only' })
+          .setTimestamp();
+
+        await msg.channel.send({ embeds: [restoreEmbed] }).catch(() => {});
+
+        // 2. Active Defense: Strip roles if executor is a non-owner staff/admin attempting to tamper with log channel
+        if (executor && !executor.bot && executor.id !== msg.guild.ownerId) {
+          const executorMember = await msg.guild.members.fetch(executor.id).catch(() => null);
+          if (executorMember && executorMember.moderatable) {
+            await executorMember.roles.set([], 'Zenitsu Security: Attempted unauthorized message deletion in log channel').catch(() => {});
+          }
+        }
+        return;
+      }
+    } catch (err) {
+      console.error('[Log Protection Guard Error]:', err.message);
+    }
+  }
+
   // Handle partial messages (uncached/old messages the bot didn't see when sent)
   const authorTag  = msg.author?.tag    || '⚠️ Unknown (message not cached)';
   const authorId   = msg.author?.id     || 'Unknown';

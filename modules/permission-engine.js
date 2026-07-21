@@ -126,12 +126,23 @@ function generateAuditId() {
 }
 
 function verifyPermissionSchema(db, saveDb) {
-  if (!db.permissionSchemaVersion || db.permissionSchemaVersion < 2) {
-    db.permissionSchemaVersion = 2;
-    db.guildWhitelists = db.guildWhitelists || {};
-    if (db.roleWhitelist && Array.isArray(db.roleWhitelist)) {
-      // Legacy data is kept intact for backward compatibility checks
+  db.roleCapabilities = db.roleCapabilities || {};
+  let modified = false;
+
+  // Purge DELETE_CHANNEL, DELETE_CATEGORY, EDIT_CATEGORY from all roles
+  const restrictedCaps = ['DELETE_CHANNEL', 'DELETE_CATEGORY', 'EDIT_CATEGORY'];
+  for (const roleId of Object.keys(db.roleCapabilities)) {
+    const original = db.roleCapabilities[roleId];
+    if (Array.isArray(original)) {
+      const filtered = original.filter(cap => !restrictedCaps.includes(cap));
+      if (filtered.length !== original.length) {
+        db.roleCapabilities[roleId] = filtered;
+        modified = true;
+      }
     }
+  }
+
+  if (modified && typeof saveDb === 'function') {
     saveDb();
   }
 }

@@ -671,6 +671,12 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
     // /purge
     else if (cmd === 'purge') {
+      const logChannelIds = [ID.SERVER_LOGS, ID.MOD_LOG, ID.SECURITY_LOGS, ID.BOT_LOGS, ID.MESSAGE_LOG, db.securityConfig?.securityLogId].filter(Boolean);
+      const isLogChannel = logChannelIds.includes(interaction.channel.id) || /log|audit|everlog|security|mod-log|server-log/i.test(interaction.channel.name);
+      if (isLogChannel && interaction.user.id !== interaction.guild.ownerId) {
+        return interaction.reply({ content: '🔒 **Access Denied**: Log channel messages cannot be purged or deleted by anyone except the **Server Creator** (Server Owner).', ephemeral: true });
+      }
+
       const amount = interaction.options.getInteger('amount') || 50;
       await interaction.deferReply({ ephemeral: true });
       try {
@@ -684,6 +690,11 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     // /clear-channel
     else if (cmd === 'clear-channel') {
       const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
+      const logChannelIds = [ID.SERVER_LOGS, ID.MOD_LOG, ID.SECURITY_LOGS, ID.BOT_LOGS, ID.MESSAGE_LOG, db.securityConfig?.securityLogId].filter(Boolean);
+      const isLogChannel = logChannelIds.includes(targetChannel.id) || /log|audit|everlog|security|mod-log|server-log/i.test(targetChannel.name);
+      if (isLogChannel && interaction.user.id !== interaction.guild.ownerId) {
+        return interaction.reply({ content: '🔒 **Access Denied**: Log channels cannot be cleared or recreated by anyone except the **Server Creator** (Server Owner).', ephemeral: true });
+      }
       await interaction.deferReply({ ephemeral: true });
       try {
         const ch = interaction.guild.channels.cache.get(targetChannel.id);
