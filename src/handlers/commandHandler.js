@@ -1909,8 +1909,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
   else if (interaction.isRoleSelectMenu()) {
     const { customId, guildId } = interaction;
     if (customId === 'add_whitelist_role_select') {
-      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+      const isExecAdmin = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || hasCapability(interaction.member, interaction.user.id, db, 'ROLE_ASSIGN');
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only authorized whitelisted users can modify whitelisted roles.', ephemeral: true });
 
       await interaction.deferUpdate();
       const targetRoleId = interaction.values[0];
@@ -2047,8 +2047,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     else if (customId === 'manage_whitelist_role_select') {
-      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+      const isExecAdmin = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || hasCapability(interaction.member, interaction.user.id, db, 'ROLE_ASSIGN');
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only authorized whitelisted users can modify whitelisted roles.', ephemeral: true });
 
       await interaction.deferUpdate();
       const val = interaction.values[0];
@@ -2061,8 +2061,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     else if (customId.startsWith('edit_role_tier_select:')) {
-      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+      const isExecAdmin = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || hasCapability(interaction.member, interaction.user.id, db, 'ROLE_ASSIGN');
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only authorized whitelisted users can modify whitelisted roles.', ephemeral: true });
 
       await interaction.deferUpdate();
       const parts = customId.split(':');
@@ -2135,8 +2135,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     else if (customId.startsWith('edit_role_caps_select:')) {
-      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can modify whitelisted roles.', ephemeral: true });
+      const isExecAdmin = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || hasCapability(interaction.member, interaction.user.id, db, 'ROLE_ASSIGN');
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only authorized whitelisted users can modify whitelisted roles.', ephemeral: true });
 
       await interaction.deferUpdate();
       const parts = customId.split(':');
@@ -2296,8 +2296,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     if (customId === 'back_whitelist_roles') {
-      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can manage whitelisted roles.', ephemeral: true });
+      const isExecAdmin = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || hasCapability(interaction.member, interaction.user.id, db, 'ROLE_ASSIGN');
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only authorized whitelisted users can manage whitelisted roles.', ephemeral: true });
       await interaction.deferUpdate();
       const { embeds, components } = getWhitelistedRolesList(interaction, db);
       await interaction.editReply({ embeds, components });
@@ -2305,8 +2305,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     if (customId.startsWith('delete_whitelist_role:')) {
-      const isExecAdmin = interaction.member && (interaction.member.permissions.has(PermissionFlagsBits.Administrator) || isDeveloper(interaction.user.id));
-      if (!isExecAdmin) return interaction.reply({ content: '❌ Only administrators can manage whitelisted roles.', ephemeral: true });
+      const isExecAdmin = isOwner(interaction.user.id) || isDeveloper(interaction.user.id) || hasCapability(interaction.member, interaction.user.id, db, 'ROLE_ASSIGN');
+      if (!isExecAdmin) return interaction.reply({ content: '❌ Only authorized whitelisted users can manage whitelisted roles.', ephemeral: true });
       
       await interaction.deferUpdate();
       const parts = customId.split(':');

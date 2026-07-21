@@ -248,7 +248,6 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
     const hasMemberRole = roleWhitelist.member && roleWhitelist.member.some(roleId => member.roles.cache.has(roleId));
 
     const isDiscordAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
-
     // Collect capabilities from all roles of the member
     const memberRoleCaps = [];
     member.roles.cache.forEach(role => {
@@ -256,6 +255,12 @@ function evaluateAccess(member, userId, db, requiredTier, requiredCap) {
         memberRoleCaps.push(...roleCapabilities[role.id]);
       }
     });
+
+    // Native Discord Administrator fallback is ONLY enabled if NO whitelists exist for the guild
+    const isGuildWhitelisted = (guildWhitelist.users && Object.keys(guildWhitelist.users).length > 0) || 
+                              (roleWhitelist.admin && roleWhitelist.admin.length > 0) ||
+                              (roleCapabilities && Object.keys(roleCapabilities).length > 0);
+    const isDiscordAdmin = !isGuildWhitelisted && member.permissions.has(PermissionFlagsBits.Administrator);
 
     // Whitelisted Role checks
     if (requiredTier === 'ADMIN') {
