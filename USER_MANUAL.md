@@ -22,6 +22,26 @@ Welcome to the official **Zenitsu Live** Security & Whitelist Configuration Guid
 
 ---
 
+## 👑 Server Owner Master Guide
+
+If you are the **Server Creator / Server Owner (`guild.ownerId`)**, here is how Zenitsu Live protects and empowers you:
+
+### 1. Complete System Immunity
+- You are **never subject to role stripping or Anti-Nuke penalties**.
+- You have **unrestricted access** to all bot commands, AI tools, `/dev-ai`, and server configuration features regardless of whitelist state.
+
+### 2. Exclusive Log Channel Control
+- Only you can purge or delete messages in log channels (`#server-logs`, `#mod-log`, `#security-logs`, `#everlog`, etc.) by default.
+- If any staff member (even with Discord Administrator) attempts to erase audit history in log channels, Zenitsu blocks/restores the message and strips their staff roles.
+
+### 3. How to Delegate Power Safely
+- Use **`/whitelist`** to grant specific capabilities to individual trusted co-owners or admins.
+- Use **`/whitelist-role`** to grant tier-based capabilities to staff roles.
+- **`LOG_MANAGE`**: Grant this capability ONLY to trusted staff members whom you allow to delete/purge log messages.
+- **`ROLE_ASSIGN`**: Grant this capability ONLY to trusted co-owners who can manage bot whitelists.
+
+---
+
 ## 📜 The 14 System Capabilities
 
 Zenitsu Live features **14 granular capabilities** that can be assigned to individual users (`/whitelist`) or roles (`/whitelist-role`).
