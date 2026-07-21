@@ -526,21 +526,26 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
  * from all non-managed roles in the guild to prevent native Discord permission bypasses.
  */
 async function sanitizeServerRolesPermissions(guild) {
-  if (!guild) return;
+  if (!guild?.roles?.cache) return;
   try {
     const everyoneId = guild.roles.everyone?.id;
-    const roles = guild.roles.cache.filter(r => !r.managed && r.id !== everyoneId);
+    const roles = guild.roles.cache.filter(r => r && !r.managed && r.id && r.id !== everyoneId && r.permissions);
     for (const [roleId, role] of roles) {
-      if (role.permissions.has(PermissionFlagsBits.Administrator) ||
-          role.permissions.has(PermissionFlagsBits.ManageChannels) ||
-          role.permissions.has(PermissionFlagsBits.ManageMessages)) {
+      if (!role || !role.permissions || !role.id) continue;
+      try {
+        if (role.permissions.has(PermissionFlagsBits.Administrator) ||
+            role.permissions.has(PermissionFlagsBits.ManageChannels) ||
+            role.permissions.has(PermissionFlagsBits.ManageMessages)) {
 
-        const newPerms = role.permissions
-          .remove(PermissionFlagsBits.Administrator)
-          .remove(PermissionFlagsBits.ManageChannels)
-          .remove(PermissionFlagsBits.ManageMessages);
+          const newPerms = role.permissions
+            .remove(PermissionFlagsBits.Administrator)
+            .remove(PermissionFlagsBits.ManageChannels)
+            .remove(PermissionFlagsBits.ManageMessages);
 
-        await role.setPermissions(newPerms, 'Zenitsu Security: Enforce Whitelist-Only Capability Model (Removed native Admin/Manage permissions)').catch(() => {});
+          await role.setPermissions(newPerms, 'Zenitsu Security: Enforce Whitelist-Only Capability Model (Removed native Admin/Manage permissions)').catch(() => {});
+        }
+      } catch (roleErr) {
+        // Skip individual role errors silently
       }
     }
   } catch (err) {
