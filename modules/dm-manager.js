@@ -45,23 +45,8 @@ async function sendCleanDm(user, payload, autoDelete = true) {
       console.error(`[DM Manager] Failed to clean previous DMs for ${user.id || user.user?.id}:`, fetchErr.message);
     }
 
-    // 2. Add 48-hour notice if autoDelete is true
+    // 2. Prepare payload without adding notice text to keep DMs clean
     let updatedPayload = { ...payload };
-    if (autoDelete) {
-      const noticeText = '⚠️ **Notice:** To keep your DMs clean, this message will be automatically deleted in **48 hours**.';
-      if (updatedPayload.embeds && updatedPayload.embeds.length > 0) {
-        const embeds = updatedPayload.embeds.map(emb => {
-          const builder = emb.data ? EmbedBuilder.from(emb) : new EmbedBuilder(emb);
-          const currentDesc = builder.data.description || '';
-          builder.setDescription(currentDesc ? `${currentDesc}\n\n${noticeText}` : noticeText);
-          return builder;
-        });
-        updatedPayload.embeds = embeds;
-      } else {
-        const currentContent = updatedPayload.content || '';
-        updatedPayload.content = currentContent ? `${currentContent}\n\n${noticeText}` : noticeText;
-      }
-    }
 
     // 3. Send the new DM message
     const sentMessage = await dmChannel.send(updatedPayload).catch(() => null);
