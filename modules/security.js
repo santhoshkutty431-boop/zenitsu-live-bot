@@ -386,7 +386,8 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
   if (!cfg.antiNukeEnabled) return;
 
   const { AuditLogEvent } = require('discord.js');
-  const executor  = entry.executor;
+  const { hasCapability } = require('./permission-engine');
+  const executor = entry.executor;
   if (!executor || executor.bot) return;
 
   const securityLogId = db.securityConfig?.securityLogId || ID.MOD_LOG;
@@ -397,67 +398,86 @@ async function handleAuditLogEntry(entry, guild, db, logToChannel, ID) {
   let alertDetails = null;
   let exceeded     = false;
 
+  // 1. Capability mapping per Audit Log Action
+  const AUDIT_CAPABILITY_MAP = {
+    [AuditLogEvent.ChannelDelete]: 'DELETE_CHANNEL',
+    [AuditLogEvent.ChannelCreate]: 'EDIT_CATEGORY',
+    [AuditLogEvent.RoleDelete]:    'ROLE_ASSIGN',
+    [AuditLogEvent.RoleCreate]:    'ROLE_ASSIGN',
+    [AuditLogEvent.WebhookCreate]: 'SECURITY_CONFIG',
+    [AuditLogEvent.MemberBanAdd]:  'MODERATION_EXECUTE',
+    [AuditLogEvent.MemberKick]:    'MODERATION_EXECUTE',
+    [AuditLogEvent.GuildUpdate]:   'SERVER_CONFIG'
+  };
+
+  const reqCap = AUDIT_CAPABILITY_MAP[entry.action];
+  const executorMember = await guild.members.fetch(executor.id).catch(() => null);
+  const isCapAuthorized = reqCap ? hasCapability(executorMember, executor.id, db, reqCap) : true;
+
+  if (!isCapAuthorized) {
+    exceeded = true;
+    alertTitle = `🚨 UNAUTHORIZED ACTION: Missing "${reqCap}" Capability`;
+    alertDetails = `User **${executor.tag}** performed **${entry.action}** on Discord without holding the **${reqCap}** capability in bot whitelist.`;
+  }
+
   switch (entry.action) {
     case AuditLogEvent.ChannelDelete:
-      exceeded = trackNukeAction(guildId, executor.id, 'channelDelete', cfg.nukeChannelThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Mass Channel Deletion'; alertDetails = `Deleted channel: **${entry.target?.name || 'Unknown'}**`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'channelDelete', cfg.nukeChannelThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Mass Channel Deletion'; alertDetails = `Deleted channel: **${entry.target?.name || 'Unknown'}**`; }
       break;
 
     case AuditLogEvent.ChannelCreate:
-      exceeded = trackNukeAction(guildId, executor.id, 'channelCreate', cfg.nukeChannelThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Mass Channel Creation'; alertDetails = `Created channel: **${entry.target?.name || 'Unknown'}**`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'channelCreate', cfg.nukeChannelThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Mass Channel Creation'; alertDetails = `Created channel: **${entry.target?.name || 'Unknown'}**`; }
       break;
 
     case AuditLogEvent.RoleDelete:
-      exceeded = trackNukeAction(guildId, executor.id, 'roleDelete', cfg.nukeRoleThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Mass Role Deletion'; alertDetails = `Deleted role: **${entry.target?.name || 'Unknown'}**`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'roleDelete', cfg.nukeRoleThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Mass Role Deletion'; alertDetails = `Deleted role: **${entry.target?.name || 'Unknown'}**`; }
       break;
 
     case AuditLogEvent.RoleCreate:
-      exceeded = trackNukeAction(guildId, executor.id, 'roleCreate', cfg.nukeRoleThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Mass Role Creation'; alertDetails = `Created role: **${entry.target?.name || 'Unknown'}**`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'roleCreate', cfg.nukeRoleThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Mass Role Creation'; alertDetails = `Created role: **${entry.target?.name || 'Unknown'}**`; }
       break;
 
     case AuditLogEvent.WebhookCreate:
-      exceeded = trackNukeAction(guildId, executor.id, 'webhookCreate', cfg.nukeWebhookThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Webhook Spam Detected'; alertDetails = `Webhook created rapidly`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'webhookCreate', cfg.nukeWebhookThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Webhook Spam Detected'; alertDetails = `Webhook created rapidly`; }
       break;
 
     case AuditLogEvent.MemberBanAdd:
-      exceeded = trackNukeAction(guildId, executor.id, 'massban', cfg.nukeBanThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Mass Ban Detected'; alertDetails = `Banned: **${entry.target?.tag || 'Unknown'}**`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'massban', cfg.nukeBanThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Mass Ban Detected'; alertDetails = `Banned: **${entry.target?.tag || 'Unknown'}**`; }
       break;
 
     case AuditLogEvent.MemberKick:
-      exceeded = trackNukeAction(guildId, executor.id, 'masskick', cfg.nukeBanThreshold, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Mass Kick Detected'; alertDetails = `Kicked: **${entry.target?.tag || 'Unknown'}**`; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'masskick', cfg.nukeBanThreshold, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Mass Kick Detected'; alertDetails = `Kicked: **${entry.target?.tag || 'Unknown'}**`; }
       break;
 
     case AuditLogEvent.GuildUpdate:
-      exceeded = trackNukeAction(guildId, executor.id, 'guildUpdate', 3, windowSec);
-      if (exceeded) { alertTitle = '🚨 ANTI-NUKE: Rapid Server Setting Changes'; alertDetails = 'Server settings changed multiple times rapidly'; }
+      if (!exceeded) exceeded = trackNukeAction(guildId, executor.id, 'guildUpdate', 3, windowSec);
+      if (exceeded && !alertTitle) { alertTitle = '🚨 ANTI-NUKE: Rapid Server Setting Changes'; alertDetails = 'Server settings changed multiple times rapidly'; }
       break;
 
     default:
-      return;
+      if (!exceeded) return;
   }
 
   if (!exceeded || !alertTitle) return;
 
   // ── ACTIVE ANTI-NUKE DEFENSE ─────────────────────────────────────────────
-  const ownerId = guild.client.application?.owner?.id || guild.ownerId;
-  const isOwner = executor.id === ownerId || executor.id === guild.ownerId;
-  const isWhitelisted = db.roleWhitelist && db.roleWhitelist.includes(executor.id);
+  const isOwner = executor.id === guild.ownerId;
+  let activeDefenseStatus = '⚠️ **Manual Review Needed:** User is server owner.';
 
-  let activeDefenseStatus = '⚠️ **Manual Review Needed:** User is whitelisted or owner. No automatic action taken.';
-
-  if (!isOwner && !isWhitelisted) {
+  if (!isOwner && !isCapAuthorized) {
     try {
-      const member = await guild.members.fetch(executor.id).catch(() => null);
+      const member = executorMember || await guild.members.fetch(executor.id).catch(() => null);
       if (member && member.moderatable) {
         // Strip all roles to instantly freeze their permissions
-        await member.roles.set([], 'Zenitsu Anti-Nuke: Exceeded mass-action security limit').catch(() => {});
-        activeDefenseStatus = '🛡️ **Active Defense Triggered:** All roles have been automatically stripped from this user to lock down their access.';
+        await member.roles.set([], `Zenitsu Anti-Nuke: Performed ${entry.action} without ${reqCap} capability`).catch(() => {});
+        activeDefenseStatus = '🛡️ **Active Defense Triggered:** All roles have been automatically stripped from this user to freeze their access.';
       }
     } catch (err) {
       console.error('Failed to execute Active Anti-Nuke defense:', err.message);
