@@ -343,11 +343,34 @@ client.on('messageDelete', async msg => {
 
         await msg.channel.send({ embeds: [restoreEmbed] }).catch(() => {});
 
-        // 2. Active Defense: Strip roles if executor is an unauthorized user attempting to tamper with log channel
+        // 2. Active Defense: Instantly revoke channel access & lock out unauthorized users attempting log tampering
         if (executor && !executor.bot && executor.id !== msg.guild.ownerId) {
+          // Instantly block the offender from viewing or managing the log channel
+          await msg.channel.permissionOverwrites.edit(executor.id, {
+            ViewChannel: false,
+            SendMessages: false,
+            ManageMessages: false
+          }, { reason: 'Zenitsu Active Defense: Unauthorized log tampering without LOG_MANAGE capability' }).catch(() => {});
+
           if (executorMember && executorMember.moderatable) {
+            await executorMember.timeout(3600000, 'Zenitsu Security: Log tampering attempt without LOG_MANAGE capability').catch(() => {});
             await executorMember.roles.set([], 'Zenitsu Security: Attempted unauthorized message deletion in log channel without LOG_MANAGE capability').catch(() => {});
           }
+
+          const alertEmbed = new EmbedBuilder()
+            .setTitle('🚨 Active Defense: Log Channel Tampering Blocked')
+            .setDescription(
+              `**Offender:** <@${executor.id}> (\`${executor.tag}\`)\n` +
+              `**Targeted Log Channel:** ${msg.channel}\n\n` +
+              `**Actions Executed:**\n` +
+              `• 🔄 **Restored deleted message** to preserve log trail.\n` +
+              `• 🔒 **Revoked Log Channel Access**: User ID locked out (\`ViewChannel: FALSE\`, \`ManageMessages: FALSE\`).\n` +
+              `• ${executorMember?.moderatable ? '⚡ **Timed out for 1 hour & stripped all roles**.' : '⚠️ **Channel access revoked** (Role higher than bot hierarchy).'}`
+            )
+            .setColor(0xFF0000)
+            .setTimestamp();
+
+          await logToChannel(msg.guild, ID.MOD_LOG, alertEmbed);
         }
         return;
       }
