@@ -95,20 +95,30 @@ class DatabaseManager {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
-    this.sqlDb = new Database(DB_PATH);
-    this.sqlDb.pragma('journal_mode = WAL'); // Enable WAL mode for high concurrency
-    this.sqlDb.pragma('synchronous = NORMAL'); // Safe with WAL, ~2-5x faster writes
-    this.sqlDb.pragma('foreign_keys = ON');
+    if (Database) {
+      try {
+        this.sqlDb = new Database(DB_PATH);
+        this.sqlDb.pragma('journal_mode = WAL'); // Enable WAL mode for high concurrency
+        this.sqlDb.pragma('synchronous = NORMAL'); // Safe with WAL, ~2-5x faster writes
+        this.sqlDb.pragma('foreign_keys = ON');
 
-    this._initTables();
+        this._initTables();
 
-    // Prepared statements
-    this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
-    this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
-    
-    this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
-    this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
-    this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
+        // Prepared statements
+        this.getGlobalStmt = this.sqlDb.prepare('SELECT value_json FROM global_config WHERE key = ?');
+        this.setGlobalStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO global_config (key, value_json) VALUES (?, ?)');
+        
+        this.getGuildStmt = this.sqlDb.prepare('SELECT key, value_json FROM guild_config WHERE guild_id = ?');
+        this.setGuildKeyStmt = this.sqlDb.prepare('INSERT OR REPLACE INTO guild_config (guild_id, key, value_json) VALUES (?, ?, ?)');
+        this.deleteGuildStmt = this.sqlDb.prepare('DELETE FROM guild_config WHERE guild_id = ?');
+      } catch (e) {
+        this.logger.warn('SQLite init failed, using JSON database mode:', e.message);
+        this.sqlDb = null;
+      }
+    } else {
+      this.logger.info('SQLite (better-sqlite3) unavailable. Running in JSON database mode.');
+      this.sqlDb = null;
+    }
 
     this._globalCache = null;
     this._guildCache = new Map();
@@ -508,7 +518,9 @@ Writer:            ${writerStatus}
     } else {
       this.logger.info('Read-only mode: skipping final cloud save.');
     }
-    this.sqlDb.close();
+    if (this.sqlDb && typeof this.sqlDb.close === 'function') {
+      this.sqlDb.close();
+    }
   }
 
   // ─── Global ─────────────────────────────────────────────────────────────────
@@ -518,11 +530,15 @@ Writer:            ${writerStatus}
       this._globalCache = {};
       const keys = Object.keys(DEFAULT_GLOBAL);
       for (const key of keys) {
-        const row = this.getGlobalStmt.get(key);
-        if (row) {
-          try {
-            this._globalCache[key] = JSON.parse(row.value_json);
-          } catch {
+        if (this.getGlobalStmt) {
+          const row = this.getGlobalStmt.get(key);
+          if (row) {
+            try {
+              this._globalCache[key] = JSON.parse(row.value_json);
+            } catch {
+              this._globalCache[key] = DEFAULT_GLOBAL[key];
+            }
+          } else {
             this._globalCache[key] = DEFAULT_GLOBAL[key];
           }
         } else {
@@ -536,12 +552,14 @@ Writer:            ${writerStatus}
   saveGlobal(immediate = false) {
     if (!this._assertWritePermission('saveGlobal')) return;
     if (!this._globalCache) return;
-    const transaction = this.sqlDb.transaction(() => {
-      for (const [key, val] of Object.entries(this._globalCache)) {
-        this.setGlobalStmt.run(key, JSON.stringify(val));
-      }
-    });
-    transaction();
+    if (this.sqlDb && this.setGlobalStmt) {
+      const transaction = this.sqlDb.transaction(() => {
+        for (const [key, val] of Object.entries(this._globalCache)) {
+          this.setGlobalStmt.run(key, JSON.stringify(val));
+        }
+      });
+      transaction();
+    }
     if (immediate) {
       if (this.syncTimer) {
         clearTimeout(this.syncTimer);
@@ -554,8 +572,6 @@ Writer:            ${writerStatus}
   }
 
   save(immediate = false) {
-    // Note: save() just delegates to saveGuildDb or saveGlobal, which both assert permission.
-    // However, we can assert permission here as well to fail fast.
     if (!this._assertWritePermission('save')) return;
     const store = asyncLocalStorage.getStore();
     const guildId = store?.guildId;
@@ -576,14 +592,15 @@ Writer:            ${writerStatus}
     }
 
     const db = JSON.parse(JSON.stringify(DEFAULT_GUILD));
-    const rows = this.getGuildStmt.all(guildId);
-    
-    if (rows && rows.length > 0) {
-      for (const row of rows) {
-        try {
-          db[row.key] = JSON.parse(row.value_json);
-        } catch {
-          // Keep default
+    if (this.getGuildStmt) {
+      const rows = this.getGuildStmt.all(guildId);
+      if (rows && rows.length > 0) {
+        for (const row of rows) {
+          try {
+            db[row.key] = JSON.parse(row.value_json);
+          } catch {
+            // Keep default
+          }
         }
       }
     }
