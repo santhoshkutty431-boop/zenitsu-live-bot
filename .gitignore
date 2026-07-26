@@ -19,3 +19,5 @@ avatar.png
 banner.png
 *.db-shm
 *.db-wal
+*.zip
+zenitsu-bot-cloud-deploy.zip
