@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION SHIELD]', err ? (err.message || err) : 'Unknown error');
@@ -36,7 +37,6 @@ const {
   ActivityType
 } = require('discord.js');
 const fs   = require('fs');
-const path = require('path');
 const http = require('http');
 
 // ─── DASHBOARD SERVER SETUP ──────────────────────────────────────────────────
