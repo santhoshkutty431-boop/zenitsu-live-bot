@@ -263,6 +263,7 @@ class DatabaseManager {
 
   addSpamSignature({ guildId, label, sampleText, vector, threshold, addedBy }) {
     if (!this._assertWritePermission('addSpamSignature')) return null;
+    if (!this.sqlDb) return Date.now();
     const stmt = this.sqlDb.prepare(`
       INSERT INTO spam_signatures (guild_id, label, sample_text, vector_json, threshold, added_by, timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -281,12 +282,13 @@ class DatabaseManager {
 
   removeSpamSignature(guildId, id) {
     if (!this._assertWritePermission('removeSpamSignature')) return 0;
+    if (!this.sqlDb) return 0;
     const stmt = this.sqlDb.prepare('DELETE FROM spam_signatures WHERE id = ? AND guild_id = ?');
     return stmt.run(id, guildId).changes;
   }
 
   listSpamSignatures(guildId) {
-    // Return this guild's signatures plus the global defaults.
+    if (!this.sqlDb) return [];
     return this.sqlDb.prepare(`
       SELECT id, guild_id, label, sample_text, vector_json, threshold, added_by, timestamp
       FROM spam_signatures
@@ -296,6 +298,7 @@ class DatabaseManager {
   }
 
   countSpamSignatures(guildId) {
+    if (!this.sqlDb) return 0;
     return this.sqlDb.prepare(`
       SELECT COUNT(*) AS n FROM spam_signatures WHERE guild_id = ? OR guild_id = '_global'
     `).get(guildId).n;
@@ -303,6 +306,7 @@ class DatabaseManager {
 
   recordAiUsage({ guildId, userId, provider, model, tokensIn, tokensOut, latencyMs, success }) {
     if (!this._assertWritePermission('recordAiUsage')) return;
+    if (!this.sqlDb) return;
     try {
       const stmt = this.sqlDb.prepare(`
         INSERT INTO ai_usage (guild_id, user_id, provider, model, tokens_in, tokens_out, latency_ms, success, timestamp)
@@ -325,6 +329,7 @@ class DatabaseManager {
   }
 
   getAiUsageSummary(guildId, sinceTs = 0) {
+    if (!this.sqlDb) return [];
     try {
       return this.sqlDb.prepare(`
         SELECT provider, model,
@@ -345,6 +350,7 @@ class DatabaseManager {
 
   recordAudit(guildId, actorId, targetId, command, params, result) {
     if (!this._assertWritePermission('recordAudit')) return;
+    if (!this.sqlDb) return;
     try {
       const stmt = this.sqlDb.prepare(`
         INSERT INTO mod_audit (guild_id, actor_id, target_id, command, params_json, result, timestamp)
@@ -357,8 +363,8 @@ class DatabaseManager {
   }
 
   _logWriteResult(caller, status, reason = null) {
-    const deployment = process.env.SPACE_ID ? 'HuggingFace' : (process.env.RENDER ? 'Render' : 'Local/Other');
-    const dbMode = process.env.DB_MODE || 'READ_ONLY';
+    const deployment = process.env.DISCLOUD_APP_ID ? 'Discloud 24/7' : (process.env.SPACE_ID ? 'HuggingFace' : 'Local/Other');
+    const dbMode = process.env.DISCLOUD_APP_ID ? 'READ_WRITE' : (process.env.DB_MODE || 'READ_ONLY');
     const store = asyncLocalStorage.getStore();
     const guildId = store?.guildId || 'Global/None';
 
@@ -388,12 +394,12 @@ Reason:            ${reason}
   }
 
   isDatabaseWriter() {
-    // Force Hugging Face Space instance to always be READ_ONLY to prevent clobbering primary Render database
     if (process.env.SPACE_ID) {
       return false;
     }
-    // Fail-safe: Default DB_MODE to READ_ONLY if not explicitly specified.
-    // Both DB_MODE === 'READ_WRITE' and IS_PRIMARY_INSTANCE === 'true' are required.
+    if (process.env.DISCLOUD_APP_ID) {
+      return true;
+    }
     const dbMode = process.env.DB_MODE || 'READ_ONLY';
     const isPrimary = process.env.IS_PRIMARY_INSTANCE === 'true';
     return dbMode === 'READ_WRITE' && isPrimary;
@@ -469,11 +475,11 @@ Reason:            ${reason}
   }
 
   async onInit() {
-    const deployment = process.env.SPACE_ID ? 'HuggingFace' : (process.env.RENDER ? 'Render' : 'Local/Other');
-    const dbMode = process.env.DB_MODE || 'READ_ONLY';
-    const isPrimary = process.env.IS_PRIMARY_INSTANCE === 'true' ? 'YES' : 'NO';
+    const deployment = process.env.DISCLOUD_APP_ID ? 'Discloud 24/7' : (process.env.SPACE_ID ? 'HuggingFace' : 'Local/Other');
+    const dbMode = process.env.DISCLOUD_APP_ID ? 'READ_WRITE' : (process.env.DB_MODE || 'READ_ONLY');
+    const isPrimary = (process.env.DISCLOUD_APP_ID || process.env.IS_PRIMARY_INSTANCE === 'true') ? 'YES' : 'NO';
     const writerStatus = this.isDatabaseWriter() ? 'YES' : 'NO';
-    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const isCloud = !!(process.env.DISCLOUD_APP_ID || process.env.SPACE_ID);
     const syncEnabled = this.config.hfToken && this.isDatabaseWriter() && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     const cloudSyncStatus = syncEnabled ? 'Enabled' : 'Disabled';
     const gitPushEnabled = syncEnabled ? 'Enabled' : 'Disabled';
@@ -621,12 +627,14 @@ Writer:            ${writerStatus}
     if (!this._guildCache.has(guildId)) return;
     const cache = this._guildCache.get(guildId);
 
-    const transaction = this.sqlDb.transaction(() => {
-      for (const [key, val] of Object.entries(cache)) {
-        this.setGuildKeyStmt.run(guildId, key, JSON.stringify(val));
-      }
-    });
-    transaction();
+    if (this.sqlDb && this.setGuildKeyStmt) {
+      const transaction = this.sqlDb.transaction(() => {
+        for (const [key, val] of Object.entries(cache)) {
+          this.setGuildKeyStmt.run(guildId, key, JSON.stringify(val));
+        }
+      });
+      transaction();
+    }
     if (immediate) {
       if (this.syncTimer) {
         clearTimeout(this.syncTimer);
@@ -640,17 +648,22 @@ Writer:            ${writerStatus}
 
   deleteGuildDb(guildId) {
     if (!this._assertWritePermission('deleteGuildDb')) return;
-    this.deleteGuildStmt.run(guildId);
+    if (this.sqlDb && this.deleteGuildStmt) {
+      this.deleteGuildStmt.run(guildId);
+    }
     this._guildCache.delete(guildId);
     this.scheduleSync();
   }
 
   guildExists(guildId) {
+    if (this._guildCache.has(guildId)) return true;
+    if (!this.sqlDb) return false;
     const row = this.sqlDb.prepare('SELECT 1 FROM guild_config WHERE guild_id = ? LIMIT 1').get(guildId);
     return Boolean(row);
   }
 
   listGuildIds() {
+    if (!this.sqlDb) return Array.from(this._guildCache.keys());
     const rows = this.sqlDb.prepare('SELECT DISTINCT guild_id FROM guild_config').all();
     return rows.map(r => r.guild_id);
   }
