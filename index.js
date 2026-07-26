@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 try {
   const ffmpegPath = require('ffmpeg-static');
   if (ffmpegPath) {
