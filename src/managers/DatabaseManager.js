@@ -1,7 +1,12 @@
+let Database;
+try {
+  Database = require('better-sqlite3');
+} catch (e) {
+  Database = null;
+}
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const Database = require('better-sqlite3');
 const { AsyncLocalStorage } = require('async_hooks');
 
 const DATA_DIR = path.resolve(__dirname, '../../data');

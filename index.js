@@ -14,7 +14,7 @@ try {
     process.env.FFMPEG_PATH = ffmpegPath;
   }
 } catch (e) {
-  console.warn('[FFMPEG] Failed to load static ffmpeg binary:', e.message);
+  // Uses system ffmpeg on Discloud
 }
 
 // Trigger Redeploy: 2026-07-05 17:21
