@@ -66,9 +66,16 @@ function startDashboardServer(client, db, saveDb) {
   setupHome(app, { client, db, checkAuth, dashboardEnabled });
   setupManage(app, { client, db, saveDb, checkAuth });
 
-  app.listen(PORT, () => {
-    log.info(`Dashboard running on port ${PORT}`);
-  });
+  try {
+    const server = app.listen(PORT, () => {
+      log.info(`Dashboard running on port ${PORT}`);
+    });
+    server.on('error', (err) => {
+      console.warn(`[Dashboard] Web server port notice: ${err.message}. Continuing bot execution.`);
+    });
+  } catch (e) {
+    console.warn(`[Dashboard] Failed to start HTTP server: ${e.message}. Continuing bot execution.`);
+  }
 }
 
 module.exports = { startDashboardServer };
