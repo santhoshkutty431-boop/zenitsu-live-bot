@@ -812,7 +812,7 @@ Writer:            ${writerStatus}
 
   scheduleSync() {
     if (!this._assertWritePermission('scheduleSync')) return;
-    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const isCloud = !!(process.env.DISCLOUD_APP_ID || process.env.SPACE_ID || process.env.RENDER);
     const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     if (!isSyncEnabled) return;
     if (this.syncTimer) return;
@@ -828,7 +828,7 @@ Writer:            ${writerStatus}
       this.logger.debug('Sync lock active: skipping concurrent cloud push.');
       return;
     }
-    const isCloud = !!(process.env.SPACE_ID || process.env.RENDER);
+    const isCloud = !!(process.env.DISCLOUD_APP_ID || process.env.SPACE_ID || process.env.RENDER);
     const isSyncEnabled = this.config.hfToken && (isCloud || process.env.FORCE_HF_SYNC === 'true');
     if (!isSyncEnabled) return;
 
@@ -837,6 +837,22 @@ Writer:            ${writerStatus}
       await this.writeQueue;
       
       this.writeQueue = (async () => {
+        if (!this.sqlDb) {
+          // Pure JSON database cloud sync
+          try {
+            const jsonPath = path.join(DATA_DIR, 'database.json');
+            if (fs.existsSync(jsonPath)) {
+              const content = fs.readFileSync(jsonPath, 'utf8');
+              await this.commitJsonToHf(content);
+              this.lastSuccessfulSync = new Date().toISOString();
+              this.logger.info(`JSON Database synced to Hugging Face Cloud (${content.length} bytes).`);
+            }
+          } catch (err) {
+            this.logger.error(`JSON HF sync failed: ${err.message}`);
+          }
+          return;
+        }
+
         const snapshotPath = path.join(DATA_DIR, `.push-snapshot-${Date.now()}.db`);
         try {
           if (!fs.existsSync(DB_PATH)) return;
@@ -847,18 +863,6 @@ Writer:            ${writerStatus}
           // Automatic Backup
           this._createLocalBackup();
 
-          // CRITICAL: produce the file to push via VACUUM INTO rather than
-          // checkpoint + readFileSync(DB_PATH).
-          //
-          // On Render's container filesystem, wal_checkpoint(TRUNCATE) does
-          // NOT reliably flush the -wal file into the main zenitsu.db, so the
-          // main file stayed frozen (64KB, version 100) and every push shipped
-          // a stale database — silently reverting whitelists/settings on the
-          // next restart. VACUUM INTO reads the LIVE database state (including
-          // all WAL-pending writes) straight through the SQLite engine and
-          // writes a complete, consistent, self-contained snapshot, so the
-          // pushed file always reflects reality regardless of checkpoint/FS
-          // quirks.
           fs.rmSync(snapshotPath, { force: true });
           this.sqlDb.exec(`VACUUM INTO '${snapshotPath.replace(/'/g, "''")}'`);
 
@@ -879,6 +883,46 @@ Writer:            ${writerStatus}
       this.isSyncing = false;
     }
     return this.writeQueue;
+  }
+
+  commitJsonToHf(jsonText) {
+    return new Promise((resolve, reject) => {
+      const payloadString =
+        JSON.stringify({ key: 'header', value: { summary: 'Sync database.json', description: '' } }) + '\n' +
+        JSON.stringify({ key: 'file', value: {
+          path: 'data/database.json',
+          content: Buffer.from(jsonText, 'utf8').toString('base64'),
+          encoding: 'base64'
+        } }) + '\n';
+
+      const options = {
+        hostname: 'huggingface.co',
+        port: 443,
+        path: `/api/spaces/${this.config.hfRepo}/commit/main`,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.config.hfToken}`,
+          'Content-Type': 'application/x-ndjson',
+          'Content-Length': Buffer.byteLength(payloadString)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve();
+          } else {
+            reject(new Error(`HF Commit HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.write(payloadString);
+      req.end();
+    });
   }
 
   // Commit the database to HF as a BASE64 TEXT file (data/zenitsu.db.b64).
