@@ -1,5 +1,12 @@
 require('dotenv').config();
 
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION SHIELD]', err ? (err.message || err) : 'Unknown error');
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION SHIELD]', reason);
+});
+
 try {
   const ffmpegPath = require('ffmpeg-static');
   if (ffmpegPath) {
