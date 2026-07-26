@@ -123,6 +123,10 @@ class DatabaseManager {
     this._globalCache = null;
     this._guildCache = new Map();
 
+    if (!this.sqlDb) {
+      this._loadJsonDatabase();
+    }
+
     this.syncTimer = null;
     this.writeQueue = Promise.resolve();
     this.lastSuccessfulSync = null;
@@ -177,6 +181,52 @@ class DatabaseManager {
         return Reflect.getOwnPropertyDescriptor(obj, prop);
       }
     });
+  }
+
+  _loadJsonDatabase() {
+    const jsonPaths = [
+      path.join(DATA_DIR, 'database.json'),
+      path.resolve(__dirname, '../../database.json')
+    ];
+    for (const jsonPath of jsonPaths) {
+      if (fs.existsSync(jsonPath)) {
+        try {
+          const raw = fs.readFileSync(jsonPath, 'utf8');
+          const parsed = JSON.parse(raw);
+          if (parsed.global) {
+            this._globalCache = { ...DEFAULT_GLOBAL, ...parsed.global };
+          } else {
+            this._globalCache = { ...DEFAULT_GLOBAL, ...parsed };
+          }
+          if (parsed.guilds) {
+            for (const [gid, gdata] of Object.entries(parsed.guilds)) {
+              this._guildCache.set(gid, { ...DEFAULT_GUILD, ...gdata });
+            }
+          }
+          this.logger.info(`Loaded persistent JSON database from ${jsonPath}`);
+          return;
+        } catch (e) {
+          this.logger.error(`Failed to load ${jsonPath}: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  _persistJsonDatabase() {
+    try {
+      const jsonPath = path.join(DATA_DIR, 'database.json');
+      const guildsObj = {};
+      for (const [gid, gdata] of this._guildCache.entries()) {
+        guildsObj[gid] = gdata;
+      }
+      const data = {
+        global: this._globalCache || DEFAULT_GLOBAL,
+        guilds: guildsObj
+      };
+      fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (e) {
+      this.logger.error('Failed to write data/database.json:', e.message);
+    }
   }
 
   _initTables() {
@@ -565,6 +615,8 @@ Writer:            ${writerStatus}
         }
       });
       transaction();
+    } else {
+      this._persistJsonDatabase();
     }
     if (immediate) {
       if (this.syncTimer) {
@@ -634,6 +686,8 @@ Writer:            ${writerStatus}
         }
       });
       transaction();
+    } else {
+      this._persistJsonDatabase();
     }
     if (immediate) {
       if (this.syncTimer) {
