@@ -1,19 +1,29 @@
-const Database = require('better-sqlite3');
+let Database;
+try {
+  Database = require('better-sqlite3');
+} catch (e) {
+  Database = null;
+}
 const path = require('path');
 const { EmbedBuilder } = require('discord.js');
 
 const DB_PATH = path.join(__dirname, '../data/zenitsu.db');
-const db = new Database(DB_PATH);
-
-// Initialize database schema
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS pending_dm_deletions (
-    message_id TEXT PRIMARY KEY,
-    channel_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    delete_after INTEGER NOT NULL
-  )
-`).run();
+let db = null;
+if (Database) {
+  try {
+    db = new Database(DB_PATH);
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS pending_dm_deletions (
+        message_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        delete_after INTEGER NOT NULL
+      )
+    `).run();
+  } catch (e) {
+    db = null;
+  }
+}
 
 /**
  * Send a clean DM to a user.
