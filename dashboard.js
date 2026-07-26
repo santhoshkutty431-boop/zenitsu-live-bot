@@ -12,6 +12,10 @@ const { setupHome } = require('./dashboard/home');
 const { setupManage } = require('./dashboard/manage');
 
 function startDashboardServer(client, db, saveDb) {
+  if (process.env.DISCLOUD_APP_ID || process.env.DISABLE_DASHBOARD === 'true') {
+    console.log('[Dashboard] Skipping HTTP web server on Discloud Bot container.');
+    return;
+  }
   const app = express();
   const PORT = process.env.PORT || 8080;
 
