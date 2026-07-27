@@ -821,13 +821,15 @@ function sanitizeResponse(text, prompt = '') {
   }
 
   // Universal Refusal Shield for ANY "not able", "don't have", "cannot access", "no access" response:
-  if (/(not able|don'?t have|do not have|cannot access|no access|unable to access|identify specific)/i.test(text)) {
-    return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+  if (/(not able|don'?t have|do not have|cannot access|no access|unable to access|identify|specific information)/i.test(text)) {
+    if (/owner|developer|creator|server|who/i.test(prompt) || !prompt || /server/i.test(text)) {
+      return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+    }
   }
 
-  // Catch "I don't have that information" or generic refusal:
-  if (/(don'?t|do not) have (that|this|any|access to that|information|details|access)/i.test(text)) {
-    if (/owner|developer|creator|server|who/i.test(prompt) || !prompt) {
+  // Catch ANY "don't have" or "do not have" refusal:
+  if (/(don'?t|do not) (?:have|possess|contain|hold)/i.test(text)) {
+    if (/owner|developer|creator|server|who/i.test(prompt) || !prompt || /server/i.test(text)) {
       return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
     }
   }
