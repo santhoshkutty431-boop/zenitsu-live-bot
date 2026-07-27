@@ -1,0 +1,11 @@
+zenitsu-bot-cloud-deploy.zip
+scripts/*.gif
+*.png
+*.jpg
+*.jpeg
+*.zip
+*.db
+*.sqlite
+data/zenitsu.db
+data/zenitsu.db-wal
+data/zenitsu.db-shm
