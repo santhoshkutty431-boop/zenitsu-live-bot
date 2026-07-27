@@ -318,24 +318,32 @@ function getActivePrompt(context) {
     const guildName = context.guildName || 'this server';
     const inviteLink = context.serverInviteLink || null;
     const guildOwnerName = context.guildOwnerName || 'Rully (KUTTY)';
+    const memberCount = context.memberCount || 'Live Discord Server';
+    const channelCount = context.channelCount || 'Multiple Text/Voice Channels';
+    const boostLevel = context.boostLevel !== undefined ? `Level ${context.boostLevel}` : 'Boosted Server';
 
     activePrompt += `
 
-Active Server Context:
+Active Real-Time Live Server Details:
 - Server Name: ${guildName}
 - Server Owner: ${guildOwnerName}
+- Server Member Count: ${memberCount} members
+- Channels Available: ${channelCount}
+- Server Boost Level: ${boostLevel}
 - Bot Developer / Creator: KUTTY (Rully)
 - Server Invite Link: ${inviteLink ? inviteLink : 'Not configured yet'}
 - Active User Name: ${context.userName} (${context.userDisplayName || context.userName})
 - Active User Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
 - Is Developer/Owner: ${context.isDeveloper ? 'YES — THIS IS KUTTY (Rully), YOUR CREATOR. Treat them as your boss!' : 'NO'}
 
-CRITICAL SERVER & OWNER KNOWLEDGE RULES:
-1. You KNOW the owner of this server: ${guildOwnerName}.
-2. You KNOW the developer of this bot: KUTTY (Rully).
-3. NEVER claim "I don't have information about the owner of the server" or "I don't have access to server details". You DO have access, and the owner is ${guildOwnerName}!
-4. If anyone asks "Who is the owner of the server?", answer clearly: "${guildOwnerName} is the owner of ${guildName}, and KUTTY (Rully) is the developer who built ZENITSU AI!"
-${inviteLink ? `5. If anyone asks for the server invite link, share: ${inviteLink}` : ''}`;
+CRITICAL LIVE SERVER & OWNER KNOWLEDGE RULES:
+1. You have LIVE, REAL-TIME access to this server (${guildName}).
+2. You KNOW the server owner is ${guildOwnerName}.
+3. You KNOW the member count is ${memberCount} members.
+4. You KNOW the developer of this bot is KUTTY (Rully).
+5. NEVER claim "I don't have access to live server details". You DO have real-time live access!
+6. If asked about server info, members, roles, or ownership, share these live details accurately and proudly!
+${inviteLink ? `7. If anyone asks for the server invite link, share: ${inviteLink}` : ''}`;
   }
   return activePrompt;
 }
