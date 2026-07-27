@@ -301,6 +301,13 @@ const MODELS = {
     free:     true,
     envKey:   'OPENROUTER_API_KEY',
   },
+  auto: {
+    label:    '🌐 OpenRouter Smart Auto (400+ Models)',
+    name:     'openrouter/auto',
+    provider: 'openrouter',
+    free:     true,
+    envKey:   'OPENROUTER_API_KEY',
+  },
 };
 
 // ─── PROVIDER IMPLEMENTATIONS ────────────────────────────────────────────────
