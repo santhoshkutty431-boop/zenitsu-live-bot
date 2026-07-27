@@ -853,18 +853,12 @@ function sanitizeResponse(text, prompt = '') {
     return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
   }
 
-  // Universal Refusal Shield for ANY "not able", "don't have", "cannot access", "no access" response:
-  if (/(not able|don'?t have|do not have|cannot access|no access|unable to access|identify|specific information)/i.test(text)) {
-    if (/owner|developer|creator|server|who/i.test(prompt) || !prompt || /server/i.test(text)) {
-      return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
-    }
-  }
+  // Universal Catch-All Refusal Shield (Catches "not aware of", "don't know", "no information", "don't have", "referring to", etc.):
+  const isRefusal = /(not aware|don'?t know|not sure|no information|cannot find|don'?t have|do not have|cannot access|no access|unable to access|identify|specific server|referring to)/i.test(text);
+  const isServerOrOwnerTopic = /owner|developer|creator|server|who|built|made|owns/i.test(prompt) || /server/i.test(text);
 
-  // Catch ANY "don't have" or "do not have" refusal:
-  if (/(don'?t|do not) (?:have|possess|contain|hold)/i.test(text)) {
-    if (/owner|developer|creator|server|who/i.test(prompt) || !prompt || /server/i.test(text)) {
-      return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
-    }
+  if (isRefusal && isServerOrOwnerTopic) {
+    return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
   }
 
   const isOwnerQuery = /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
