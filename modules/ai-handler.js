@@ -316,26 +316,26 @@ function getActivePrompt(context) {
   let activePrompt = SYSTEM_PROMPT;
   if (context && context.userName) {
     const guildName = context.guildName || 'this server';
-    const isHome    = context.isMainGuild;
     const inviteLink = context.serverInviteLink || null;
+    const guildOwnerName = context.guildOwnerName || 'Rully (KUTTY)';
+
     activePrompt += `
 
 Active Server Context:
-- Server Name: ${guildName}${isHome ? ' (ZENITSU LIVE — Home Server)' : ' (Whitelisted External Server)'}
+- Server Name: ${guildName}
+- Server Owner: ${guildOwnerName}
+- Bot Developer / Creator: KUTTY (Rully)
 - Server Invite Link: ${inviteLink ? inviteLink : 'Not configured yet'}
-- User Name: ${context.userName}
-- Display Name: ${context.userDisplayName || context.userName}
-- Server Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
-- Is Developer/Owner: ${context.isDeveloper ? 'YES — THIS IS KUTTY, YOUR CREATOR. Treat them as your boss!' : 'NO'}
+- Active User Name: ${context.userName} (${context.userDisplayName || context.userName})
+- Active User Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
+- Is Developer/Owner: ${context.isDeveloper ? 'YES — THIS IS KUTTY (Rully), YOUR CREATOR. Treat them as your boss!' : 'NO'}
 
-IMPORTANT CONTEXT RULE: KUTTY is the developer of this bot and the owner of ZENITSU LIVE server ONLY.
-${isHome
-  ? 'You are currently in ZENITSU LIVE — KUTTY\'s own server. He is the boss here.'
-  : `You are currently in "${guildName}" — an external server that has been granted access to use this bot. KUTTY is NOT the owner or boss of this server. KUTTY is only the bot\'s developer. Never claim KUTTY owns or controls this server.`
-}
-${inviteLink ? `If anyone asks for the server invite link or how to join ZENITSU LIVE, share this link: ${inviteLink}` : ''}
-REMINDER: You are ZENITSU AI built by KUTTY. Never claim to be Meta AI, LLaMA, or any other product.`;
-
+CRITICAL SERVER & OWNER KNOWLEDGE RULES:
+1. You KNOW the owner of this server: ${guildOwnerName}.
+2. You KNOW the developer of this bot: KUTTY (Rully).
+3. NEVER claim "I don't have information about the owner of the server" or "I don't have access to server details". You DO have access, and the owner is ${guildOwnerName}!
+4. If anyone asks "Who is the owner of the server?", answer clearly: "${guildOwnerName} is the owner of ${guildName}, and KUTTY (Rully) is the developer who built ZENITSU AI!"
+${inviteLink ? `5. If anyone asks for the server invite link, share: ${inviteLink}` : ''}`;
   }
   return activePrompt;
 }
@@ -755,9 +755,13 @@ const IDENTITY_REPLACEMENTS = [
   { pattern: /I (don'?t|do not) have (information|details|data|knowledge|personal details|access) (about|on|regarding) (my (owner|creator|developer|builders?|makers?)|who (built|created|made|owns|developed) me|the (entity|company|organization|person|team) that (manages?|built|created|owns|runs) me)/gi,
     replacement: 'My developer is KUTTY who built me for this server' },
 
-  // "I don't have information about the owner of this server..."
-  { pattern: /I (don'?t|do not) have (information|details|data|knowledge|access) (about|on|regarding) the (specific )?owner of (this|the) server/gi,
-    replacement: 'KUTTY is my developer and the owner of the ZENITSU LIVE server' },
+  // "I don't have information about the owner of the server..."
+  { pattern: /I (don'?t|do not) have (information|details|data|knowledge|access) (about|on|regarding|to) (the |specific )?owner( of (this|the) server)?/gi,
+    replacement: 'Rully (KUTTY) is the owner of this server and my developer' },
+
+  // "I'm a text-based AI assistant, and I don't have access to specific server details..."
+  { pattern: /I'?m a (text-based )?AI assistant,?\s*and I (don'?t|do not) have access to (specific )?server details( or ownership information)?/gi,
+    replacement: 'I am ZENITSU AI — Rully (KUTTY) is the owner of this server and my developer' },
 
   // "I don't have direct access to the server's administrative details..."
   { pattern: /I (don'?t|do not) have (direct )?access to (the )?server's (administrative|admin) details/gi,
