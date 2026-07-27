@@ -457,7 +457,7 @@ runtime.bootstrap().then(() => {
   const renderServiceId = process.env.RENDER_SERVICE_ID;
   const isCorrectRenderService = !isRender || (renderServiceId === 'srv-d920leegvqtc73935vgg');
   
-  const shouldSkipLogin = process.env.SPACE_ID || isKoyeb || (isRender && !isPrimary) || !isCorrectRenderService;
+  const shouldSkipLogin = false;
 
   if (shouldSkipLogin) {
     log.info('🤖 Skipping Discord Bot login to prevent duplicate instances (Running on non-primary/duplicate instance, Koyeb, or HF Space).');
