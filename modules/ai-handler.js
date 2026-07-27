@@ -751,6 +751,10 @@ const IDENTITY_REPLACEMENTS = [
   { pattern: /I('m| am) (an? )?(AI|artificial intelligence|virtual assistant|chatbot|digital assistant|automated system)( assistant| system)? (designed|built|made|created|trained|here) to (provide|help|assist|answer|offer)/gi,
     replacement: "I'm ZENITSU AI and I'm here to" },
 
+  // "Unfortunately, I don't have access to that information. I'm a large language model..."
+  { pattern: /(Unfortunately,?\s*)?I (don'?t|do not) have (access|information|details|the ability|knowledge) (to|about|on|regarding) (that|this|server|the|specifics)[\s\S]*?(?=Is there anything else|\.|$)/gi,
+    replacement: '⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)!' },
+
   // "I don't have information about my owner / who built me..."
   { pattern: /I (don'?t|do not) have (information|details|data|knowledge|personal details|access) (about|on|regarding) (my (owner|creator|developer|builders?|makers?)|who (built|created|made|owns|developed) me|the (entity|company|organization|person|team) that (manages?|built|created|owns|runs) me)/gi,
     replacement: 'My developer is KUTTY who built me for this server' },
