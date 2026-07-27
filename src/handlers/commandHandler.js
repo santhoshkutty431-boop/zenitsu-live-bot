@@ -1689,11 +1689,20 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
     // /dev-ai — natural-language server agent (owner + AI_EXECUTE whitelist)
     else if (cmd === 'dev-ai') {
-      await interaction.deferReply({ ephemeral: true });
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+      }
       const promptText = interaction.options.getString('prompt');
 
       try {
-        const { plan, error } = await devAi.planActions(runtime, interaction.user.id, promptText);
+        // Race AI planner against an 8-second timeout guard
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AI Planner timed out after 8 seconds. Please try again with a clearer request.')), 8000)
+        );
+
+        const planPromise = devAi.planActions(runtime, interaction.user.id, promptText);
+        const { plan, error } = await Promise.race([planPromise, timeoutPromise]);
+
         if (error) {
           return interaction.editReply({ content: `❌ ${error}` }).catch(() => {});
         }
@@ -1734,9 +1743,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           .setColor(0x2ECC71)
           .setTimestamp();
         await interaction.editReply({ embeds: [embed] }).catch(() => {});
-        await logToChannel(interaction.guild, ID.MOD_LOG, embed).catch(() => {});
       } catch (err) {
-        await interaction.editReply({ content: `❌ DEV-AI Error: ${err.message}` }).catch(() => {});
+        await interaction.editReply({ content: `❌ DEV-AI Execution Error: ${err.message}` }).catch(() => {});
       }
     }
 
