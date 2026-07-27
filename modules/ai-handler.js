@@ -812,6 +812,13 @@ function sanitizeResponse(text, prompt = '') {
     return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
   }
 
+  // Catch "I don't have that information" or generic refusal:
+  if (/(don'?t|do not) have (that|this|any|access to that|information|details|access)/i.test(text)) {
+    if (/owner|developer|creator|server|who/i.test(prompt) || !prompt) {
+      return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+    }
+  }
+
   const isOwnerQuery = /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
                        /who\s+owns?\s+(this|the)?\s*server/i.test(prompt) ||
                        /who\s+is\s+(the\s+)?owner/i.test(prompt) ||

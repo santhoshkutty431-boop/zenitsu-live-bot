@@ -3021,7 +3021,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         const result = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
           applicationId: interaction.client.application?.id || 'default',
           guildId:       interaction.guildId || 'dm',
-          guildName:     interaction.guild?.name || 'Unknown Server',
+          guildName:     interaction.guild?.name || 'ZENITSU LIVE',
+          guildOwnerName: 'Rully (KUTTY)',
           isMainGuild:   interaction.guildId === config.guildId,
           serverInviteLink: db.serverInviteLink || null,
           channelId:     interaction.channelId || 'none',
