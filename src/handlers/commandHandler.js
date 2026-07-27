@@ -223,8 +223,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         params[opt.name] = opt.value;
       });
 
-      const dbService = runtime.getService('DatabaseManager');
-      if (dbService) {
+      const dbService = runtime?.getService ? runtime.getService('DatabaseManager') : null;
+      if (dbService && typeof dbService.recordAudit === 'function') {
         dbService.recordAudit(
           interaction.guildId,
           interaction.user.id,
@@ -237,15 +237,17 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
     }
 
     // Publish COMMAND_RUN event to EventBus
-    runtime.eventBus.publish('COMMAND_RUN', { commandName: cmd });
+    if (runtime?.eventBus?.publish) {
+      runtime.eventBus.publish('COMMAND_RUN', { commandName: cmd });
+    }
 
     // v4.0 Runtime command router delegation
     if (db.featureFlags?.musicSystem === false && ['play', 'nowplaying', 'play-now', 'pause', 'queue', 'setup-music'].includes(cmd)) {
       return interaction.reply({ content: '❌ The music playback system is currently disabled by the bot owner.', ephemeral: true });
     }
 
-    const commandRouter = runtime.getService('CommandRouter');
-    if (commandRouter.commands.has(cmd)) {
+    const commandRouter = runtime?.getService ? runtime.getService('CommandRouter') : null;
+    if (commandRouter?.commands?.has(cmd)) {
       return commandRouter.route(interaction);
     }
 
