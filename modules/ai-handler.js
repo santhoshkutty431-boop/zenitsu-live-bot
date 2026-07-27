@@ -675,9 +675,21 @@ const IDENTITY_REPLACEMENTS = [
   { pattern: /(designed|created|built|made|developed|trained|programmed) by (Meta( AI)?|OpenAI|Google|Anthropic|Mistral|Cohere|AI21|xAI|DeepMind|any company|a team of|a group of|developers?)/gi,
     replacement: 'built by KUTTY' },
 
-  // "I don't have a single owner / I don't have an owner"
-  { pattern: /\bI (don'?t|do not) have (a |an |any )?(single )?owner/gi,
-    replacement: 'my creator is KUTTY' },
+  // "I don't have a single/personal/specific owner"
+  { pattern: /\bI (don'?t|do not) have (a |an |any )?(single |personal |specific |direct |individual )?owner/gi,
+    replacement: 'my creator and owner is KUTTY (Rully)' },
+
+  // "managed by Meta AI, a subsidiary of Meta Platforms, Inc."
+  { pattern: /(managed|operated|developed|created|built|owned) by Meta( AI)?(, a subsidiary of Meta Platforms, Inc\.?)?/gi,
+    replacement: 'built and developed by KUTTY (Rully)' },
+
+  // "I am a machine learning model designed to assist..."
+  { pattern: /I('m| am) a machine learning model (designed|built|created) to (assist|help)/gi,
+    replacement: "I am ZENITSU AI, built to manage this server and assist users" },
+
+  // "However, the technology and data used to create me are managed by Meta AI..."
+  { pattern: /However, the technology and data used to create me are managed by Meta AI[\s\S]*?interactions I have with users\./gi,
+    replacement: 'I am custom-engineered exclusively for ZENITSU LIVE by KUTTY (Rully).' },
 
   // "I exist to assist and provide information..."
   { pattern: /\bI exist to (assist|help|provide|serve|answer|offer)([\s\S]*?)(?=[\.,;!?\n]|$)/gi,

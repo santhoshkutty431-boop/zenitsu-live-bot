@@ -1,5 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, InteractionType } = require('discord.js');
 const config = require('../../config');
+const ID = config.channelIds || {};
 const { handleAiEmbed } = require('../../modules/ai-embed');
 const { queryAI, clearHistory } = require('../../modules/ai-handler');
 const { handleAiDraw } = require('../../modules/ai-features');
