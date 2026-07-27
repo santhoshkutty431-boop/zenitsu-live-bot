@@ -1692,52 +1692,52 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       await interaction.deferReply({ ephemeral: true });
       const promptText = interaction.options.getString('prompt');
 
-      // 1. Ask the LLM for a structured plan
-      const { plan, error } = await devAi.planActions(runtime, interaction.user.id, promptText);
-      if (error) {
-        return interaction.editReply({ content: `❌ ${error}` }).catch(() => {});
-      }
-      if (!plan.actions.length) {
-        return interaction.editReply({
-          content: `🤔 I couldn't map that to an action.\n> ${plan.summary || 'No actionable request found.'}`
-        }).catch(() => {});
-      }
+      try {
+        const { plan, error } = await devAi.planActions(runtime, interaction.user.id, promptText);
+        if (error) {
+          return interaction.editReply({ content: `❌ ${error}` }).catch(() => {});
+        }
+        if (!plan || !plan.actions || !plan.actions.length) {
+          return interaction.editReply({
+            content: `🤔 I couldn't map that to an action.\n> ${plan?.summary || 'No actionable request found.'}`
+          }).catch(() => {});
+        }
 
-      const execCtx = { db, saveDb, actorId: interaction.user.id, actorTag: interaction.user.tag };
+        const execCtx = { db, saveDb, actorId: interaction.user.id, actorTag: interaction.user.tag };
 
-      // 2. Destructive plans need explicit confirmation
-      if (devAi.planIsDestructive(plan)) {
-        const id = generateAuditId();
-        pendingDevAiPlans.set(id, { plan, prompt: promptText, actorId: interaction.user.id, ts: Date.now() });
-        // Auto-expire after 2 minutes
-        setTimeout(() => pendingDevAiPlans.delete(id), 120000);
+        if (devAi.planIsDestructive(plan)) {
+          const id = generateAuditId();
+          pendingDevAiPlans.set(id, { plan, prompt: promptText, actorId: interaction.user.id, ts: Date.now() });
+          setTimeout(() => pendingDevAiPlans.delete(id), 120000);
 
+          const embed = new EmbedBuilder()
+            .setTitle('🔒 DEV-AI — Confirm Destructive Actions')
+            .setDescription(`**Request:** ${promptText}\n\n**Plan:**\n${devAi.summarizePlan(plan)}\n\n⚠️ This includes destructive actions. Confirm to run.`)
+            .setColor(0xF39C12)
+            .setFooter({ text: `Plan ${id}` })
+            .setTimestamp();
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`devai_confirm_${id}`).setLabel('✅ Confirm & Run').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`devai_reject_${id}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+          );
+          return interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
+        }
+
+        const results = [];
+        for (const action of plan.actions) {
+          try { results.push('✅ ' + await devAi.executeAction(interaction.guild, action, execCtx)); }
+          catch (e) { results.push(`❌ ${action.tool}: ${e.message}`); }
+        }
         const embed = new EmbedBuilder()
-          .setTitle('🔒 DEV-AI — Confirm Destructive Actions')
-          .setDescription(`**Request:** ${promptText}\n\n**Plan:**\n${devAi.summarizePlan(plan)}\n\n⚠️ This includes destructive actions. Confirm to run.`)
-          .setColor(0xF39C12)
-          .setFooter({ text: `Plan ${id}` })
+          .setTitle('🧠 DEV-AI — Done')
+          .setDescription(`**Request:** ${promptText}\n${plan.summary ? `> ${plan.summary}\n` : ''}\n${results.join('\n')}`)
+          .setColor(0x2ECC71)
           .setTimestamp();
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`devai_confirm_${id}`).setLabel('✅ Confirm & Run').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId(`devai_reject_${id}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
-        );
-        return interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
+        await interaction.editReply({ embeds: [embed] }).catch(() => {});
+        await logToChannel(interaction.guild, ID.MOD_LOG, embed).catch(() => {});
+      } catch (err) {
+        await interaction.editReply({ content: `❌ DEV-AI Error: ${err.message}` }).catch(() => {});
       }
-
-      // 3. Safe plan — execute immediately
-      const results = [];
-      for (const action of plan.actions) {
-        try { results.push('✅ ' + await devAi.executeAction(interaction.guild, action, execCtx)); }
-        catch (e) { results.push(`❌ ${action.tool}: ${e.message}`); }
-      }
-      const embed = new EmbedBuilder()
-        .setTitle('🧠 DEV-AI — Done')
-        .setDescription(`**Request:** ${promptText}\n${plan.summary ? `> ${plan.summary}\n` : ''}\n${results.join('\n')}`)
-        .setColor(0x2ECC71)
-        .setTimestamp();
-      await interaction.editReply({ embeds: [embed] }).catch(() => {});
-      await logToChannel(interaction.guild, ID.MOD_LOG, embed).catch(() => {});
     }
 
     else if (cmd === 'owner-help') {
