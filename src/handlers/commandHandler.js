@@ -982,13 +982,15 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         return interaction.reply({ content: '❌ The AI conversation feature is currently disabled by the bot owner.', ephemeral: true });
       }
 
-      const dbService = runtime.getService('DatabaseManager');
-      const allowed = dbService.checkAndRecordQuery(interaction.guildId, interaction.user.id);
-      if (!allowed) {
-        return interaction.reply({
-          content: "⏳ You've reached your hourly AI query limit. Try again later.",
-          ephemeral: true
-        });
+      const dbService = runtime?.getService ? runtime.getService('DatabaseManager') : null;
+      if (dbService && typeof dbService.checkAndRecordQuery === 'function') {
+        const allowed = dbService.checkAndRecordQuery(interaction.guildId, interaction.user.id);
+        if (!allowed) {
+          return interaction.reply({
+            content: "⏳ You've reached your hourly AI query limit. Try again later.",
+            ephemeral: true
+          });
+        }
       }
 
       if (db.aiChannelId && interaction.channelId !== db.aiChannelId) {
@@ -1032,7 +1034,8 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
         const result   = await queryAI(interaction.user.id, prompt, modelKey, userLang, {
           applicationId: interaction.client.application?.id || 'default',
           guildId:       interaction.guildId || 'dm',
-          guildName:     interaction.guild?.name || 'Unknown Server',
+          guildName:     interaction.guild?.name || 'ZENITSU LIVE',
+          guildOwnerName: 'Rully (KUTTY)',
           isMainGuild:   interaction.guildId === config.guildId,
           serverInviteLink: db.serverInviteLink || null,
           channelId:     interaction.channelId || 'none',
