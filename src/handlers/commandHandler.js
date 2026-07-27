@@ -1011,6 +1011,27 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       await interaction.deferReply();
 
       const prompt = interaction.options.getString('prompt');
+
+      // Zero-latency hardcoded owner query handler (bypasses LLM API calls entirely)
+      if (/who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
+          /who\s+owns?\s+(this|the)?\s*server/i.test(prompt) ||
+          /who\s+is\s+(the\s+)?owner/i.test(prompt) ||
+          /owner/i.test(prompt)) {
+        return interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('⚡ ZENITSU AI')
+              .setColor('#00FF88')
+              .setThumbnail(interaction.client.user.displayAvatarURL())
+              .addFields(
+                { name: '💬 Your Question', value: prompt },
+                { name: '🤖 Answer', value: `<@${interaction.user.id}>\n\n⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀` }
+              )
+              .setFooter({ text: 'ZENITSU AI • Built by KUTTY' })
+              .setTimestamp()
+          ]
+        });
+      }
       const modelKey = interaction.options.getString('model') || db.aiDefaultModel || 'gemini';
       try {
         const guildId = interaction.guildId;
