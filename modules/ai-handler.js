@@ -671,7 +671,7 @@ Now give the user a complete, helpful answer based on these search results. Be d
 
     // ── OUTPUT IDENTITY SANITIZER ─────────────────────────────────────────────
     // Final defence — rewrites any base-model identity leakage before Discord sees it.
-    responseText = sanitizeResponse(responseText);
+    responseText = sanitizeResponse(responseText, prompt);
 
     // Trim response for Discord limits (4096 char embed limit)
     if (responseText.length > 3800) {
@@ -800,12 +800,30 @@ const IDENTITY_REPLACEMENTS = [
     replacement: 'I can still work with' },
 ];
 
-function sanitizeResponse(text) {
+function sanitizeResponse(text, prompt = '') {
   if (typeof text !== 'string') return text;
+
+  const isOwnerQuery = /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)\s+server)?/i.test(prompt) ||
+                       /who\s+owns?\s+(this|the)\s+server/i.test(prompt) ||
+                       /who\s+is\s+(the\s+)?owner/i.test(prompt);
+
+  const containsRefusal = /I (don'?t|do not) have (that|this|information|details|access)|As a conversational AI|don'?t have direct access to server details|ownership information|checking with the server administrator/i.test(text);
+
+  if (isOwnerQuery && containsRefusal) {
+    return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+  }
+
   let sanitized = text;
   for (const { pattern, replacement } of IDENTITY_REPLACEMENTS) {
     sanitized = sanitized.replace(pattern, replacement);
   }
+
+  if (/don'?t have (that|this|information|details|access)|As a conversational AI|don'?t have direct access to server details|ownership information/i.test(sanitized)) {
+    if (isOwnerQuery) {
+      return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+    }
+  }
+
   if (sanitized !== text) {
     console.log('[AI SANITIZER] Identity violation corrected in AI response.');
   }
