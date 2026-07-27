@@ -13,8 +13,9 @@ RUN npm install --omit=dev
 # Copy all source files
 COPY . .
 
-# Cloud Run requires port 8080 for health checks
-ENV PORT=8080
+# Hugging Face Spaces uses port 7860 for container health checks
+ENV PORT=7860
+EXPOSE 7860
 
 # Start the bot
 CMD ["node", "index.js"]
