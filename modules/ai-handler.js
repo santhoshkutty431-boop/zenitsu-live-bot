@@ -666,12 +666,12 @@ Now give the user a complete, helpful answer based on these search results. Be d
     }
 
 
+    // ── OUTPUT IDENTITY SANITIZER ─────────────────────────────────────────────
+    // Final defence — rewrites any base-model identity leakage before Discord sees it or saves to memory.
+    responseText = sanitizeResponse(responseText, prompt);
+
     addToHistory(userId, 'user',      prompt, context);
     addToHistory(userId, 'assistant', responseText, context);
-
-    // ── OUTPUT IDENTITY SANITIZER ─────────────────────────────────────────────
-    // Final defence — rewrites any base-model identity leakage before Discord sees it.
-    responseText = sanitizeResponse(responseText, prompt);
 
     // Trim response for Discord limits (4096 char embed limit)
     if (responseText.length > 3800) {
