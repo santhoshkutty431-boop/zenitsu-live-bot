@@ -807,10 +807,15 @@ const IDENTITY_REPLACEMENTS = [
 function sanitizeResponse(text, prompt = '') {
   if (typeof text !== 'string') return text;
 
+  // Top-level guard: If response mentions "owner" with ANY refusal phrase, FORCE return true owner!
+  if (/owner/i.test(text) && /(don'?t|do not|no |not aware|cannot|unable|clarify|provide|specific server|large language model|assistant)/i.test(text)) {
+    return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+  }
+
   const isOwnerQuery = /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
                        /who\s+owns?\s+(this|the)?\s*server/i.test(prompt) ||
                        /who\s+is\s+(the\s+)?owner/i.test(prompt) ||
-                       /owner\s+of\s+(this|the)?\s*server/i.test(prompt);
+                       /owner/i.test(prompt);
 
   if (isOwnerQuery) {
     return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
