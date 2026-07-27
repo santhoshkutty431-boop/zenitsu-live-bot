@@ -287,6 +287,20 @@ const MODELS = {
     free:     true,
     envKey:   'GROQ_API_KEY',
   },
+  openrouter: {
+    label:    '🧠 DeepSeek-R1 (OpenRouter)',
+    name:     'deepseek/deepseek-r1:free',
+    provider: 'openrouter',
+    free:     true,
+    envKey:   'OPENROUTER_API_KEY',
+  },
+  qwen: {
+    label:    '🔮 Qwen 2.5 72B (OpenRouter)',
+    name:     'qwen/qwen-2.5-72b-instruct:free',
+    provider: 'openrouter',
+    free:     true,
+    envKey:   'OPENROUTER_API_KEY',
+  },
 };
 
 // ─── PROVIDER IMPLEMENTATIONS ────────────────────────────────────────────────
@@ -393,6 +407,32 @@ async function callGroq(model, messages, context) {
   return res.choices[0].message.content;
 }
 
+async function callOpenRouter(model, messages, context) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY not set in environment variables.');
+
+  const activePrompt = getActivePrompt(context);
+  const res = await httpsPost(
+    'openrouter.ai',
+    '/api/v1/chat/completions',
+    {
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://zenitsu-live-bot.onrender.com',
+      'X-Title': 'ZENITSU AI'
+    },
+    {
+      model:       model.name,
+      messages:    [{ role: 'system', content: activePrompt }, ...messages],
+      max_tokens:  1024,
+      temperature: 0.7,
+    }
+  );
+
+  if (res.error) throw new Error(res.error.message || JSON.stringify(res.error));
+  if (!res.choices?.length) throw new Error('No response choices returned from OpenRouter.');
+  return res.choices[0].message.content;
+}
+
 // ─── MAIN QUERY FUNCTION ─────────────────────────────────────────────────────
 
 // Mutex locking system to serialize concurrent operations per session context.
@@ -490,9 +530,9 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
     // Define failover order
     let failoverQueue = [];
     if (modelKey === 'gpt4o' || modelKey === 'gpt35') {
-      failoverQueue = [modelKey, 'groq', 'gemini'];
+      failoverQueue = [modelKey, 'openrouter', 'groq', 'gemini', 'qwen'];
     } else {
-      failoverQueue = [modelKey, 'groq', 'gemini', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
+      failoverQueue = [modelKey, 'openrouter', 'groq', 'gemini', 'qwen', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
     }
 
     let attemptErrorLogs = [];
@@ -536,9 +576,10 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
       const t0 = Date.now();
       try {
         let response;
-        if      (model.provider === 'google') response = await callGemini(model, messages, context);
-        else if (model.provider === 'openai') response = await callOpenAI(model, messages, context);
-        else if (model.provider === 'groq')   response = await callGroq(model, messages, context);
+        if      (model.provider === 'google')     response = await callGemini(model, messages, context);
+        else if (model.provider === 'openai')     response = await callOpenAI(model, messages, context);
+        else if (model.provider === 'groq')       response = await callGroq(model, messages, context);
+        else if (model.provider === 'openrouter') response = await callOpenRouter(model, messages, context);
         else throw new Error('Unknown provider');
 
         responseText = response;
