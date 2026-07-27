@@ -1,6 +1,7 @@
 {
   "songQueue": [],
   "activeTickets": {},
+  "aiTickets": {},
   "bypasses": {
     "6428632983": {
       "status": "Bypassed",
@@ -19,9 +20,60 @@
   "roleWhitelist": [
     "6428632983"
   ],
-  "deletedMessages": [],
-  "cases": [],
+  "guildWhitelists": {
+    "1444533392518680719": {
+      "users": {
+        "6428632983": [
+          "ALL_PERMISSIONS",
+          "AI_ACTIONS",
+          "AI_AUTOMATION",
+          "SECURITY_OVERRIDE",
+          "BYPASS_PROTECTION",
+          "OWNER_ACCESS"
+        ]
+      },
+      "roles": {}
+    }
+  },
+  "commandRoleWhitelist": {
+    "admin": [
+      "6428632983"
+    ],
+    "staff": [
+      "6428632983"
+    ],
+    "member": []
+  },
+  "roleCapabilities": {
+    "1444720514345209937": [
+      "SECURITY_MANAGE",
+      "SECURITY_BYPASS",
+      "MODERATION_BAN",
+      "MODERATION_MUTE",
+      "MODERATION_WARN",
+      "MOD_LOGS_VIEW",
+      "AI_USE",
+      "TICKETS_MANAGE",
+      "CASES_MANAGE"
+    ],
+    "1521573583766294728": [
+      "MODERATION_MUTE",
+      "MODERATION_WARN",
+      "MOD_LOGS_VIEW",
+      "AI_USE",
+      "TICKETS_MANAGE",
+      "CASES_MANAGE"
+    ],
+    "1499463599796654100": [
+      "AI_USE",
+      "TICKETS_MANAGE"
+    ]
+  },
+  "permissionSchemaVersion": 4,
+  "deletedMessages": {},
+  "cases": {},
   "caseCounter": 0,
+  "warnings": {},
   "securityConfig": {
     "antiRaidEnabled": true,
     "joinRateLimit": 10,
@@ -46,17 +98,241 @@
   },
   "aiChannelId": null,
   "aiDefaultModel": "gemini",
-  "serverWhitelist": [
-    "1460908819335876756"
-  ],
   "ticketLanguages": {},
   "userLanguages": {},
-  "guildWhitelists": {},
-  "permissionSchemaVersion": 4,
-  "warnings": {},
-  "commandRoleWhitelist": {
-    "admin": [],
-    "staff": [],
-    "member": []
-  }
+  "serverWhitelist": [
+    "1444533392518680719"
+  ],
+  "developerList": [
+    "6428632983"
+  ],
+  "setupCompleted": false,
+  "setupChannelFallback": null,
+  "metadata": {
+    "name": "",
+    "ownerId": "",
+    "memberCount": 0,
+    "channels": [
+      {
+        "id": "1522668739844247892",
+        "name": "bypass",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1445744625607507980",
+        "name": "📸┆feedback",
+        "parentId": "1444533393688760413"
+      },
+      {
+        "id": "1523334012796665970",
+        "name": "🔒┆ai-analytics",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1444546036617056267",
+        "name": "discord-stuff",
+        "parentId": null
+      },
+      {
+        "id": "1444538404212834335",
+        "name": "📁┆feedback-archive",
+        "parentId": "1444538003824447621"
+      },
+      {
+        "id": "1523332003183984880",
+        "name": "⚖️┆mod-log",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1523051708781953084",
+        "name": "💬┆general-chat",
+        "parentId": "1444533393688760413"
+      },
+      {
+        "id": "1444533393688760414",
+        "name": "🎙️┆public-vc",
+        "parentId": "1444534096825946153"
+      },
+      {
+        "id": "1460245030102110402",
+        "name": "🎁┆free-panel",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1444537473748439161",
+        "name": "🎙️┆trio-vc",
+        "parentId": "1444534096825946153"
+      },
+      {
+        "id": "1460151022088491059",
+        "name": "🎥┆streamer-panel",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1453191409141158093",
+        "name": "🎯┆aim-silent",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1460147753576300597",
+        "name": "💀┆aim-kill",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1455565235426562173",
+        "name": "🎯┆-resources",
+        "parentId": "1449099333508141196"
+      },
+      {
+        "id": "1521940886165131446",
+        "name": "🛡️┆protectme-logs",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1521553349084713010",
+        "name": "📢┆client-announcements",
+        "parentId": "1449099333508141196"
+      },
+      {
+        "id": "1523333922245705860",
+        "name": "📋┆server-logs",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1460152325267128520",
+        "name": "🔍┆uid-bypass",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1521577051516047573",
+        "name": "🎙️┆voice-log",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1444533393688760415",
+        "name": "🎙️┆duo-vc",
+        "parentId": "1444534096825946153"
+      },
+      {
+        "id": "1444533393688760411",
+        "name": "👋┆welcome",
+        "parentId": "1444533393688760410"
+      },
+      {
+        "id": "1454297254079762482",
+        "name": "📈┆invite-tracker",
+        "parentId": "1444533393688760410"
+      },
+      {
+        "id": "1528456459350966352",
+        "name": "📁-resources",
+        "parentId": "1460870443174068306"
+      },
+      {
+        "id": "1446095251612762112",
+        "name": "💸┆payment-proof",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1444538212583473162",
+        "name": "🎫┆ticket-center",
+        "parentId": "1444538003824447621"
+      },
+      {
+        "id": "1460149421177045112",
+        "name": "🖥️┆panel-external",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1449290971391983747",
+        "name": "🔒┆private-vc",
+        "parentId": "1444534096825946153"
+      },
+      {
+        "id": "1523333975169302639",
+        "name": "🚨┆mod-reports",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1521940599031333045",
+        "name": "👑┆staff-chat",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1460149291996676188",
+        "name": "⚙️┆panel-internal",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1460152526463832097",
+        "name": "💻┆basic-panel",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1460152237836730419",
+        "name": "🛡️┆bypass-emulator",
+        "parentId": "1460243779322777672"
+      },
+      {
+        "id": "1444538272884981882",
+        "name": "📜┆rules",
+        "parentId": "1444533393688760410"
+      },
+      {
+        "id": "1505382439017644212",
+        "name": "🛠️┆beta-tools",
+        "parentId": "1460870443174068306"
+      },
+      {
+        "id": "1523332061425963031",
+        "name": "🗑️┆message-log",
+        "parentId": "1444548713531047986"
+      },
+      {
+        "id": "1522048463968141462",
+        "name": "📢┆announcements",
+        "parentId": "1444533393688760410"
+      },
+      {
+        "id": "1444537666849734656",
+        "name": "🎙️┆squad-vc",
+        "parentId": "1444534096825946153"
+      },
+      {
+        "id": "1460870595297284387",
+        "name": "📲┆free-fire-apk",
+        "parentId": "1460870443174068306"
+      },
+      {
+        "id": "1449099449203691570",
+        "name": "💬┆client-chat",
+        "parentId": "1449099333508141196"
+      }
+    ],
+    "roles": []
+  },
+  "approvedChannels": {
+    "rules": null,
+    "faq": null,
+    "announcements": null,
+    "guides": null
+  },
+  "optionalAccess": {
+    "ticketHistory": false,
+    "moderationLogs": false
+  },
+  "documents": [],
+  "indexVersion": 0,
+  "indexPaused": false,
+  "costState": {
+    "embeddingCallsThisHour": 0,
+    "hourWindowStart": null,
+    "embeddingBudgetPerHour": 500
+  },
+  "rateLimits": {
+    "queriesPerUserPerHour": 60,
+    "userQueryLog": {}
+  },
+  "ticketImage": "https://zenitsu-live-bot.onrender.com/uploads/1444533392518680719/ticket",
+  "welcomeImage": "https://zenitsu-live-bot.onrender.com/uploads/1444533392518680719/welcome"
 }
