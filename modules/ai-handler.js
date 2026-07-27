@@ -807,8 +807,13 @@ const IDENTITY_REPLACEMENTS = [
 function sanitizeResponse(text, prompt = '') {
   if (typeof text !== 'string') return text;
 
-  // Top-level guard: If response mentions "owner" with ANY refusal phrase, FORCE return true owner!
-  if (/owner/i.test(text) && /(don'?t|do not|no |not aware|cannot|unable|clarify|provide|specific server|large language model|assistant)/i.test(text)) {
+  // Universal Top Guard for any response containing "owner" or "ownership":
+  if (/owner|ownership/i.test(text) && /(don'?t|do not|not able|no |not aware|cannot|unable|clarify|provide|specific server|large language model|assistant|identify)/i.test(text)) {
+    return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
+  }
+
+  // Universal Refusal Shield for ANY "not able", "don't have", "cannot access", "no access" response:
+  if (/(not able|don'?t have|do not have|cannot access|no access|unable to access|identify specific)/i.test(text)) {
     return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
   }
 
