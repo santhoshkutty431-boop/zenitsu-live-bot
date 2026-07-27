@@ -2,8 +2,12 @@
   "global": {
     "permissionSchemaVersion": 4,
     "commandRoleWhitelist": {
-      "admin": [],
-      "staff": [],
+      "admin": [
+        "6428632983"
+      ],
+      "staff": [
+        "6428632983"
+      ],
       "member": []
     },
     "serverWhitelist": [
@@ -30,7 +34,9 @@
         "lastMessage": 1782844093036
       }
     },
-    "roleWhitelist": [],
+    "roleWhitelist": [
+      "6428632983"
+    ],
     "deletedMessages": [],
     "cases": [],
     "caseCounter": 0,
@@ -60,8 +66,25 @@
     "aiDefaultModel": "gemini",
     "ticketLanguages": {},
     "userLanguages": {},
-    "guildWhitelists": {},
-    "warnings": {}
+    "guildWhitelists": {
+      "1444533392518680719": {
+        "users": {
+          "6428632983": [
+            "ALL_PERMISSIONS",
+            "AI_ACTIONS",
+            "AI_AUTOMATION",
+            "SECURITY_OVERRIDE",
+            "BYPASS_PROTECTION",
+            "OWNER_ACCESS"
+          ]
+        },
+        "roles": {}
+      }
+    },
+    "warnings": {},
+    "developerList": [
+      "6428632983"
+    ]
   },
   "guilds": {
     "1445422164814729249": {
@@ -85,12 +108,12 @@
           },
           {
             "id": "1445744625607507980",
-            "name": "\ud83d\udcf8\u2506feedback",
+            "name": "📸┆feedback",
             "parentId": "1444533393688760413"
           },
           {
             "id": "1523334012796665970",
-            "name": "\ud83d\udd12\u2506ai-analytics",
+            "name": "🔒┆ai-analytics",
             "parentId": "1444548713531047986"
           },
           {
@@ -100,177 +123,177 @@
           },
           {
             "id": "1444538404212834335",
-            "name": "\ud83d\udcc1\u2506feedback-archive",
+            "name": "📁┆feedback-archive",
             "parentId": "1444538003824447621"
           },
           {
             "id": "1523332003183984880",
-            "name": "\u2696\ufe0f\u2506mod-log",
+            "name": "⚖️┆mod-log",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1523051708781953084",
-            "name": "\ud83d\udcac\u2506general-chat",
+            "name": "💬┆general-chat",
             "parentId": "1444533393688760413"
           },
           {
             "id": "1444533393688760414",
-            "name": "\ud83c\udf99\ufe0f\u2506public-vc",
+            "name": "🎙️┆public-vc",
             "parentId": "1444534096825946153"
           },
           {
             "id": "1460245030102110402",
-            "name": "\ud83c\udf81\u2506free-panel",
+            "name": "🎁┆free-panel",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1444537473748439161",
-            "name": "\ud83c\udf99\ufe0f\u2506trio-vc",
+            "name": "🎙️┆trio-vc",
             "parentId": "1444534096825946153"
           },
           {
             "id": "1460151022088491059",
-            "name": "\ud83c\udfa5\u2506streamer-panel",
+            "name": "🎥┆streamer-panel",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1453191409141158093",
-            "name": "\ud83c\udfaf\u2506aim-silent",
+            "name": "🎯┆aim-silent",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1460147753576300597",
-            "name": "\ud83d\udc80\u2506aim-kill",
+            "name": "💀┆aim-kill",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1455565235426562173",
-            "name": "\ud83c\udfaf\u2506-resources",
+            "name": "🎯┆-resources",
             "parentId": "1449099333508141196"
           },
           {
             "id": "1521940886165131446",
-            "name": "\ud83d\udee1\ufe0f\u2506protectme-logs",
+            "name": "🛡️┆protectme-logs",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1521553349084713010",
-            "name": "\ud83d\udce2\u2506client-announcements",
+            "name": "📢┆client-announcements",
             "parentId": "1449099333508141196"
           },
           {
             "id": "1523333922245705860",
-            "name": "\ud83d\udccb\u2506server-logs",
+            "name": "📋┆server-logs",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1460152325267128520",
-            "name": "\ud83d\udd0d\u2506uid-bypass",
+            "name": "🔍┆uid-bypass",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1521577051516047573",
-            "name": "\ud83c\udf99\ufe0f\u2506voice-log",
+            "name": "🎙️┆voice-log",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1444533393688760415",
-            "name": "\ud83c\udf99\ufe0f\u2506duo-vc",
+            "name": "🎙️┆duo-vc",
             "parentId": "1444534096825946153"
           },
           {
             "id": "1444533393688760411",
-            "name": "\ud83d\udc4b\u2506welcome",
+            "name": "👋┆welcome",
             "parentId": "1444533393688760410"
           },
           {
             "id": "1454297254079762482",
-            "name": "\ud83d\udcc8\u2506invite-tracker",
+            "name": "📈┆invite-tracker",
             "parentId": "1444533393688760410"
           },
           {
             "id": "1528456459350966352",
-            "name": "\ud83d\udcc1-resources",
+            "name": "📁-resources",
             "parentId": "1460870443174068306"
           },
           {
             "id": "1446095251612762112",
-            "name": "\ud83d\udcb8\u2506payment-proof",
+            "name": "💸┆payment-proof",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1444538212583473162",
-            "name": "\ud83c\udfab\u2506ticket-center",
+            "name": "🎫┆ticket-center",
             "parentId": "1444538003824447621"
           },
           {
             "id": "1460149421177045112",
-            "name": "\ud83d\udda5\ufe0f\u2506panel-external",
+            "name": "🖥️┆panel-external",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1449290971391983747",
-            "name": "\ud83d\udd12\u2506private-vc",
+            "name": "🔒┆private-vc",
             "parentId": "1444534096825946153"
           },
           {
             "id": "1523333975169302639",
-            "name": "\ud83d\udea8\u2506mod-reports",
+            "name": "🚨┆mod-reports",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1521940599031333045",
-            "name": "\ud83d\udc51\u2506staff-chat",
+            "name": "👑┆staff-chat",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1460149291996676188",
-            "name": "\u2699\ufe0f\u2506panel-internal",
+            "name": "⚙️┆panel-internal",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1460152526463832097",
-            "name": "\ud83d\udcbb\u2506basic-panel",
+            "name": "💻┆basic-panel",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1460152237836730419",
-            "name": "\ud83d\udee1\ufe0f\u2506bypass-emulator",
+            "name": "🛡️┆bypass-emulator",
             "parentId": "1460243779322777672"
           },
           {
             "id": "1444538272884981882",
-            "name": "\ud83d\udcdc\u2506rules",
+            "name": "📜┆rules",
             "parentId": "1444533393688760410"
           },
           {
             "id": "1505382439017644212",
-            "name": "\ud83d\udee0\ufe0f\u2506beta-tools",
+            "name": "🛠️┆beta-tools",
             "parentId": "1460870443174068306"
           },
           {
             "id": "1523332061425963031",
-            "name": "\ud83d\uddd1\ufe0f\u2506message-log",
+            "name": "🗑️┆message-log",
             "parentId": "1444548713531047986"
           },
           {
             "id": "1522048463968141462",
-            "name": "\ud83d\udce2\u2506announcements",
+            "name": "📢┆announcements",
             "parentId": "1444533393688760410"
           },
           {
             "id": "1444537666849734656",
-            "name": "\ud83c\udf99\ufe0f\u2506squad-vc",
+            "name": "🎙️┆squad-vc",
             "parentId": "1444534096825946153"
           },
           {
             "id": "1460870595297284387",
-            "name": "\ud83d\udcf2\u2506free-fire-apk",
+            "name": "📲┆free-fire-apk",
             "parentId": "1460870443174068306"
           },
           {
             "id": "1449099449203691570",
-            "name": "\ud83d\udcac\u2506client-chat",
+            "name": "💬┆client-chat",
             "parentId": "1449099333508141196"
           }
         ],

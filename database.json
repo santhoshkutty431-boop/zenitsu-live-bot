@@ -16,7 +16,9 @@
       "lastMessage": 1782844093036
     }
   },
-  "roleWhitelist": [],
+  "roleWhitelist": [
+    "6428632983"
+  ],
   "deletedMessages": [],
   "cases": [],
   "caseCounter": 0,
