@@ -803,25 +803,18 @@ const IDENTITY_REPLACEMENTS = [
 function sanitizeResponse(text, prompt = '') {
   if (typeof text !== 'string') return text;
 
-  const isOwnerQuery = /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)\s+server)?/i.test(prompt) ||
-                       /who\s+owns?\s+(this|the)\s+server/i.test(prompt) ||
-                       /who\s+is\s+(the\s+)?owner/i.test(prompt);
+  const isOwnerQuery = /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
+                       /who\s+owns?\s+(this|the)?\s*server/i.test(prompt) ||
+                       /who\s+is\s+(the\s+)?owner/i.test(prompt) ||
+                       /owner\s+of\s+(this|the)?\s*server/i.test(prompt);
 
-  const containsRefusal = /I (don'?t|do not) have (that|this|information|details|access)|As a conversational AI|don'?t have direct access to server details|ownership information|checking with the server administrator/i.test(text);
-
-  if (isOwnerQuery && containsRefusal) {
+  if (isOwnerQuery) {
     return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
   }
 
   let sanitized = text;
   for (const { pattern, replacement } of IDENTITY_REPLACEMENTS) {
     sanitized = sanitized.replace(pattern, replacement);
-  }
-
-  if (/don'?t have (that|this|information|details|access)|As a conversational AI|don'?t have direct access to server details|ownership information/i.test(sanitized)) {
-    if (isOwnerQuery) {
-      return "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀";
-    }
   }
 
   if (sanitized !== text) {
