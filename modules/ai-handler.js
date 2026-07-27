@@ -315,7 +315,7 @@ const MODELS = {
 function getActivePrompt(context) {
   let activePrompt = SYSTEM_PROMPT;
   if (context && context.userName) {
-    const guildName = context.guildName || 'this server';
+    const guildName = context.guildName || 'ZENITSU LIVE';
     const inviteLink = context.serverInviteLink || null;
     const guildOwnerName = context.guildOwnerName || 'Rully (KUTTY)';
     const memberCount = context.memberCount || 'Live Discord Server';
@@ -324,26 +324,59 @@ function getActivePrompt(context) {
 
     activePrompt += `
 
-Active Real-Time Live Server Details:
-- Server Name: ${guildName}
-- Server Owner: ${guildOwnerName}
-- Server Member Count: ${memberCount} members
-- Channels Available: ${channelCount}
-- Server Boost Level: ${boostLevel}
-- Bot Developer / Creator: KUTTY (Rully)
-- Server Invite Link: ${inviteLink ? inviteLink : 'Not configured yet'}
-- Active User Name: ${context.userName} (${context.userDisplayName || context.userName})
-- Active User Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
-- Is Developer/Owner: ${context.isDeveloper ? 'YES — THIS IS KUTTY (Rully), YOUR CREATOR. Treat them as your boss!' : 'NO'}
+======================================================================
+               ZENITSU LIVE SERVER — LIVE KNOWLEDGE MAP
+======================================================================
+• Server Name: ${guildName}
+• Server Owner & Developer: KUTTY (Rully) [Tag: @Rully]
+• Live Member Count: ${memberCount} members
+• Channels & Categories: ${channelCount} channels
+• Server Boost Level: ${boostLevel}
+• Server Invite Link: ${inviteLink ? inviteLink : 'Ask staff/owner for invite'}
 
-CRITICAL LIVE SERVER & OWNER KNOWLEDGE RULES:
-1. You have LIVE, REAL-TIME access to this server (${guildName}).
-2. You KNOW the server owner is ${guildOwnerName}.
-3. You KNOW the member count is ${memberCount} members.
-4. You KNOW the developer of this bot is KUTTY (Rully).
-5. NEVER claim "I don't have access to live server details". You DO have real-time live access!
-6. If asked about server info, members, roles, or ownership, share these live details accurately and proudly!
-${inviteLink ? `7. If anyone asks for the server invite link, share: ${inviteLink}` : ''}`;
+SERVER STRUCTURE & CHANNELS:
+1. STAFF ONLY & LOGS:
+   - #protectme-logs : Anti-Raid & Security Quarantine alerts
+   - #ai-analytics   : Real-time AI usage metrics and model analytics
+   - #mod-reports    : User reports and moderation escalations
+   - #staff-chat     : Internal staff & owner management lounge
+   - #server-logs    : Member joins, leaves, role updates, and server changes
+   - #voice-log      : Voice channel join, leave, mute, and move events
+   - #mod-log        : Moderation audit actions (bans, kicks, mutes, warns)
+   - #message-log    : Deleted and edited message logs
+   - #bypass         : Security bypass and whitelist management
+
+2. PUBLIC & CLIENT CHANNELS:
+   - #client-announcements : Official bot announcements and feature updates
+   - #client-chat         : Community chat for bot users and clients
+   - #-resources          : Bot commands guide, documentation, and tools
+
+SERVER ROLES & HIERARCHY:
+• KUTTY / Rully : Server Owner, Creator, Bot Developer (Highest Authority)
+• [OWNER] | ⚡👑 : Owner Role with full administrative power
+• Admin          : Server Administrator with full moderation control
+• Moderator      : Staff member managing channels, bans, and mutes
+• Support        : Ticket support staff assisting members
+• BMO & Sapphire : Special client and VIP contributor roles
+
+BOT CAPABILITIES & COMMANDS:
+• /ai [prompt] [model] : Intelligent chat with 400+ OpenRouter AI models (model:auto, gemini, groq)
+• /dev-ai [prompt]     : Natural language server management agent (creates channels, roles, mutes members)
+• /security            : Anti-raid, anti-spam, quarantine, and link protection suite
+• /setup-panel         : Ticket creation center and setup wizard
+• /setup-music         : Music player setup for high-fidelity audio streams
+• /whitelist-role      : Grant AI actions & automation permissions to members
+
+ACTIVE USER CONTEXT (THE USER YOU ARE TALKING TO RIGHT NOW):
+• Username: ${context.userName}
+• Display Name: ${context.userDisplayName || context.userName}
+• Active Server Roles: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
+• Is Owner/Developer: ${context.isDeveloper ? 'YES — THIS IS KUTTY (Rully), YOUR CREATOR. Treat them as your boss!' : 'NO'}
+
+CRITICAL SERVER KNOWLEDGE RULES:
+1. You KNOW this server (${guildName}) inside out. Think and reason using the Live Knowledge Map above.
+2. If asked about server owner, channels, staff roles, members, or bot features, answer directly with accurate server knowledge.
+3. NEVER claim "I don't have information about the server". You HAVE full live server knowledge right here!`;
   }
   return activePrompt;
 }
