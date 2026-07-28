@@ -1027,7 +1027,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
               .setThumbnail(interaction.client.user.displayAvatarURL())
               .addFields(
                 { name: '💬 Your Question', value: prompt },
-                { name: '🤖 Answer', value: `<@${interaction.user.id}>\n\n⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀` }
+                { name: '🤖 Answer', value: `⚡ **Rully (KUTTY)** is the **Owner** of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀\n\nUID: \`6428632983\`` }
               )
               .setFooter({ text: 'ZENITSU AI • Built by KUTTY' })
               .setTimestamp()
@@ -1075,8 +1075,18 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
         if (result.error) {
           logAiAnalytics(interaction.user, prompt, result, interaction.guild).catch(e => console.error('[ANALYTICS ERROR]', e.message));
-          return interaction.editReply({ 
-            content: '❌ The AI Service is temporarily overloaded. Our team has been notified. Please try again in a few moments!' 
+          return interaction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0xFF4444)
+                .setAuthor({ name: 'ZENITSU AI', iconURL: interaction.client.user.displayAvatarURL() })
+                .addFields(
+                  { name: '💬 Your Question', value: prompt.slice(0, 1024) },
+                  { name: '⚠️ Service Error', value: result.message?.slice(0, 1024) || '❌ AI is temporarily unavailable. Please try again in a moment.' }
+                )
+                .setFooter({ text: 'ZENITSU AI • Try using /ai with a different model' })
+                .setTimestamp()
+            ]
           });
         }
 

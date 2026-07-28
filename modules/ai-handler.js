@@ -581,13 +581,9 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
   console.log(`[AI SESSION LOG] Locked isolated session for processing: ${sessionKey}`);
 
   try {
-    // Define failover order
-    let failoverQueue = [];
-    if (modelKey === 'gpt4o' || modelKey === 'gpt35') {
-      failoverQueue = [modelKey, 'openrouter', 'groq', 'gemini', 'qwen'];
-    } else {
-      failoverQueue = [modelKey, 'openrouter', 'groq', 'gemini', 'qwen', 'gpt35'].filter((val, index, self) => self.indexOf(val) === index);
-    }
+    // Define failover order — always try free models as backup so users never get a hard failure
+    const FREE_FALLBACKS = ['groq', 'gemini', 'openrouter', 'qwen'];
+    let failoverQueue = [modelKey, ...FREE_FALLBACKS].filter((val, idx, self) => self.indexOf(val) === idx);
 
     let attemptErrorLogs = [];
     let successfulModel = null;
@@ -651,9 +647,10 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
     }
 
     if (!successfulModel) {
+      const lastErr = attemptErrorLogs[attemptErrorLogs.length - 1] || 'Unknown error';
       return {
         error: true,
-        message: `❌ AI Service is temporarily unavailable. All models failed:\n• ` + attemptErrorLogs.join('\n• '),
+        message: `❌ All AI models failed to respond. Last error: ${lastErr}\n\nTry again in a moment — the bot will automatically switch to a working model.`,
         attempts: attemptErrorLogs
       };
     }
