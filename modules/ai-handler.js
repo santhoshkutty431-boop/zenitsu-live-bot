@@ -321,12 +321,34 @@ const MODELS = {
 function getActivePrompt(context) {
   let activePrompt = SYSTEM_PROMPT;
   if (context && context.userName) {
-    const guildName = context.guildName || 'ZENITSU LIVE';
-    const inviteLink = context.serverInviteLink || null;
-    const guildOwnerName = context.guildOwnerName || 'Rully (KUTTY)';
-    const memberCount = context.memberCount || 'Live Discord Server';
-    const channelCount = context.channelCount || 'Multiple Text/Voice Channels';
-    const boostLevel = context.boostLevel !== undefined ? `Level ${context.boostLevel}` : 'Boosted Server';
+    const guildName    = context.guildName    || 'ZENITSU LIVE';
+    const inviteLink   = context.serverInviteLink || null;
+    const memberCount  = context.memberCount  || '90+';
+    const channelCount = context.channelCount || '25+';
+    const boostLevel   = context.boostLevel !== undefined ? `Level ${context.boostLevel}` : '0';
+
+    // ── CRITICAL FACTS injected at TOP so LLM always reads them first ──────
+    const criticalFacts =
+`CRITICAL HARDCODED FACTS — MEMORIZE THESE, NEVER CONTRADICT THEM:
+• Server Name: ${guildName}
+• Server Owner: Rully (also called KUTTY) — Discord UID 6428632983 — they built this bot and own this server
+• Bot Name: ZENITSU AI — built exclusively by KUTTY/Rully for ${guildName}
+• Live Members: ${memberCount}  |  Channels: ${channelCount}  |  Boost: ${boostLevel}
+• You are talking to: ${context.userDisplayName || context.userName} (username: ${context.userName})
+• Their roles in this server: ${context.userRoles ? context.userRoles.join(', ') : 'Member'}
+• Is this person the Owner/Developer? ${context.isDeveloper ? 'YES — this is KUTTY (Rully), your creator. Give them maximum respect!' : 'NO'}
+${inviteLink ? `• Server Invite Link: ${inviteLink}` : ''}
+
+MANDATORY RESPONSE RULES (break these = hard failure):
+→ If asked "who is the owner?" → Answer: "Rully (KUTTY) is the owner of ${guildName} and the developer who built me."
+→ If asked "who built you?" → Answer: "KUTTY (Rully) built me — I am ZENITSU AI."
+→ NEVER say "I don't have information about the server/owner." You have everything above.
+→ NEVER say "I don't retain information." You know the user's name and roles listed above.
+═══════════════════════════════════════════════════════════════════════
+
+`;
+    // Inject CRITICAL FACTS at the VERY TOP so LLM reads them before anything else
+    activePrompt = criticalFacts + SYSTEM_PROMPT;
 
     activePrompt += `
 

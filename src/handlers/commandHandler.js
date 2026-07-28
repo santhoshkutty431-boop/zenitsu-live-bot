@@ -1003,7 +1003,12 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
 
       db.userLanguages = db.userLanguages || {};
-      const userLang = db.userLanguages[interaction.user.id] || 'english'; // default to English if not set
+      // Default to English if not set — also save it so /ai-lang works correctly
+      if (!db.userLanguages[interaction.user.id]) {
+        db.userLanguages[interaction.user.id] = 'english';
+        saveDb();
+      }
+      const userLang = db.userLanguages[interaction.user.id];
 
       await interaction.deferReply();
 
@@ -1097,7 +1102,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
           })
           .addFields(
             { name: '💬 Your Question', value: prompt.slice(0, 1024) },
-            { name: '🤖 Answer',        value: `<@${interaction.user.id}>\n\n${result.response.slice(0, 1024)}` },
+            { name: '🤖 Answer', value: result.response.slice(0, 1024) },
           );
 
         if (actionResult.hasConfirmation) {
