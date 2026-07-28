@@ -1,6 +1,9 @@
 # Use official Node.js LTS
 FROM node:20-slim
 
+# Build timestamp — bump this to force a fresh Back4app rebuild
+LABEL build.version="2026-07-28-v5"
+
 # Set working directory
 WORKDIR /app
 
