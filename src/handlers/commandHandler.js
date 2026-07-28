@@ -1003,18 +1003,14 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
       }
 
       db.userLanguages = db.userLanguages || {};
-      const userLang = db.userLanguages[interaction.user.id];
-
-      if (!userLang) {
-        const payload = getLanguageSelectorEmbed(interaction.user);
-        return interaction.reply({ ...payload, ephemeral: true });
-      }
+      const userLang = db.userLanguages[interaction.user.id] || 'english'; // default to English if not set
 
       await interaction.deferReply();
 
       const prompt = interaction.options.getString('prompt');
 
       // Zero-latency hardcoded owner query handler (bypasses LLM API calls entirely)
+      // This runs BEFORE any language/model checks so it always works
       if (/who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
           /who\s+owns?\s+(this|the)?\s*server/i.test(prompt) ||
           /who\s+is\s+(the\s+)?owner/i.test(prompt) ||
