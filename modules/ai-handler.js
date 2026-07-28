@@ -580,6 +580,26 @@ function recordUsage({ userId, context, model, prompt, response, latencyMs, succ
 }
 
 async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL || 'groq'), userLang = null, context = {}) {
+  // ABSOLUTE HARDCODED OWNER INTERCEPT (bypasses all LLMs, zero latency, 100% mathematical guarantee)
+  if (typeof prompt === 'string' && (
+      /who\s+(is|are|built|created|owns?|made)\s+(the\s+)?(owner|creator|developer|maker|boss|master)?(\s+of\s+(this|the)?\s*server)?/i.test(prompt) ||
+      /who\s+owns?\s+(this|the)?\s*server/i.test(prompt) ||
+      /who\s+is\s+(the\s+)?owner/i.test(prompt) ||
+      /owner/i.test(prompt) ||
+      /who\s+built/i.test(prompt) ||
+      /who\s+created/i.test(prompt) ||
+      /who\s+made/i.test(prompt)
+  )) {
+    return {
+      error: false,
+      response: "⚡ **Rully (KUTTY)** is the owner of the **ZENITSU LIVE** server and the developer who built me (**ZENITSU AI**)! 🚀\n\nUID: `6428632983`",
+      model: { label: '⚡ ZENITSU CORE' },
+      originalRequested: { label: modelKey },
+      failoverCount: 0,
+      attempts: []
+    };
+  }
+
   const sessionKey = resolveSessionKey(userId, context);
 
   // Prompt injection guardrail
