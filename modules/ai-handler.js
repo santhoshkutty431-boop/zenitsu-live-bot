@@ -417,10 +417,6 @@ async function callGemini(model, messages, context) {
   const contents = [];
   const activePrompt = getActivePrompt(context);
 
-  // Add system prompt as first user message (Gemini doesn't have system role)
-  contents.push({ role: 'user', parts: [{ text: activePrompt }] });
-  contents.push({ role: 'model', parts: [{ text: 'Understood! I am ZENITSU AI, ready to assist.' }] });
-
   for (const msg of messages) {
     contents.push({
       role:  msg.role === 'assistant' ? 'model' : 'user',
@@ -432,7 +428,11 @@ async function callGemini(model, messages, context) {
     'generativelanguage.googleapis.com',
     `/v1beta/models/${model.name}:generateContent?key=${apiKey}`,
     {},
-    { contents, generationConfig: { maxOutputTokens: 1024, temperature: 0.7 } }
+    {
+      systemInstruction: { parts: [{ text: activePrompt }] },
+      contents,
+      generationConfig: { maxOutputTokens: 1024, temperature: 0.7 }
+    }
   );
 
   if (res.error)         throw new Error(res.error.message);

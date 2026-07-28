@@ -1111,7 +1111,7 @@ async function handleInteraction(interaction, runtime, db, ID, logToChannel, isD
 
         aiEmbed
           .setColor(actionResult.hasConfirmation ? 0xEDC231 : 0x00D4FF)
-          .setFooter({ text: 'ZENITSU AI • Click buttons below to interact' })
+          .setFooter({ text: 'ZENITSU AI v6.0 (VPS Build 2026.07.28) • Click buttons below to interact' })
           .setTimestamp();
 
         const actionRow = new ActionRowBuilder().addComponents(
