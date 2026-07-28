@@ -272,6 +272,34 @@ const MODELS = {
     free:     true,
     envKey:   'GEMINI_API_KEY',
   },
+  groq: {
+    label:    '⚡ Groq Llama-3.3-70b',
+    name:     'llama-3.3-70b-versatile',
+    provider: 'groq',
+    free:     true,
+    envKey:   'GROQ_API_KEY',
+  },
+  openrouter: {
+    label:    '🌐 Ling Flash (OpenRouter Free)',
+    name:     'inclusionai/ling-3.0-flash:free',
+    provider: 'openrouter',
+    free:     true,
+    envKey:   'OPENROUTER_API_KEY',
+  },
+  qwen: {
+    label:    '🧠 GPT OSS (OpenRouter Free)',
+    name:     'openai/gpt-oss-20b:free',
+    provider: 'openrouter',
+    free:     true,
+    envKey:   'OPENROUTER_API_KEY',
+  },
+  auto: {
+    label:    '⚡ Groq Llama Auto',
+    name:     'llama-3.3-70b-versatile',
+    provider: 'groq',
+    free:     true,
+    envKey:   'GROQ_API_KEY',
+  },
   gpt4o: {
     label:    '🟢 GPT-4o',
     name:     'gpt-4o',
@@ -285,34 +313,6 @@ const MODELS = {
     provider: 'openai',
     free:     false,
     envKey:   'OPENAI_API_KEY',
-  },
-  groq: {
-    label:    '⚡ Groq Llama-3.3-70b',
-    name:     'llama-3.3-70b-versatile',
-    provider: 'groq',
-    free:     true,
-    envKey:   'GROQ_API_KEY',
-  },
-  openrouter: {
-    label:    '🧠 DeepSeek-R1 (OpenRouter)',
-    name:     'deepseek/deepseek-r1:free',
-    provider: 'openrouter',
-    free:     true,
-    envKey:   'OPENROUTER_API_KEY',
-  },
-  qwen: {
-    label:    '🔮 Qwen 2.5 72B (OpenRouter)',
-    name:     'qwen/qwen-2.5-72b-instruct:free',
-    provider: 'openrouter',
-    free:     true,
-    envKey:   'OPENROUTER_API_KEY',
-  },
-  auto: {
-    label:    '🌐 OpenRouter Smart Auto (400+ Models)',
-    name:     'openrouter/auto',
-    provider: 'openrouter',
-    free:     true,
-    envKey:   'OPENROUTER_API_KEY',
   },
 };
 
@@ -603,8 +603,9 @@ async function queryAI(userId, prompt, modelKey = (process.env.DEFAULT_AI_MODEL 
   console.log(`[AI SESSION LOG] Locked isolated session for processing: ${sessionKey}`);
 
   try {
-    // Define failover order — always try free models as backup so users never get a hard failure
-    const FREE_FALLBACKS = ['groq', 'gemini', 'openrouter', 'qwen'];
+    // Failover order — gemini first (most reliable), then groq, then openrouter variants
+    // All 4 free models are tried so users never see a hard failure
+    const FREE_FALLBACKS = ['gemini', 'groq', 'openrouter', 'qwen', 'auto', 'deepseek'];
     let failoverQueue = [modelKey, ...FREE_FALLBACKS].filter((val, idx, self) => self.indexOf(val) === idx);
 
     let attemptErrorLogs = [];
